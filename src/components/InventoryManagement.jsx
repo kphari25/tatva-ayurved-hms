@@ -1,529 +1,465 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Package, Plus, Upload, Download, Search, Filter, Edit, Trash2,
-  Calendar, DollarSign, TrendingUp, AlertCircle, Check, X, FileSpreadsheet,
-  BarChart3, ShoppingCart, Archive, Clock, Hash, FileText, Save, RefreshCw
+import { 
+  Package, Plus, Edit, Trash2, Search, Upload, Download, 
+  X, Save, FileSpreadsheet, AlertCircle
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
-const InventoryManagement = ({ inventory, setInventory, userRole, supabase }) => {
-  const [medicines, setMedicines] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState('all');
+const InventoryManagement = () => {
+  const [inventory, setInventory] = useState([]);
+  const [filteredInventory, setFilteredInventory] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingMedicine, setEditingMedicine] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const [newMedicine, setNewMedicine] = useState({
-    name: '',
-    category: 'Tablet',
-    batchNumber: '',
-    purchaseDate: new Date().toISOString().split('T')[0],
-    expiryDate: '',
-    quantity: 0,
-    unit: 'strips',
-    purchasePrice: 0,
-    marginPercent: 40,
-    supplier: '',
-    invoiceNumber: '',
-    reorderLevel: 10
+  // Check if current user is admin
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const [formData, setFormData] = useState({
+    month: new Date().toISOString().slice(0, 7),
+    item_code: '',
+    item_name: '',
+    purchase_rate: '',
+    stock_quantity: '',
+    mrp: '',
+    category: ''
   });
 
-  // Load medicines from database
   useEffect(() => {
-    loadMedicines();
+    loadInventory();
+    checkAdminStatus();
   }, []);
 
-  const loadMedicines = async () => {
-    if (!supabase) {
-      setMedicines(inventory || []);
-      setLoading(false);
+  useEffect(() => {
+    if (searchTerm) {
+      const filtered = inventory.filter(item =>
+        item.item_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.item_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.category?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredInventory(filtered);
+    } else {
+      setFilteredInventory(inventory);
+    }
+  }, [searchTerm, inventory]);
+
+  const checkAdminStatus = () => {
+    try {
+      const currentUser = localStorage.getItem('currentUser');
+      if (currentUser) {
+        const user = JSON.parse(currentUser);
+        setIsAdmin(user.role === 'Admin' || user.permissions?.includes('all'));
+      }
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+    }
+  };
+
+  const loadInventory = () => {
+    try {
+      const saved = localStorage.getItem('inventory');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setInventory(parsed);
+        setFilteredInventory(parsed);
+      }
+    } catch (error) {
+      console.error('Error loading inventory:', error);
+    }
+  };
+
+  const calculateStockValue = (quantity, purchaseRate) => {
+    return (parseFloat(quantity || 0) * parseFloat(purchaseRate || 0)).toFixed(2);
+  };
+
+  const handleChange = (e) => {
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleAdd = () => {
+    setEditingItem(null);
+    setFormData({
+      month: new Date().toISOString().slice(0, 7),
+      item_code: '',
+      item_name: '',
+      purchase_rate: '',
+      stock_quantity: '',
+      mrp: '',
+      category: ''
+    });
+    setShowAddModal(true);
+  };
+
+  const handleEdit = (item) => {
+    setEditingItem(item);
+    setFormData({
+      month: item.month || new Date().toISOString().slice(0, 7),
+      item_code: item.item_code || item.code || '',
+      item_name: item.item_name || item.name || '',
+      purchase_rate: item.purchase_rate || item.price || '',
+      stock_quantity: item.stock_quantity || item.quantity || '',
+      mrp: item.mrp || '',
+      category: item.category || ''
+    });
+    setShowAddModal(true);
+  };
+
+  const handleSave = () => {
+    if (!formData.item_name || !formData.stock_quantity) {
+      alert('Please fill Item Name and Stock Quantity');
       return;
     }
 
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('inventory')
-        .select('*')
-        .order('created_at', { ascending: false });
+    const stockValue = calculateStockValue(formData.stock_quantity, formData.purchase_rate);
+    const newItem = {
+      id: editingItem ? editingItem.id : Date.now(),
+      month: formData.month,
+      item_code: formData.item_code,
+      item_name: formData.item_name,
+      purchase_rate: parseFloat(formData.purchase_rate) || 0,
+      stock_quantity: parseInt(formData.stock_quantity),
+      stock_value: parseFloat(stockValue),
+      mrp: parseFloat(formData.mrp) || 0,
+      category: formData.category,
+      name: formData.item_name,
+      quantity: parseInt(formData.stock_quantity),
+      price: parseFloat(formData.purchase_rate) || 0
+    };
 
-      if (error) throw error;
-      setMedicines(data || []);
-      if (setInventory) setInventory(data || []);
-    } catch (error) {
-      console.error('Error loading medicines:', error);
-      showMessage('error', 'Failed to load inventory: ' + error.message);
-    } finally {
-      setLoading(false);
+    let updatedInventory;
+    if (editingItem) {
+      updatedInventory = inventory.map(item => item.id === editingItem.id ? newItem : item);
+    } else {
+      updatedInventory = [...inventory, newItem];
     }
+
+    localStorage.setItem('inventory', JSON.stringify(updatedInventory));
+    setInventory(updatedInventory);
+    setShowAddModal(false);
+    alert(editingItem ? '✅ Item updated!' : '✅ Item added!');
   };
 
-  const showMessage = (type, text) => {
-    setMessage({ type, text });
-    setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+  const handleDelete = (id) => {
+    if (!confirm('Delete this item?')) return;
+    const updated = inventory.filter(item => item.id !== id);
+    localStorage.setItem('inventory', JSON.stringify(updated));
+    setInventory(updated);
+    alert('✅ Item deleted!');
   };
 
-  const calculateSalePrice = (purchasePrice, marginPercent) => {
-    return Math.round(purchasePrice * (1 + marginPercent / 100));
-  };
-
-  // Add new medicine to database
-  const handleAddMedicine = async () => {
-    if (!newMedicine.name || !newMedicine.category) {
-      showMessage('error', 'Please enter medicine name and category');
+  const handleClearAll = () => {
+    if (!confirm('⚠️ WARNING: Delete ALL inventory items?\n\nThis will permanently delete all ' + inventory.length + ' items.\n\nThis action CANNOT be undone!\n\nAre you absolutely sure?')) {
       return;
     }
 
-    setSaving(true);
-    try {
-      const salePrice = calculateSalePrice(newMedicine.purchasePrice, newMedicine.marginPercent);
-      const status = newMedicine.quantity > newMedicine.reorderLevel ? 'in-stock' : 
-                     newMedicine.quantity === 0 ? 'out-of-stock' : 'low-stock';
-
-      const medicineData = {
-        name: newMedicine.name,
-        category: newMedicine.category,
-        batch_number: newMedicine.batchNumber || null,
-        purchase_date: newMedicine.purchaseDate || null,
-        expiry_date: newMedicine.expiryDate || null,
-        quantity: parseFloat(newMedicine.quantity) || 0,
-        unit: newMedicine.unit,
-        purchase_price: parseFloat(newMedicine.purchasePrice) || 0,
-        margin_percent: parseFloat(newMedicine.marginPercent) || 40,
-        sale_price: salePrice,
-        supplier: newMedicine.supplier || null,
-        invoice_number: newMedicine.invoiceNumber || null,
-        reorder_level: parseFloat(newMedicine.reorderLevel) || 10,
-        status: status
-      };
-
-      if (supabase) {
-        const { data, error } = await supabase
-          .from('inventory')
-          .insert([medicineData])
-          .select();
-
-        if (error) throw error;
-        showMessage('success', '✅ Medicine added successfully!');
-      } else {
-        // Fallback for non-Supabase mode
-        const medicine = {
-          ...medicineData,
-          id: Date.now().toString(),
-          created_at: new Date().toISOString()
-        };
-        setMedicines([medicine, ...medicines]);
-      }
-
-      // Reset form
-      setNewMedicine({
-        name: '',
-        category: 'Tablet',
-        batchNumber: '',
-        purchaseDate: new Date().toISOString().split('T')[0],
-        expiryDate: '',
-        quantity: 0,
-        unit: 'strips',
-        purchasePrice: 0,
-        marginPercent: 40,
-        supplier: '',
-        invoiceNumber: '',
-        reorderLevel: 10
-      });
-      setShowAddModal(false);
-
-      // Reload medicines
-      await loadMedicines();
-
-    } catch (error) {
-      console.error('Error adding medicine:', error);
-      showMessage('error', 'Failed to add medicine: ' + error.message);
-    } finally {
-      setSaving(false);
+    // Double confirmation for safety
+    if (!confirm('⚠️ FINAL CONFIRMATION:\n\nYou are about to delete ALL inventory.\n\nClick OK to proceed or Cancel to abort.')) {
+      return;
     }
+
+    localStorage.removeItem('inventory');
+    setInventory([]);
+    setFilteredInventory([]);
+    alert('✅ All inventory items have been deleted!');
   };
 
-  // Update medicine
-  const handleUpdateMedicine = async () => {
-    if (!editingMedicine) return;
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    setSaving(true);
-    try {
-      const salePrice = calculateSalePrice(editingMedicine.purchase_price, editingMedicine.margin_percent);
-      const status = editingMedicine.quantity > editingMedicine.reorder_level ? 'in-stock' : 
-                     editingMedicine.quantity === 0 ? 'out-of-stock' : 'low-stock';
+    setLoading(true);
+    const reader = new FileReader();
 
-      if (supabase) {
-        const { error } = await supabase
-          .from('inventory')
-          .update({
-            name: editingMedicine.name,
-            category: editingMedicine.category,
-            quantity: parseFloat(editingMedicine.quantity),
-            unit: editingMedicine.unit,
-            purchase_price: parseFloat(editingMedicine.purchase_price),
-            margin_percent: parseFloat(editingMedicine.margin_percent),
-            sale_price: salePrice,
-            reorder_level: parseFloat(editingMedicine.reorder_level),
-            status: status
-          })
-          .eq('id', editingMedicine.id);
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-        if (error) throw error;
-        showMessage('success', '✅ Medicine updated!');
+        const importedItems = jsonData.map((row, index) => {
+          const quantity = parseFloat(row['Stock Quantity'] || row['stock_quantity'] || 0);
+          const pRate = parseFloat(row['PRate'] || row['purchase_rate'] || 0);
+          const stockValue = parseFloat(row['Stock Value'] || row['stock_value'] || (quantity * pRate));
+
+          return {
+            id: Date.now() + index,
+            month: row['Month'] || row['month'] || new Date().toISOString().slice(0, 7),
+            item_code: row['ItemCode'] || row['item_code'] || `ITM${Date.now() + index}`,
+            item_name: row['ItemName'] || row['item_name'] || 'Unknown',
+            purchase_rate: pRate,
+            stock_quantity: quantity,
+            stock_value: stockValue,
+            mrp: parseFloat(row['MRP'] || row['mrp'] || 0),
+            category: row['Category'] || row['category'] || 'General',
+            name: row['ItemName'] || row['item_name'] || 'Unknown',
+            quantity: quantity,
+            price: pRate
+          };
+        });
+
+        const existingCodes = new Set(inventory.map(item => item.item_code));
+        const newItems = importedItems.filter(item => !existingCodes.has(item.item_code));
+        const mergedInventory = [...inventory, ...newItems];
+
+        localStorage.setItem('inventory', JSON.stringify(mergedInventory));
+        setInventory(mergedInventory);
+        setShowImportModal(false);
+        
+        alert(`✅ Imported ${newItems.length} items!\n${importedItems.length - newItems.length} duplicates skipped.`);
+      } catch (error) {
+        alert('❌ Error: ' + error.message);
+      } finally {
+        setLoading(false);
       }
+    };
 
-      setEditingMedicine(null);
-      await loadMedicines();
+    reader.readAsBinaryString(file);
+  };
 
-    } catch (error) {
-      console.error('Error updating medicine:', error);
-      showMessage('error', 'Failed to update: ' + error.message);
-    } finally {
-      setSaving(false);
+  const handleExport = () => {
+    if (inventory.length === 0) {
+      alert('No inventory to export');
+      return;
     }
+
+    const exportData = inventory.map(item => ({
+      'Month': item.month,
+      'ItemCode': item.item_code,
+      'ItemName': item.item_name,
+      'PRate': item.purchase_rate,
+      'Stock Quantity': item.stock_quantity,
+      'Stock Value': item.stock_value,
+      'MRP': item.mrp,
+      'Category': item.category
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+    XLSX.writeFile(wb, `Inventory_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    alert('✅ Exported successfully!');
   };
 
-  // Delete medicine
-  const handleDeleteMedicine = async (id) => {
-    if (!confirm('Are you sure you want to delete this medicine?')) return;
+  const downloadTemplate = () => {
+    const templateData = [{
+      'Month': '2026-03',
+      'ItemCode': 'MED001',
+      'ItemName': 'Paracetamol 650mg',
+      'PRate': 2.50,
+      'Stock Quantity': 100,
+      'Stock Value': 250.00,
+      'MRP': 5.00,
+      'Category': 'Pain Relief'
+    }];
 
-    try {
-      if (supabase) {
-        const { error } = await supabase
-          .from('inventory')
-          .delete()
-          .eq('id', id);
-
-        if (error) throw error;
-        showMessage('success', '✅ Medicine deleted!');
-      }
-
-      await loadMedicines();
-    } catch (error) {
-      console.error('Error deleting medicine:', error);
-      showMessage('error', 'Failed to delete: ' + error.message);
-    }
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Template');
+    XLSX.writeFile(wb, 'Inventory_Template.xlsx');
+    alert('✅ Template downloaded!');
   };
 
-  const filteredMedicines = medicines.filter(med => {
-    const matchesSearch = med.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         med.batch_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         med.supplier?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = filterCategory === 'all' || med.category === filterCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-  const stats = {
-    totalItems: medicines.length,
-    totalValue: medicines.reduce((sum, m) => sum + ((m.quantity || 0) * (m.sale_price || 0)), 0),
-    lowStock: medicines.filter(m => m.status === 'low-stock' || m.status === 'out-of-stock').length,
-    expiringSoon: medicines.filter(m => {
-      if (!m.expiry_date) return false;
-      const daysToExpiry = Math.floor((new Date(m.expiry_date) - new Date()) / (1000 * 60 * 60 * 24));
-      return daysToExpiry < 90 && daysToExpiry > 0;
-    }).length
-  };
-
-  const categories = ['all', 'Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Churna', 'Tailam', 'Other'];
+  const totalItems = inventory.length;
+  const totalQuantity = inventory.reduce((sum, item) => sum + (item.stock_quantity || 0), 0);
+  const totalValue = inventory.reduce((sum, item) => sum + (item.stock_value || 0), 0);
+  const lowStockItems = inventory.filter(item => (item.stock_quantity || 0) < 10).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
+    <div className="p-6">
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">
-              Inventory Management
-            </h1>
-            <p className="text-slate-600">Manage medicine stock, batches, and pricing</p>
+            <h1 className="text-3xl font-bold text-gray-800">Inventory Management</h1>
+            <p className="text-gray-600">Manage medicines and supplies</p>
           </div>
-          <div className="flex gap-3">
-            <button onClick={loadMedicines}
-              className="flex items-center gap-2 px-4 py-3 bg-white border-2 border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 font-semibold">
-              <RefreshCw className="w-5 h-5" />
-              Refresh
+          <div className="flex space-x-3">
+            <button onClick={() => setShowImportModal(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <Upload className="w-4 h-4" />
+              <span>Import Excel</span>
             </button>
-            <button onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 font-semibold shadow-lg">
-              <Plus className="w-5 h-5" />
-              Add Medicine
+            <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+              <Download className="w-4 h-4" />
+              <span>Export</span>
+            </button>
+            {/* Admin Only: Clear All Button */}
+            {isAdmin && (
+              <button 
+                onClick={handleClearAll} 
+                className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                title="Admin Only: Delete all inventory items"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Clear All</span>
+              </button>
+            )}
+            <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
+              <Plus className="w-4 h-4" />
+              <span>Add Item</span>
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Message */}
-      {message.text && (
-        <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
-          message.type === 'success' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' :
-          'bg-red-50 border border-red-200 text-red-800'
-        }`}>
-          {message.type === 'success' ? <Check className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-          <p className="font-semibold">{message.text}</p>
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow-sm p-4 border">
+            <p className="text-sm text-gray-600">Total Items</p>
+            <p className="text-2xl font-bold text-gray-800">{totalItems}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-4 border">
+            <p className="text-sm text-gray-600">Total Quantity</p>
+            <p className="text-2xl font-bold text-gray-800">{totalQuantity}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-4 border">
+            <p className="text-sm text-gray-600">Total Value</p>
+            <p className="text-2xl font-bold text-gray-800">₹{totalValue.toFixed(2)}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-4 border">
+            <p className="text-sm text-gray-600">Low Stock</p>
+            <p className="text-2xl font-bold text-red-600">{lowStockItems}</p>
+          </div>
         </div>
-      )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-6 mb-8">
-        {[
-          { label: 'Total Items', value: stats.totalItems, icon: Package, color: 'blue' },
-          { label: 'Total Value', value: `₹${stats.totalValue.toLocaleString()}`, icon: DollarSign, color: 'emerald' },
-          { label: 'Low Stock', value: stats.lowStock, icon: AlertCircle, color: 'amber' },
-          { label: 'Expiring Soon', value: stats.expiringSoon, icon: Clock, color: 'red' }
-        ].map((stat, i) => (
-          <div key={i} className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100">
-            <div className={`w-12 h-12 bg-${stat.color}-100 rounded-xl flex items-center justify-center mb-4`}>
-              <stat.icon className={`w-6 h-6 text-${stat.color}-600`} />
-            </div>
-            <p className="text-slate-600 text-sm mb-1">{stat.label}</p>
-            <p className="text-3xl font-bold text-slate-800">{stat.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Search & Filter */}
-      <div className="flex gap-4 mb-6">
-        <div className="relative flex-1">
-          <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search medicines..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
-          />
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" />
         </div>
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-6 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none font-semibold"
-        >
-          {categories.map(cat => (
-            <option key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</option>
-          ))}
-        </select>
       </div>
 
-      {/* Inventory Table */}
-      <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-slate-500">Loading inventory...</p>
-          </div>
-        ) : filteredMedicines.length === 0 ? (
-          <div className="p-12 text-center">
-            <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-500 text-lg">No medicines found</p>
-            <button onClick={() => setShowAddModal(true)}
-              className="mt-4 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold">
-              Add First Medicine
-            </button>
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-slate-200">
+      <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">CODE</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">ITEM NAME</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">CATEGORY</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">P.RATE</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">STOCK</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">VALUE</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">MRP</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {filteredInventory.length === 0 ? (
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Medicine</th>
-                <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Category</th>
-                <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Stock</th>
-                <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Price</th>
-                <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Status</th>
-                <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Actions</th>
+                <td colSpan="8" className="px-4 py-12 text-center text-gray-500">
+                  <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p>No items found</p>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredMedicines.map((med) => (
-                <tr key={med.id} className="hover:bg-blue-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <p className="font-bold text-slate-800">{med.name}</p>
-                    <p className="text-xs text-slate-500">{med.batch_number || 'No batch'}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
-                      {med.category}
+            ) : (
+              filteredInventory.map((item) => (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-mono">{item.item_code}</td>
+                  <td className="px-4 py-3 font-medium">{item.item_name}</td>
+                  <td className="px-4 py-3 text-sm">{item.category}</td>
+                  <td className="px-4 py-3 text-sm text-right">₹{(item.purchase_rate || 0).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm text-right">
+                    <span className={item.stock_quantity < 10 ? 'text-red-600 font-semibold' : 'font-semibold'}>
+                      {item.stock_quantity}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-800">{med.quantity} {med.unit}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-800">₹{med.sale_price}</p>
-                    <p className="text-xs text-slate-500">Cost: ₹{med.purchase_price}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                      med.status === 'in-stock' ? 'bg-emerald-100 text-emerald-700' :
-                      med.status === 'low-stock' ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {med.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <button onClick={() => setEditingMedicine({...med})}
-                        className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200">
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDeleteMedicine(med.id)}
-                        className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                  <td className="px-4 py-3 text-sm text-right font-semibold">₹{(item.stock_value || 0).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm text-right">₹{(item.mrp || 0).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-center">
+                    <button onClick={() => handleEdit(item)} className="p-1 text-teal-600 hover:bg-teal-50 rounded mr-2">
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDelete(item.id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* Add Medicine Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Add New Medicine</h2>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between">
+              <h2 className="text-xl font-bold">{editingItem ? 'Edit' : 'Add'} Item</h2>
+              <button onClick={() => setShowAddModal(false)}><X className="w-5 h-5" /></button>
             </div>
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="col-span-2">
-                <label className="block text-sm font-bold mb-2">Medicine Name *</label>
-                <input type="text" value={newMedicine.name}
-                  onChange={(e) => setNewMedicine({...newMedicine, name: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none"
-                  placeholder="e.g., Paracetamol 500mg" />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Category *</label>
-                <select value={newMedicine.category}
-                  onChange={(e) => setNewMedicine({...newMedicine, category: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none">
-                  {categories.filter(c => c !== 'all').map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Batch Number</label>
-                <input type="text" value={newMedicine.batchNumber}
-                  onChange={(e) => setNewMedicine({...newMedicine, batchNumber: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Quantity *</label>
-                <input type="number" value={newMedicine.quantity}
-                  onChange={(e) => setNewMedicine({...newMedicine, quantity: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Unit *</label>
-                <select value={newMedicine.unit}
-                  onChange={(e) => setNewMedicine({...newMedicine, unit: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none">
-                  <option value="strips">Strips</option>
-                  <option value="bottles">Bottles</option>
-                  <option value="tablets">Tablets</option>
-                  <option value="ml">ML</option>
-                  <option value="grams">Grams</option>
-                  <option value="pieces">Pieces</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Purchase Price (₹) *</label>
-                <input type="number" value={newMedicine.purchasePrice}
-                  onChange={(e) => setNewMedicine({...newMedicine, purchasePrice: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Margin (%) *</label>
-                <input type="number" value={newMedicine.marginPercent}
-                  onChange={(e) => setNewMedicine({...newMedicine, marginPercent: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none" />
-              </div>
-              <div className="col-span-2">
-                <p className="text-sm text-slate-600">
-                  Sale Price: <strong className="text-blue-600">
-                    ₹{calculateSalePrice(newMedicine.purchasePrice, newMedicine.marginPercent)}
-                  </strong>
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Reorder Level</label>
-                <input type="number" value={newMedicine.reorderLevel}
-                  onChange={(e) => setNewMedicine({...newMedicine, reorderLevel: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Supplier</label>
-                <input type="text" value={newMedicine.supplier}
-                  onChange={(e) => setNewMedicine({...newMedicine, supplier: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none" />
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Month</label>
+                  <input type="month" name="month" value={formData.month} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Item Code</label>
+                  <input type="text" name="item_code" value={formData.item_code} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Item Name *</label>
+                  <input type="text" name="item_name" value={formData.item_name} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Purchase Rate</label>
+                  <input type="number" step="0.01" name="purchase_rate" value={formData.purchase_rate} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Stock Quantity *</label>
+                  <input type="number" name="stock_quantity" value={formData.stock_quantity} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Stock Value</label>
+                  <input type="text" value={calculateStockValue(formData.stock_quantity, formData.purchase_rate)} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">MRP</label>
+                  <input type="number" step="0.01" name="mrp" value={formData.mrp} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Category</label>
+                  <select name="category" value={formData.category} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg">
+                    <option value="">Select</option>
+                    <option>Antibiotic</option>
+                    <option>Pain Relief</option>
+                    <option>Ayurvedic</option>
+                    <option>General</option>
+                  </select>
+                </div>
               </div>
             </div>
-
-            <div className="flex gap-4">
-              <button onClick={() => setShowAddModal(false)}
-                className="flex-1 px-6 py-3 border-2 rounded-xl font-semibold">
-                Cancel
-              </button>
-              <button onClick={handleAddMedicine} disabled={saving}
-                className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
-                {saving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Add Medicine</>}
+            <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex justify-end space-x-3">
+              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-gray-200 rounded-lg">Cancel</button>
+              <button onClick={handleSave} className="px-4 py-2 bg-teal-600 text-white rounded-lg">
+                <Save className="w-4 h-4 inline mr-2" />{editingItem ? 'Update' : 'Add'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Edit Medicine Modal */}
-      {editingMedicine && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Edit Medicine</h2>
-              <button onClick={() => setEditingMedicine(null)} className="p-2 hover:bg-slate-100 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full">
+            <div className="border-b px-6 py-4 flex justify-between">
+              <h2 className="text-xl font-bold">Import Excel</h2>
+              <button onClick={() => setShowImportModal(false)}><X className="w-5 h-5" /></button>
             </div>
-
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-bold mb-2">Quantity</label>
-                <input type="number" value={editingMedicine.quantity}
-                  onChange={(e) => setEditingMedicine({...editingMedicine, quantity: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl" />
+            <div className="p-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <AlertCircle className="w-5 h-5 text-blue-600 inline mr-2" />
+                <span className="text-sm text-blue-800">Required: Month, ItemCode, ItemName, PRate, Stock Quantity, Stock Value, MRP</span>
               </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Purchase Price (₹)</label>
-                <input type="number" value={editingMedicine.purchase_price}
-                  onChange={(e) => setEditingMedicine({...editingMedicine, purchase_price: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl" />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Reorder Level</label>
-                <input type="number" value={editingMedicine.reorder_level}
-                  onChange={(e) => setEditingMedicine({...editingMedicine, reorder_level: e.target.value})}
-                  className="w-full px-4 py-3 border-2 rounded-xl" />
-              </div>
-            </div>
-
-            <div className="flex gap-4">
-              <button onClick={() => setEditingMedicine(null)}
-                className="flex-1 px-6 py-3 border-2 rounded-xl font-semibold">
-                Cancel
+              <button onClick={downloadTemplate} className="w-full mb-4 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                <FileSpreadsheet className="w-5 h-5 inline mr-2" />Download Template
               </button>
-              <button onClick={handleUpdateMedicine} disabled={saving}
-                className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold disabled:opacity-50">
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
+              <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="hidden" id="file-upload" />
+                <label htmlFor="file-upload" className="px-6 py-2 bg-teal-600 text-white rounded-lg cursor-pointer">
+                  {loading ? 'Importing...' : 'Select File'}
+                </label>
+              </div>
             </div>
           </div>
         </div>

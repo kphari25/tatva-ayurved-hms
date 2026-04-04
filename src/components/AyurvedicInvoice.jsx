@@ -1,12 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, User, MapPin, Phone, FileText, 
-  Printer, Save, X, Plus, Trash2, Building2
+  Printer, Save, X, Plus, Trash2, Building2, Eye
 } from 'lucide-react';
 
-const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
-  const printRef = useRef();
-  
+const AyurvedicInvoice = ({ onClose, invoiceType = 'OP', supabase }) => {
   const [invoiceData, setInvoiceData] = useState({
     // Hospital Details
     hospitalName: 'Tatva Ayurved Healthcare Center',
@@ -43,6 +41,25 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
     // Items
     items: []
   });
+
+  const [recentInvoices, setRecentInvoices] = useState([]);
+  const [showRecentInvoices, setShowRecentInvoices] = useState(false);
+
+  // Load recent invoices from localStorage on component mount
+  useEffect(() => {
+    loadRecentInvoices();
+  }, [invoiceType]);
+
+  const loadRecentInvoices = () => {
+    try {
+      const saved = localStorage.getItem(`invoices_${invoiceType}`);
+      if (saved) {
+        setRecentInvoices(JSON.parse(saved));
+      }
+    } catch (error) {
+      console.error('Error loading invoices:', error);
+    }
+  };
 
   // Predefined service categories
   const ipServices = [
@@ -136,7 +153,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
     const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
     
-    if (num === 0) return 'Zero';
+    if (num === 0) return 'Zero Rupees Only';
     
     const [rupees, paise] = num.toFixed(2).split('.');
     let words = '';
@@ -161,31 +178,296 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
     words = words.trim() + ' Rupees';
     
     if (Number(paise) > 0) {
-      words += ' and ' + ones[Math.floor(Number(paise) / 10)] + tens[Number(paise) % 10] + ' Paise';
+      const paiseValue = Number(paise);
+      if (paiseValue < 10) {
+        words += ' and ' + ones[paiseValue] + ' Paise';
+      } else if (paiseValue < 20) {
+        words += ' and ' + teens[paiseValue - 10] + ' Paise';
+      } else {
+        words += ' and ' + tens[Math.floor(paiseValue / 10)] + ' ' + ones[paiseValue % 10] + ' Paise';
+      }
     }
     
     return words + ' Only';
   };
 
   const handlePrint = () => {
-    window.print();
+    console.log('Print button clicked');
+    console.log('Invoice data:', invoiceData);
+    console.log('Items count:', invoiceData.items.length);
+    
+    try {
+      const printContent = generatePrintHTML();
+      console.log('HTML generated, length:', printContent.length);
+      
+      const printWindow = window.open('', '_blank', 'width=800,height=600');
+      
+      if (!printWindow) {
+        alert('Please allow popups for this site to print invoices.\n\nThen click Print again.');
+        return;
+      }
+      
+      printWindow.document.open();
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      
+      // Wait for content to load before printing
+      printWindow.onload = function() {
+        console.log('Print window loaded');
+        setTimeout(() => {
+          printWindow.focus();
+          printWindow.print();
+        }, 500);
+      };
+      
+    } catch (error) {
+      console.error('Print error:', error);
+      alert('Error printing invoice: ' + error.message);
+    }
   };
 
-  const handleSave = () => {
-    console.log('Invoice Data:', invoiceData);
-    alert('Invoice saved successfully!');
-    // Add your save logic here (e.g., save to database)
+  const generatePrintHTML = () => {
+    const itemsHTML = invoiceData.items.length > 0 
+      ? invoiceData.items.map((item, index) => `
+        <tr>
+          <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${index + 1}</td>
+          <td style="border: 1px solid #ccc; padding: 8px;">${item.category || '-'}</td>
+          <td style="border: 1px solid #ccc; padding: 8px;">${item.description || '-'}</td>
+          <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
+          <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">₹${Number(item.rate).toFixed(2)}</td>
+          <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.gstRate}%</td>
+          <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-weight: bold;">₹${Number(item.amount).toFixed(2)}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #999;">No items added</td></tr>';
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Invoice - ${invoiceData.invoiceNumber}</title>
+        <style>
+          @page { size: A4; margin: 0.5cm; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+          .header { border-bottom: 4px solid #0d9488; padding-bottom: 20px; margin-bottom: 20px; overflow: hidden; }
+          .logo { float: left; width: 80px; height: 80px; background: #ccfbf1; border: 2px solid #99f6e4; border-radius: 8px; text-align: center; line-height: 80px; font-size: 12px; color: #0d9488; font-weight: bold; }
+          .hospital-details { float: right; text-align: right; max-width: 60%; }
+          .hospital-name { font-size: 24px; font-weight: bold; color: #0f766e; margin-bottom: 5px; }
+          .hospital-info { font-size: 12px; color: #666; line-height: 1.5; }
+          .invoice-title { clear: both; text-align: center; padding-top: 20px; }
+          .invoice-title h2 { font-size: 20px; font-weight: bold; margin: 10px 0; }
+          .invoice-meta { text-align: center; font-size: 12px; margin-top: 10px; }
+          .invoice-meta span { margin: 0 20px; }
+          .details-section { display: table; width: 100%; margin: 20px 0; }
+          .details-box { display: table-cell; width: 50%; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; vertical-align: top; }
+          .details-box:first-child { margin-right: 10px; }
+          .details-box h3 { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #374151; }
+          .detail-row { margin-bottom: 8px; font-size: 12px; }
+          .detail-label { font-weight: bold; display: inline-block; width: 140px; }
+          table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
+          th { background: #ccfbf1; border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: bold; }
+          td { border: 1px solid #ccc; padding: 8px; }
+          .totals-section { float: right; width: 350px; border: 1px solid #ccc; border-radius: 8px; overflow: hidden; margin: 20px 0; }
+          .totals-header { background: #f3f4f6; padding: 10px; font-weight: bold; border-bottom: 1px solid #ccc; }
+          .totals-body { padding: 15px; }
+          .total-row { margin-bottom: 8px; font-size: 12px; overflow: hidden; }
+          .total-row span:first-child { float: left; }
+          .total-row span:last-child { float: right; }
+          .grand-total { padding-top: 8px; border-top: 1px solid #ccc; font-size: 14px; font-weight: bold; margin-top: 8px; }
+          .grand-total .amount { color: #0f766e; font-size: 16px; }
+          .amount-words { margin-top: 8px; padding-top: 8px; border-top: 1px solid #ccc; font-size: 11px; font-style: italic; }
+          .payment-section { clear: both; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin: 20px 0; }
+          .payment-section h3 { font-size: 14px; font-weight: bold; margin-bottom: 10px; }
+          .payment-grid { display: table; width: 100%; }
+          .payment-grid > div { display: table-cell; width: 50%; font-size: 11px; }
+          .footer-section { border-top: 2px solid #ccc; padding-top: 15px; margin-top: 20px; }
+          .footer-grid { display: table; width: 100%; }
+          .footer-grid > div { display: table-cell; width: 50%; vertical-align: top; }
+          .terms { font-size: 11px; }
+          .terms ul { margin: 5px 0; padding-left: 20px; }
+          .signature { text-align: right; }
+          .signature-line { border-top: 1px solid #666; width: 200px; margin: 60px 0 5px auto; }
+          .disclaimer { text-align: center; font-size: 11px; color: #666; font-style: italic; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">LOGO</div>
+          <div class="hospital-details">
+            <div class="hospital-name">${invoiceData.hospitalName}</div>
+            <div class="hospital-info">
+              ${invoiceData.hospitalAddress}<br>
+              GSTIN: ${invoiceData.hospitalGSTIN}<br>
+              Phone: ${invoiceData.hospitalContact}<br>
+              Email: ${invoiceData.hospitalEmail}
+            </div>
+          </div>
+          <div class="invoice-title">
+            <h2>${invoiceType === 'IP' ? 'IN-PATIENT' : 'OUT-PATIENT'} INVOICE</h2>
+            <div class="invoice-meta">
+              <span><strong>Invoice No:</strong> ${invoiceData.invoiceNumber}</span>
+              <span><strong>Date:</strong> ${new Date(invoiceData.invoiceDate).toLocaleDateString('en-IN')}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="details-section">
+          <div class="details-box">
+            <h3>Patient Details</h3>
+            <div class="detail-row"><span class="detail-label">Patient ID:</span> ${invoiceData.patientID || '-'}</div>
+            <div class="detail-row"><span class="detail-label">Name:</span> ${invoiceData.patientName || '-'}</div>
+            <div class="detail-row"><span class="detail-label">Age/Gender:</span> ${invoiceData.patientAge || '-'} / ${invoiceData.patientGender}</div>
+            <div class="detail-row"><span class="detail-label">Contact:</span> ${invoiceData.patientContact || '-'}</div>
+            <div class="detail-row"><span class="detail-label">Address:</span> ${invoiceData.patientAddress || '-'}</div>
+          </div>
+
+          <div class="details-box">
+            <h3>Visit Details</h3>
+            ${invoiceType === 'IP' ? `
+              <div class="detail-row"><span class="detail-label">Admission:</span> ${invoiceData.dateOfAdmission ? new Date(invoiceData.dateOfAdmission).toLocaleDateString('en-IN') : '-'}</div>
+              <div class="detail-row"><span class="detail-label">Discharge:</span> ${invoiceData.dateOfDischarge ? new Date(invoiceData.dateOfDischarge).toLocaleDateString('en-IN') : '-'}</div>
+              <div class="detail-row"><span class="detail-label">Room Category:</span> ${invoiceData.roomCategory}</div>
+              <div class="detail-row"><span class="detail-label">Number of Days:</span> ${invoiceData.numberOfDays}</div>
+            ` : `
+              <div class="detail-row"><span class="detail-label">Date of Visit:</span> ${new Date(invoiceData.dateOfVisit).toLocaleDateString('en-IN')}</div>
+            `}
+            <div class="detail-row"><span class="detail-label">Consultant:</span> ${invoiceData.consultantDoctor || '-'}</div>
+          </div>
+        </div>
+
+        <div>
+          <h3 style="margin-bottom: 10px; font-size: 14px;">Billing Details</h3>
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align: center; width: 50px;">S.No</th>
+                <th style="width: 120px;">Category</th>
+                <th>Description</th>
+                <th style="text-align: center; width: 60px;">Qty</th>
+                <th style="text-align: right; width: 80px;">Rate (₹)</th>
+                <th style="text-align: center; width: 70px;">GST %</th>
+                <th style="text-align: right; width: 100px;">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>${itemsHTML}</tbody>
+          </table>
+        </div>
+
+        <div class="totals-section">
+          <div class="totals-header">Amount Summary</div>
+          <div class="totals-body">
+            <div class="total-row"><span>Subtotal:</span><span>₹ ${totals.subtotal}</span></div>
+            <div class="total-row"><span>CGST:</span><span>₹ ${totals.cgst}</span></div>
+            <div class="total-row"><span>SGST:</span><span>₹ ${totals.sgst}</span></div>
+            <div class="total-row grand-total"><span>Grand Total:</span><span class="amount">₹ ${totals.grandTotal}</span></div>
+            <div class="amount-words"><strong>Amount in Words:</strong><br>${numberToWords(Number(totals.grandTotal))}</div>
+          </div>
+        </div>
+
+        <div class="payment-section">
+          <h3>Payment Terms & Bank Details</h3>
+          <div class="payment-grid">
+            <div><strong>Payment Mode:</strong> ${invoiceData.paymentMode}<br><span style="color: #666; font-size: 10px;">Payment due upon receipt.</span></div>
+            <div><strong>Bank Details:</strong><br>Bank: State Bank of India<br>Account: 1234567890<br>IFSC: SBIN0001234<br>Branch: Main Branch, City</div>
+          </div>
+        </div>
+
+        <div class="footer-section">
+          <div class="footer-grid">
+            <div class="terms">
+              <strong>Terms & Conditions:</strong>
+              <ul>
+                <li>All disputes subject to local jurisdiction.</li>
+                <li>Refunds as per refund policy.</li>
+                <li>Medicines once sold cannot be returned.</li>
+                <li>Check items before leaving.</li>
+              </ul>
+            </div>
+            <div class="signature">
+              <p style="font-size: 11px; margin-bottom: 50px;">For ${invoiceData.hospitalName}</p>
+              <div class="signature-line"></div>
+              <p style="font-size: 11px; margin-top: 5px;">Authorized Signatory</p>
+            </div>
+          </div>
+          <div class="disclaimer">
+            Computer-generated invoice. No signature required.<br>
+            Thank you for choosing ${invoiceData.hospitalName}
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  const handleSave = async () => {
+    try {
+      // Validate required fields
+      if (!invoiceData.patientName || invoiceData.items.length === 0) {
+        alert('Please fill patient name and add at least one item before saving.');
+        return;
+      }
+
+      const invoiceToSave = {
+        ...invoiceData,
+        totals: totals,
+        savedAt: new Date().toISOString(),
+        type: invoiceType
+      };
+
+      // Save to localStorage
+      const existingInvoices = JSON.parse(localStorage.getItem(`invoices_${invoiceType}`) || '[]');
+      const updatedInvoices = [invoiceToSave, ...existingInvoices].slice(0, 50); // Keep last 50
+      localStorage.setItem(`invoices_${invoiceType}`, JSON.stringify(updatedInvoices));
+
+      // Optionally save to Supabase if available
+      if (supabase) {
+        await supabase.from('invoices').insert([{
+          invoice_number: invoiceData.invoiceNumber,
+          invoice_type: invoiceType,
+          patient_name: invoiceData.patientName,
+          patient_id: invoiceData.patientID,
+          invoice_date: invoiceData.invoiceDate,
+          items: invoiceData.items,
+          subtotal: totals.subtotal,
+          gst_amount: totals.totalGST,
+          grand_total: totals.grandTotal,
+          payment_mode: invoiceData.paymentMode,
+          invoice_data: invoiceToSave
+        }]);
+      }
+
+      alert(`✅ Invoice ${invoiceData.invoiceNumber} saved successfully!`);
+      loadRecentInvoices(); // Refresh the list
+      
+    } catch (error) {
+      console.error('Error saving invoice:', error);
+      alert('Error saving invoice: ' + error.message);
+    }
+  };
+
+  const viewInvoice = (invoice) => {
+    setInvoiceData(invoice);
+    setShowRecentInvoices(false);
   };
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-      {/* Action Buttons - Hidden in print */}
-      <div className="max-w-5xl mx-auto mb-4 print:hidden">
+      {/* Action Buttons */}
+      <div className="max-w-5xl mx-auto mb-4">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-800">
             {invoiceType === 'IP' ? 'In-Patient' : 'Out-Patient'} Invoice
           </h1>
           <div className="flex space-x-3">
+            <button
+              onClick={() => setShowRecentInvoices(!showRecentInvoices)}
+              className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
+              <Eye className="w-4 h-4" />
+              <span>Recent ({recentInvoices.length})</span>
+            </button>
             <button
               onClick={handleSave}
               className="flex items-center space-x-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
@@ -213,17 +495,46 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
         </div>
       </div>
 
-      {/* Invoice Container */}
-      <div ref={printRef} className="max-w-5xl mx-auto bg-white shadow-lg print:shadow-none">
+      {/* Recent Invoices Panel */}
+      {showRecentInvoices && (
+        <div className="max-w-5xl mx-auto mb-4 bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-lg font-bold text-gray-800 mb-4">Recent Invoices</h3>
+          {recentInvoices.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No saved invoices yet.</p>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {recentInvoices.map((inv, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                  onClick={() => viewInvoice(inv)}
+                >
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-800">{inv.invoiceNumber}</div>
+                    <div className="text-sm text-gray-600">
+                      {inv.patientName} • {new Date(inv.savedAt).toLocaleDateString('en-IN')}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-teal-700">₹ {inv.totals.grandTotal}</div>
+                    <div className="text-xs text-gray-500">{inv.items.length} items</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Invoice Container - (rest of the component remains the same) */}
+      <div className="max-w-5xl mx-auto bg-white shadow-lg">
         {/* Header */}
         <div className="border-b-4 border-teal-600 p-8">
           <div className="flex justify-between items-start">
-            {/* Logo Placeholder */}
             <div className="w-24 h-24 bg-teal-100 rounded-lg flex items-center justify-center border-2 border-teal-300">
               <Building2 className="w-12 h-12 text-teal-600" />
             </div>
             
-            {/* Hospital Details */}
             <div className="text-right">
               <h1 className="text-3xl font-bold text-teal-700 mb-2">{invoiceData.hospitalName}</h1>
               <p className="text-sm text-gray-600">{invoiceData.hospitalAddress}</p>
@@ -233,7 +544,6 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
             </div>
           </div>
           
-          {/* Invoice Title */}
           <div className="mt-6 text-center">
             <h2 className="text-2xl font-bold text-gray-800">
               {invoiceType === 'IP' ? 'IN-PATIENT' : 'OUT-PATIENT'} INVOICE
@@ -249,8 +559,8 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
           </div>
         </div>
 
-        {/* Patient & Visit Details - Editable */}
-        <div className="p-8 print:p-6">
+        {/* Rest of invoice form - keeping existing code for Patient Details, Visit Details, Billing Table, etc. */}
+        <div className="p-8">
           <div className="grid grid-cols-2 gap-8 mb-6">
             {/* Patient Details */}
             <div className="border border-gray-200 rounded-lg p-4">
@@ -265,7 +575,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                     type="text"
                     value={invoiceData.patientID}
                     onChange={(e) => setInvoiceData({...invoiceData, patientID: e.target.value})}
-                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                     placeholder="Enter Patient ID"
                   />
                 </div>
@@ -275,7 +585,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                     type="text"
                     value={invoiceData.patientName}
                     onChange={(e) => setInvoiceData({...invoiceData, patientName: e.target.value})}
-                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                     placeholder="Enter Patient Name"
                   />
                 </div>
@@ -285,13 +595,13 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                     type="number"
                     value={invoiceData.patientAge}
                     onChange={(e) => setInvoiceData({...invoiceData, patientAge: e.target.value})}
-                    className="w-16 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0 mr-2"
+                    className="w-16 border-b border-gray-300 focus:border-teal-500 outline-none mr-2"
                     placeholder="Age"
                   />
                   <select
                     value={invoiceData.patientGender}
                     onChange={(e) => setInvoiceData({...invoiceData, patientGender: e.target.value})}
-                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                   >
                     <option>Male</option>
                     <option>Female</option>
@@ -304,7 +614,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                     type="tel"
                     value={invoiceData.patientContact}
                     onChange={(e) => setInvoiceData({...invoiceData, patientContact: e.target.value})}
-                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                     placeholder="Phone Number"
                   />
                 </div>
@@ -314,7 +624,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                     type="text"
                     value={invoiceData.patientAddress}
                     onChange={(e) => setInvoiceData({...invoiceData, patientAddress: e.target.value})}
-                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                     placeholder="Patient Address"
                   />
                 </div>
@@ -336,7 +646,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                         type="date"
                         value={invoiceData.dateOfAdmission}
                         onChange={(e) => setInvoiceData({...invoiceData, dateOfAdmission: e.target.value})}
-                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                       />
                     </div>
                     <div className="flex">
@@ -345,7 +655,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                         type="date"
                         value={invoiceData.dateOfDischarge}
                         onChange={(e) => setInvoiceData({...invoiceData, dateOfDischarge: e.target.value})}
-                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                       />
                     </div>
                     <div className="flex">
@@ -353,7 +663,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                       <select
                         value={invoiceData.roomCategory}
                         onChange={(e) => setInvoiceData({...invoiceData, roomCategory: e.target.value})}
-                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                       >
                         <option>General</option>
                         <option>Semi-Private</option>
@@ -367,7 +677,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                         type="number"
                         value={invoiceData.numberOfDays}
                         onChange={(e) => setInvoiceData({...invoiceData, numberOfDays: e.target.value})}
-                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                       />
                     </div>
                   </>
@@ -378,7 +688,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                       type="date"
                       value={invoiceData.dateOfVisit}
                       onChange={(e) => setInvoiceData({...invoiceData, dateOfVisit: e.target.value})}
-                      className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                      className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                     />
                   </div>
                 )}
@@ -388,7 +698,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                     type="text"
                     value={invoiceData.consultantDoctor}
                     onChange={(e) => setInvoiceData({...invoiceData, consultantDoctor: e.target.value})}
-                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                    className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                     placeholder="Doctor Name"
                   />
                 </div>
@@ -402,7 +712,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
               <h3 className="font-bold text-gray-700">Billing Details</h3>
               <button
                 onClick={addItem}
-                className="flex items-center space-x-1 px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700 print:hidden"
+                className="flex items-center space-x-1 px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Item</span>
@@ -420,7 +730,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                     <th className="border border-gray-300 px-3 py-2 text-right">Rate (₹)</th>
                     <th className="border border-gray-300 px-3 py-2 text-center">GST %</th>
                     <th className="border border-gray-300 px-3 py-2 text-right">Amount (₹)</th>
-                    <th className="border border-gray-300 px-3 py-2 text-center print:hidden">Action</th>
+                    <th className="border border-gray-300 px-3 py-2 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -438,7 +748,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                           <select
                             value={item.category}
                             onChange={(e) => updateItem(item.id, 'category', e.target.value)}
-                            className="w-full border-0 outline-none bg-transparent print:border-0"
+                            className="w-full border-0 outline-none bg-transparent"
                           >
                             <option value="">Select Category</option>
                             {services.map(service => (
@@ -453,7 +763,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                             type="text"
                             value={item.description}
                             onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                            className="w-full border-0 outline-none print:border-0"
+                            className="w-full border-0 outline-none"
                             placeholder="Description"
                           />
                         </td>
@@ -462,7 +772,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                             type="number"
                             value={item.quantity}
                             onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
-                            className="w-16 text-center border-0 outline-none print:border-0"
+                            className="w-16 text-center border-0 outline-none"
                             min="1"
                           />
                         </td>
@@ -471,7 +781,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                             type="number"
                             value={item.rate}
                             onChange={(e) => updateItem(item.id, 'rate', e.target.value)}
-                            className="w-24 text-right border-0 outline-none print:border-0"
+                            className="w-24 text-right border-0 outline-none"
                             min="0"
                           />
                         </td>
@@ -479,7 +789,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                           <select
                             value={item.gstRate}
                             onChange={(e) => updateItem(item.id, 'gstRate', e.target.value)}
-                            className="w-16 text-center border-0 outline-none print:border-0"
+                            className="w-16 text-center border-0 outline-none"
                           >
                             <option value="0">0%</option>
                             <option value="5">5%</option>
@@ -490,7 +800,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                         <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
                           {item.amount.toFixed(2)}
                         </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center print:hidden">
+                        <td className="border border-gray-300 px-3 py-2 text-center">
                           <button
                             onClick={() => removeItem(item.id)}
                             className="text-red-600 hover:text-red-800"
@@ -547,7 +857,7 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
                   <select
                     value={invoiceData.paymentMode}
                     onChange={(e) => setInvoiceData({...invoiceData, paymentMode: e.target.value})}
-                    className="ml-2 border-b border-gray-300 focus:border-teal-500 outline-none print:border-0"
+                    className="ml-2 border-b border-gray-300 focus:border-teal-500 outline-none"
                   >
                     <option>Cash</option>
                     <option>UPI</option>
@@ -599,37 +909,6 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP' }) => {
           </div>
         </div>
       </div>
-
-      {/* Print Styles */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .print\\:shadow-none,
-          .print\\:shadow-none * {
-            visibility: visible;
-          }
-          .print\\:shadow-none {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-          }
-          .print\\:hidden {
-            display: none !important;
-          }
-          .print\\:border-0 {
-            border: 0 !important;
-          }
-          .print\\:p-6 {
-            padding: 1.5rem !important;
-          }
-          @page {
-            margin: 0.5cm;
-          }
-        }
-      `}</style>
     </div>
   );
 };
