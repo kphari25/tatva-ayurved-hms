@@ -128,15 +128,33 @@ const PatientEditModal = ({ patient, onClose, onUpdate }) => {
     try {
       setSaving(true);
 
+      // Find patient document ID
+      let patientDocId = patient.firebaseId || patient.id;
+      
+      if (!patientDocId) {
+        // If no ID, try to find patient by patient_number
+        const patientsRef = collection(db, 'patients');
+        const q = query(patientsRef, where('patient_number', '==', patient.patient_number));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          patientDocId = snapshot.docs[0].id;
+        } else {
+          throw new Error('Patient not found in database');
+        }
+      }
+
       // Update patient in Firebase
-      const patientRef = doc(db, 'patients', patient.firebaseId);
+      const patientRef = doc(db, 'patients', patientDocId);
       await updateDoc(patientRef, {
-        ...formData,
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        prescriptions: formData.prescriptions || [],
         updated_at: new Date().toISOString()
       });
 
       // Deduct medicines from inventory
-      if (formData.prescriptions.length > 0) {
+      if (formData.prescriptions && formData.prescriptions.length > 0) {
         const batch = writeBatch(db);
 
         for (const prescription of formData.prescriptions) {
@@ -146,7 +164,7 @@ const PatientEditModal = ({ patient, onClose, onUpdate }) => {
 
             if (medicineDoc.exists()) {
               const currentStock = medicineDoc.data().stock_quantity || 0;
-              const newStock = Math.max(0, currentStock - parseInt(prescription.quantity));
+              const newStock = Math.max(0, currentStock - parseInt(prescription.quantity || 0));
 
               batch.update(medicineRef, {
                 stock_quantity: newStock,
@@ -157,7 +175,7 @@ const PatientEditModal = ({ patient, onClose, onUpdate }) => {
         }
 
         await batch.commit();
-        console.log('Inventory updated successfully');
+        console.log('✅ Inventory updated successfully');
       }
 
       alert('Patient updated successfully!');
@@ -165,7 +183,7 @@ const PatientEditModal = ({ patient, onClose, onUpdate }) => {
       onClose();
 
     } catch (error) {
-      console.error('Error saving patient:', error);
+      console.error('❌ Error saving patient:', error);
       alert('Failed to save: ' + error.message);
     } finally {
       setSaving(false);
