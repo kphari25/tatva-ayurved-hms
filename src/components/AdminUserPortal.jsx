@@ -18,7 +18,7 @@ const AdminUserPortal = ({ supabase, currentUser }) => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [createdUserInfo, setCreatedUserInfo] = useState(null);
- 
+
   const roles = [
     {
       id: 'admin',
