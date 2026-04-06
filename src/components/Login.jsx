@@ -168,24 +168,7 @@ const Login = ({ onLogin }) => {
               </button>
             </form>
 
-            {/* Demo Credentials */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <p className="text-sm text-gray-600 text-center mb-3">Demo Credentials:</p>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <span className="font-medium text-gray-700">Admin:</span>
-                  <span className="text-gray-600">admin@tatvaayurved.com / admin123</span>
-                </div>
-                <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <span className="font-medium text-gray-700">Doctor:</span>
-                  <span className="text-gray-600">doctor@tatvaayurved.com / doctor123</span>
-                </div>
-                <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <span className="font-medium text-gray-700">Staff:</span>
-                  <span className="text-gray-600">staff@tatvaayurved.com / staff123</span>
-                </div>
-              </div>
-            </div>
+
           </div>
 
           {/* Footer */}
