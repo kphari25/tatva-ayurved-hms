@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { LogIn, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -14,61 +16,70 @@ const Login = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      console.log('🔍 Attempting login with email:', email);
+      console.log('🔍 Attempting Firebase login with:', email);
 
-      // Query system_users table directly
-      const { data: users, error: queryError } = await supabase
-        .from('system_users')
-        .select('*')
-        .eq('email', email.toLowerCase())
-        .eq('is_active', true);
+      // Sign in with Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
 
-      if (queryError) {
-        console.error('❌ Query error:', queryError);
-        throw new Error('Database connection error');
-      }
+      console.log('✅ Firebase auth successful:', firebaseUser.uid);
 
-      console.log('📦 Query result:', users);
+      // Get user profile from Firestore
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDoc = await getDoc(userDocRef);
 
-      if (!users || users.length === 0) {
-        setError('User not found');
-        setLoading(false);
-        return;
-      }
+      if (!userDoc.exists()) {
+        // User authenticated but no profile - create one
+        console.warn('⚠️ User authenticated but no Firestore profile. Using email info.');
+        
+        const userData = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: firebaseUser.email.split('@')[0],
+          role: 'Staff', // Default role
+          permissions: ['patients', 'appointments'],
+        };
 
-      const user = users[0];
+        localStorage.setItem('currentUser', JSON.stringify(userData));
+        
+        if (onLogin) {
+          onLogin(userData);
+        }
+      } else {
+        // User has full profile
+        const userData = {
+          id: firebaseUser.uid,
+          ...userDoc.data()
+        };
 
-      // Simple password check (in production, use proper hashing!)
-      if (user.password_hash !== password) {
-        setError('Invalid password');
-        setLoading(false);
-        return;
-      }
+        console.log('✅ User profile loaded:', userData);
 
-      // Store user in localStorage
-      const userData = {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        permissions: user.permissions || [],
-        department: user.department,
-        employee_id: user.employee_id
-      };
-
-      localStorage.setItem('currentUser', JSON.stringify(userData));
-      
-      console.log('✅ Login successful:', userData);
-      
-      // Call onLogin callback
-      if (onLogin) {
-        onLogin(userData);
+        localStorage.setItem('currentUser', JSON.stringify(userData));
+        
+        if (onLogin) {
+          onLogin(userData);
+        }
       }
 
     } catch (err) {
       console.error('❌ Login error:', err);
-      setError(err.message || 'Login failed. Please try again.');
+      
+      // User-friendly error messages
+      let errorMessage = 'Login failed. Please try again.';
+      
+      if (err.code === 'auth/wrong-password') {
+        errorMessage = 'Invalid password';
+      } else if (err.code === 'auth/user-not-found') {
+        errorMessage = 'User not found';
+      } else if (err.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address';
+      } else if (err.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many failed attempts. Try again later.';
+      } else if (err.code === 'auth/network-request-failed') {
+        errorMessage = 'Network error. Check your connection.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -119,6 +130,7 @@ const Login = ({ onLogin }) => {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
                   placeholder="admin@tatvaayurved.com"
                   required
+                  autoComplete="email"
                 />
               </div>
 
@@ -133,6 +145,7 @@ const Login = ({ onLogin }) => {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
                   placeholder="••••••••"
                   required
+                  autoComplete="current-password"
                 />
               </div>
 
@@ -182,7 +195,7 @@ const Login = ({ onLogin }) => {
             <p className="mb-2">Kozhikode, Kerala - 673001</p>
             <p className="text-teal-600 font-medium">+91 9895112264</p>
             <p className="mt-3 text-xs text-gray-500">
-              Tatva Ayurved HMS v1.0 • Powered by Supabase
+              Tatva Ayurved HMS v1.0 • Powered by Firebase
             </p>
           </div>
         </div>
