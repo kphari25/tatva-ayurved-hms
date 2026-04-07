@@ -144,42 +144,59 @@ const PatientEditModal = ({ patient, onClose, onUpdate }) => {
         }
       }
 
-      // Update patient in Firebase
+      // Update patient in Firebase - only update specific fields
       const patientRef = doc(db, 'patients', patientDocId);
-      await updateDoc(patientRef, {
-        first_name: formData.first_name,
-        last_name: formData.last_name,
+      const updateData = {
+        first_name: formData.first_name || patient.first_name,
+        last_name: formData.last_name || patient.last_name,
         prescriptions: formData.prescriptions || [],
         updated_at: new Date().toISOString()
-      });
+      };
+
+      await updateDoc(patientRef, updateData);
+      console.log('✅ Patient updated in Firebase');
 
       // Deduct medicines from inventory
       if (formData.prescriptions && formData.prescriptions.length > 0) {
         const batch = writeBatch(db);
+        let batchCount = 0;
 
         for (const prescription of formData.prescriptions) {
           if (prescription.medicineId && prescription.quantity) {
-            const medicineRef = doc(db, 'inventory', prescription.medicineId);
-            const medicineDoc = await getDoc(medicineRef);
+            try {
+              const medicineRef = doc(db, 'inventory', prescription.medicineId);
+              const medicineDoc = await getDoc(medicineRef);
 
-            if (medicineDoc.exists()) {
-              const currentStock = medicineDoc.data().stock_quantity || 0;
-              const newStock = Math.max(0, currentStock - parseInt(prescription.quantity || 0));
+              if (medicineDoc.exists()) {
+                const currentStock = medicineDoc.data().stock_quantity || 0;
+                const deductQty = parseInt(prescription.quantity || 0);
+                const newStock = Math.max(0, currentStock - deductQty);
 
-              batch.update(medicineRef, {
-                stock_quantity: newStock,
-                last_updated: new Date().toISOString()
-              });
+                batch.update(medicineRef, {
+                  stock_quantity: newStock,
+                  last_updated: new Date().toISOString()
+                });
+                
+                batchCount++;
+              }
+            } catch (err) {
+              console.warn('Could not update medicine:', prescription.medicine, err);
             }
           }
         }
 
-        await batch.commit();
-        console.log('✅ Inventory updated successfully');
+        if (batchCount > 0) {
+          await batch.commit();
+          console.log(`✅ Updated ${batchCount} medicine stocks`);
+        }
       }
 
-      alert('Patient updated successfully!');
-      if (onUpdate) onUpdate();
+      alert('✅ Patient updated successfully!');
+      
+      if (onUpdate) {
+        await onUpdate();
+      }
+      
       onClose();
 
     } catch (error) {
