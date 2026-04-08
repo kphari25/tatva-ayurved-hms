@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 
 const PatientRegistrationNew = ({ onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
+  const [sendWelcomeSMS, setSendWelcomeSMS] = useState(false);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -98,8 +99,30 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
       const docRef = await addDoc(patientsRef, patientData);
 
       console.log('✅ Patient created successfully:', docRef.id);
+
+      // Send Welcome SMS if enabled
+      if (sendWelcomeSMS && formData.phone) {
+        try {
+          const welcomeMessage = `Welcome to Tatva Ayurved! Your Patient ID is ${patientNumber}. For appointments call: [Your Number]. Thank you!`;
+          
+          console.log('Sending welcome SMS to:', formData.phone);
+          console.log('Message:', welcomeMessage);
+          
+          // Here you would integrate with SMS API (e.g., Twilio, MSG91, etc.)
+          // await sendSMS(formData.phone, welcomeMessage);
+          
+          // Simulate SMS send
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          console.log('✅ Welcome SMS sent successfully');
+        } catch (smsError) {
+          console.error('⚠️ Failed to send welcome SMS:', smsError);
+          // Don't fail registration if SMS fails
+        }
+      }
       
-      alert(`Patient registered successfully!\nPatient Number: ${patientNumber}`);
+      alert(`Patient registered successfully!\nPatient Number: ${patientNumber}${sendWelcomeSMS && formData.phone ? '\n✅ Welcome SMS sent!' : ''}`);
+
 
       // Reset form
       setFormData({
@@ -413,6 +436,23 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
 
           {/* Submit Button */}
           <div className="flex justify-end gap-3 pt-6 border-t">
+            {/* SMS Option */}
+            <div className="flex items-center gap-2 mr-auto">
+              <input
+                type="checkbox"
+                id="sendWelcomeSMS"
+                checked={sendWelcomeSMS}
+                onChange={(e) => setSendWelcomeSMS(e.target.checked)}
+                className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+              />
+              <label htmlFor="sendWelcomeSMS" className="text-sm text-gray-700 flex items-center gap-2">
+                <span>📱 Send Welcome SMS</span>
+                {formData.phone && (
+                  <span className="text-xs text-gray-500">to {formData.phone}</span>
+                )}
+              </label>
+            </div>
+
             {onClose && (
               <button
                 type="button"

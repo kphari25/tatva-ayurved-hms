@@ -214,6 +214,96 @@ const AdminUserPortal = () => {
         </div>
       </div>
 
+      {/* ONE-TIME INVENTORY MIGRATION - REMOVE AFTER USE */}
+      <div className="mt-8 bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl shadow-xl p-8 text-white">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold mb-2">⚠️ One-Time Inventory Migration</h2>
+            <p className="text-orange-100 mb-2">
+              Migrate your 4746 inventory items from localStorage to Firebase cloud database
+            </p>
+            <p className="text-orange-200 text-sm">
+              ⏱️ Takes 1-2 minutes • Run this ONCE only • Keep browser open during migration
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              if (!window.confirm('This will migrate all inventory items to Firebase. Continue?')) return;
+              
+              const btn = event.target;
+              btn.disabled = true;
+              btn.textContent = 'Migrating...';
+              
+              try {
+                const { collection, writeBatch, doc } = await import('firebase/firestore');
+                const { db } = await import('../lib/firebase');
+                
+                const inv = localStorage.getItem('inventory');
+                if (!inv) {
+                  alert('❌ No inventory found in localStorage!');
+                  btn.disabled = false;
+                  btn.textContent = 'Migrate to Firebase';
+                  return;
+                }
+                
+                const items = JSON.parse(inv);
+                const total = items.length;
+                
+                console.log(`🚀 Starting migration of ${total} items...`);
+                
+                const batchSize = 500;
+                let migratedCount = 0;
+                
+                for (let i = 0; i < items.length; i += batchSize) {
+                  const batch = writeBatch(db);
+                  const batchItems = items.slice(i, i + batchSize);
+                  
+                  batchItems.forEach(item => {
+                    const docRef = doc(collection(db, 'inventory'));
+                    batch.set(docRef, {
+                      id: item.id || Date.now() + Math.random(),
+                      item_code: item.item_code || '',
+                      item_name: item.item_name || 'Unknown',
+                      stock_quantity: parseInt(item.stock_quantity || 0),
+                      purchase_rate: parseFloat(item.purchase_rate || 0),
+                      mrp: parseFloat(item.mrp || 0),
+                      stock_value: parseFloat(item.stock_value || 0),
+                      migrated: true,
+                      migrated_at: new Date().toISOString()
+                    });
+                  });
+                  
+                  await batch.commit();
+                  migratedCount += batchItems.length;
+                  
+                  const percent = Math.round((migratedCount / total) * 100);
+                  btn.textContent = `Migrating ${percent}%...`;
+                  console.log(`✅ Migrated ${migratedCount} of ${total} items (${percent}%)`);
+                  
+                  await new Promise(r => setTimeout(r, 100));
+                }
+                
+                btn.textContent = '✅ Migration Complete!';
+                btn.className = 'ml-6 bg-green-600 text-white px-6 py-3 rounded-lg font-semibold';
+                
+                alert(`✅ Success! Migrated all ${total} items to Firebase!\n\nYou can now remove this migration button from the code.`);
+                console.log(`🎉 Migration complete! ${total} items now in Firebase.`);
+                
+              } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Migrate to Firebase';
+                alert('❌ Migration failed: ' + err.message);
+                console.error('Migration error:', err);
+              }
+            }}
+            className="ml-6 bg-white text-orange-700 px-6 py-3 rounded-lg font-semibold hover:bg-orange-50 transition-colors flex items-center space-x-2 shadow-lg"
+          >
+            <Package className="w-5 h-5" />
+            <span>Migrate to Firebase</span>
+          </button>
+        </div>
+      </div>
+
       {/* System Info */}
       <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <div className="flex items-start space-x-2">

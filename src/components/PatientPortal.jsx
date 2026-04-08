@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Plus, Trash2, RefreshCw, Edit, AlertCircle } from 'lucide-react';
+import { Users, Search, Plus, Trash2, RefreshCw, Edit, Eye, AlertCircle } from 'lucide-react';
 import { collection, getDocs, deleteDoc, doc, writeBatch, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import PatientEditModal from './PatientEditModal';
+import PatientViewModal from './PatientViewModal';
 
 const PatientPortal = () => {
   const [patients, setPatients] = useState([]);
@@ -11,6 +12,7 @@ const PatientPortal = () => {
   const [loading, setLoading] = useState(true);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
 
   useEffect(() => {
     loadPatients();
@@ -116,8 +118,14 @@ const PatientPortal = () => {
     setShowEditModal(true);
   };
 
+  const handleViewPatient = (patient) => {
+    setSelectedPatient(patient);
+    setShowViewModal(true);
+  };
+
   const handleCloseModal = () => {
     setShowEditModal(false);
+    setShowViewModal(false);
     setSelectedPatient(null);
   };
 
@@ -290,13 +298,24 @@ const PatientPortal = () => {
                       {patient.created_at ? new Date(patient.created_at).toLocaleDateString() : 'N/A'}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => handleEditPatient(patient)}
-                        className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700"
-                      >
-                        <Edit className="w-4 h-4" />
-                        Edit
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleViewPatient(patient)}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                          title="View Details"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View
+                        </button>
+                        <button
+                          onClick={() => handleEditPatient(patient)}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700"
+                          title="Edit Patient"
+                        >
+                          <Edit className="w-4 h-4" />
+                          Edit
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -312,6 +331,18 @@ const PatientPortal = () => {
           patient={selectedPatient}
           onClose={handleCloseModal}
           onUpdate={handlePatientUpdated}
+        />
+      )}
+
+      {/* View Modal */}
+      {showViewModal && selectedPatient && (
+        <PatientViewModal
+          patient={selectedPatient}
+          onClose={handleCloseModal}
+          onEdit={(patient) => {
+            setShowViewModal(false);
+            handleEditPatient(patient);
+          }}
         />
       )}
     </div>

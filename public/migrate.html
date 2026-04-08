@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Inventory Migration</title>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getFirestore, collection, writeBatch, doc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+    import { getAuth, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAbzT44jVXP4VtKer3HQSSLF4bRsCEyAG8",
+      authDomain: "tatva-ayurved-hms.firebaseapp.com",
+      projectId: "tatva-ayurved-hms",
+      storageBucket: "tatva-ayurved-hms.firebasestorage.app",
+      messagingSenderId: "1098950929087",
+      appId: "1:1098950929087:web:0daa1ad68dae607011340a"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    // Check if already logged in
+    window.onload = function() {
+      const currentUser = localStorage.getItem('currentUser');
+      if (currentUser) {
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('migrateSection').style.display = 'block';
+      }
+    };
+
+    window.loginFirst = async function() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const status = document.getElementById('loginStatus');
+
+      try {
+        status.innerHTML = 'Logging in...';
+        await signInWithEmailAndPassword(auth, email, password);
+        
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('migrateSection').style.display = 'block';
+        status.innerHTML = '';
+        
+      } catch (error) {
+        status.innerHTML = '❌ Login failed: ' + error.message;
+      }
+    };
+
+    window.migrateInventory = async function() {
+      const btn = document.getElementById('migrateBtn');
+      const status = document.getElementById('status');
+      const progress = document.getElementById('progress');
+      
+      btn.disabled = true;
+      status.innerHTML = 'Reading inventory...';
+
+      try {
+        const localInventory = localStorage.getItem('inventory');
+        
+        if (!localInventory) {
+          status.innerHTML = '❌ No inventory found in localStorage!';
+          btn.disabled = false;
+          return;
+        }
+
+        const items = JSON.parse(localInventory);
+        const total = items.length;
+        
+        status.innerHTML = `Found ${total} items. Starting migration...`;
+        progress.style.display = 'block';
+
+        const batchSize = 500;
+        let migratedCount = 0;
+
+        for (let i = 0; i < items.length; i += batchSize) {
+          const batch = writeBatch(db);
+          const batchItems = items.slice(i, i + batchSize);
+
+          batchItems.forEach((item) => {
+            const docRef = doc(collection(db, 'inventory'));
+            
+            const cleanItem = {
+              id: item.id || Date.now() + Math.random(),
+              item_code: item.item_code || '',
+              item_name: item.item_name || 'Unknown',
+              stock_quantity: parseInt(item.stock_quantity || 0),
+              purchase_rate: parseFloat(item.purchase_rate || 0),
+              mrp: parseFloat(item.mrp || 0),
+              stock_value: parseFloat(item.stock_value || 0),
+              migrated: true,
+              migrated_at: new Date().toISOString()
+            };
+
+            batch.set(docRef, cleanItem);
+          });
+
+          await batch.commit();
+          migratedCount += batchItems.length;
+
+          const percent = Math.round((migratedCount / total) * 100);
+          document.getElementById('progressBar').style.width = percent + '%';
+          status.innerHTML = `Migrated ${migratedCount} of ${total} items (${percent}%)...`;
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        status.innerHTML = `✅ Successfully migrated all ${total} items to Firebase!`;
+        btn.style.display = 'none';
+        
+      } catch (error) {
+        status.innerHTML = `❌ Error: ${error.message}`;
+        console.error(error);
+        btn.disabled = false;
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { color: #0d9488; margin-bottom: 20px; }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      box-sizing: border-box;
+    }
+    button {
+      background: #0d9488;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 10px;
+    }
+    button:hover { background: #0f766e; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #status, #loginStatus {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f0f9ff;
+      border-radius: 5px;
+      min-height: 50px;
+    }
+    #progress {
+      display: none;
+      margin-top: 15px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 30px;
+      background: #e5e7eb;
+      border-radius: 15px;
+      overflow: hidden;
+    }
+    #progressBar {
+      height: 100%;
+      background: #0d9488;
+      width: 0%;
+      transition: width 0.3s;
+    }
+    .section { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔥 Inventory Migration to Firebase</h1>
+    
+    <!-- Login Section -->
+    <div id="loginSection" class="section" style="display: block;">
+      <p>Please login first to authenticate the migration:</p>
+      <input type="email" id="email" placeholder="Email" value="admin@tatvaayurved.com">
+      <input type="password" id="password" placeholder="Password" value="admin123">
+      <button onclick="loginFirst()">Login & Continue</button>
+      <div id="loginStatus"></div>
+    </div>
+
+    <!-- Migration Section -->
+    <div id="migrateSection" class="section">
+      <p>This will migrate your 4746 inventory items from localStorage to Firebase cloud database.</p>
+      
+      <button id="migrateBtn" onclick="migrateInventory()">
+        Start Migration
+      </button>
+      
+      <div id="status"></div>
+      
+      <div id="progress">
+        <div class="progress-bar">
+          <div id="progressBar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
