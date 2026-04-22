@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Printer, Send, AlertCircle, DollarSign, CheckCircle, Clock, User } from 'lucide-react';
+import { FileText, Plus, Search, Printer, Send, AlertCircle, DollarSign, CheckCircle, Clock, User, Star, Link as LinkIcon } from 'lucide-react';
 import { collection, getDocs, addDoc, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -12,6 +12,11 @@ const DischargeManagement = () => {
   const [showDischargeModal, setShowDischargeModal] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [activeTab, setActiveTab] = useState('pending'); // pending, completed
+  const [showReviewLinkModal, setShowReviewLinkModal] = useState(false);
+  const [reviewPatient, setReviewPatient] = useState(null);
+
+  // Google Review Link - Update this with your actual Google Business link
+  const GOOGLE_REVIEW_LINK = "https://g.page/r/YOUR_PLACE_ID/review"; // TODO: Update with actual link
 
   useEffect(() => {
     loadData();
@@ -58,6 +63,61 @@ const DischargeManagement = () => {
   const handleStartDischarge = (patient) => {
     setSelectedPatient(patient);
     setShowDischargeModal(true);
+  };
+
+  const handleShareReviewLink = (patient) => {
+    setReviewPatient(patient);
+    setShowReviewLinkModal(true);
+  };
+
+  const copyReviewLink = () => {
+    navigator.clipboard.writeText(GOOGLE_REVIEW_LINK);
+    alert('✅ Google Review link copied to clipboard!');
+  };
+
+  const shareReviewViaSMS = () => {
+    if (!reviewPatient?.phone) {
+      alert('No phone number available for this patient');
+      return;
+    }
+
+    const message = `Dear ${reviewPatient.first_name || 'Patient'},
+
+Thank you for choosing Tatva Ayurved! 
+
+We hope you had a positive experience. We'd love to hear your feedback!
+
+Please share your review here:
+${GOOGLE_REVIEW_LINK}
+
+- Tatva Ayurved Team`;
+
+    // Simulate SMS (in production, integrate with SMS API)
+    console.log('📱 SMS to:', reviewPatient.phone);
+    console.log(message);
+    
+    alert(`✅ Review link SMS sent to ${reviewPatient.phone}\n\n(In production, this will use SMS API)`);
+    setShowReviewLinkModal(false);
+  };
+
+  const shareReviewViaWhatsApp = () => {
+    if (!reviewPatient?.phone) {
+      alert('No phone number available for this patient');
+      return;
+    }
+
+    const message = encodeURIComponent(
+      `Dear ${reviewPatient.first_name || 'Patient'},\n\n` +
+      `Thank you for choosing Tatva Ayurved! We hope you had a positive experience.\n\n` +
+      `Please share your review here:\n${GOOGLE_REVIEW_LINK}\n\n` +
+      `- Tatva Ayurved Team`
+    );
+
+    // Remove country code formatting for WhatsApp
+    const phoneNumber = reviewPatient.phone.replace(/[^\d]/g, '');
+    
+    window.open(`https://wa.me/${phoneNumber}?text=${message}`, '_blank');
+    setShowReviewLinkModal(false);
   };
 
   const getPendingDischarges = () => {
@@ -264,11 +324,25 @@ const DischargeManagement = () => {
                           View
                         </button>
                         {discharge.status === 'completed' && (
-                          <button
-                            className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => {
+                                const patient = patients.find(p => p.patient_number === discharge.patient_number);
+                                if (patient) {
+                                  handleShareReviewLink(patient);
+                                }
+                              }}
+                              className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 flex items-center gap-1"
+                              title="Share Google Review Link"
+                            >
+                              <Star className="w-4 h-4" />
+                            </button>
+                            <button
+                              className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -295,6 +369,88 @@ const DischargeManagement = () => {
             loadData();
           }}
         />
+      )}
+
+      {/* Google Review Link Modal */}
+      {showReviewLinkModal && reviewPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <div className="bg-green-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <div className="flex items-center gap-2">
+                <Star className="w-6 h-6" />
+                <h2 className="text-xl font-bold">Share Google Review</h2>
+              </div>
+              <button 
+                onClick={() => setShowReviewLinkModal(false)} 
+                className="hover:bg-green-700 p-2 rounded"
+              >
+                <Plus className="w-6 h-6 rotate-45" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="font-semibold text-gray-900">
+                  {reviewPatient.first_name} {reviewPatient.last_name}
+                </p>
+                <p className="text-sm text-gray-600">{reviewPatient.patient_number}</p>
+                <p className="text-sm text-gray-600">{reviewPatient.phone || 'No phone'}</p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Google Review Link
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={GOOGLE_REVIEW_LINK}
+                    readOnly
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
+                  />
+                  <button
+                    onClick={copyReviewLink}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
+                    title="Copy Link"
+                  >
+                    <LinkIcon className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Click copy to share manually or use the buttons below
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={shareReviewViaWhatsApp}
+                  disabled={!reviewPatient.phone}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                  </svg>
+                  Share via WhatsApp
+                </button>
+
+                <button
+                  onClick={shareReviewViaSMS}
+                  disabled={!reviewPatient.phone}
+                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-5 h-5" />
+                  Send via SMS
+                </button>
+
+                <div className="pt-3 border-t">
+                  <p className="text-xs text-gray-600 text-center">
+                    💡 Tip: Update the Google Review link in DischargeManagement.jsx
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
