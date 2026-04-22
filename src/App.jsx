@@ -15,6 +15,7 @@ import MessExpenseTracker from './components/MessExpenseTracker';
 import DietModule from './components/DietModule';
 import InventoryAnalytics from './components/InventoryAnalytics';
 import MedicineOrderingTable from './components/MedicineOrderingTable';
+import InvoicesManagement from './components/InvoicesManagement';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -86,8 +87,16 @@ function App() {
         {/* Logo */}
         <div className="p-6 border-b border-teal-600">
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center">
-              <div className="text-2xl font-bold text-teal-600">TA</div>
+            <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden">
+              <img 
+                src="/logo.png" 
+                alt="Tatva Ayurved" 
+                className="w-10 h-10 object-contain"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.parentElement.innerHTML = '<div class="text-2xl font-bold text-teal-600">TA</div>';
+                }}
+              />
             </div>
             <div>
               <h1 className="text-xl font-bold">Tatva Ayurved</h1>
@@ -178,28 +187,9 @@ function App() {
         {currentView === 'mess-expense' && <MessExpenseTracker />}
         {currentView === 'diet-module' && <DietModule />}
         {currentView === 'analytics' && <InventoryAnalytics />}
+        {currentView === 'invoices' && <InvoicesManagement />}
         
         {currentView === 'prescriptions' && (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">Prescriptions Module</h1>
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Use Patient Portal → Edit Patient → Add Medicines</p>
-            </div>
-          </div>
-        )}
-        
-        {currentView === 'invoices' && (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">Invoices</h1>
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <Receipt className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Invoices module - Coming soon!</p>
-            </div>
-          </div>
-        )}
-        
-        {currentView === 'scheduling' && (
           <div className="p-6">
             <h1 className="text-2xl font-bold text-gray-800 mb-4">Scheduling</h1>
             <div className="bg-white rounded-xl shadow-md p-8 text-center">

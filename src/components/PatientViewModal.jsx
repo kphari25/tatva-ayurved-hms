@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { X, User, Phone, Mail, MapPin, Calendar, Heart, AlertCircle, Send, MessageSquare, Edit } from 'lucide-react';
+import { X, User, Phone, Mail, MapPin, Calendar, Heart, AlertCircle, Send, MessageSquare, Edit, FileText } from 'lucide-react';
+import InvoiceModal from './InvoiceModal';
 
 const PatientViewModal = ({ patient, onClose, onEdit, onSendSMS }) => {
   const [showSMSForm, setShowSMSForm] = useState(false);
   const [smsMessage, setSmsMessage] = useState('');
   const [sendingSMS, setSendingSMS] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
   const calculateAge = (dob) => {
     if (!dob) return 'N/A';
@@ -88,6 +90,13 @@ const PatientViewModal = ({ patient, onClose, onEdit, onSendSMS }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowInvoiceModal(true)}
+              className="px-4 py-2 bg-white text-teal-600 rounded-lg hover:bg-teal-50 flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Invoice
+            </button>
             <button
               onClick={() => setShowSMSForm(!showSMSForm)}
               className="px-4 py-2 bg-white text-teal-600 rounded-lg hover:bg-teal-50 flex items-center gap-2"
@@ -300,6 +309,18 @@ const PatientViewModal = ({ patient, onClose, onEdit, onSendSMS }) => {
           </div>
         </div>
       </div>
+
+      {/* Invoice Modal */}
+      {showInvoiceModal && (
+        <InvoiceModal
+          patient={patient}
+          onClose={() => setShowInvoiceModal(false)}
+          onSave={() => {
+            setShowInvoiceModal(false);
+            // Optionally refresh or notify
+          }}
+        />
+      )}
     </div>
   );
 };
