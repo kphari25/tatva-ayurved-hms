@@ -16,6 +16,7 @@ import DietModule from './components/DietModule';
 import InventoryAnalytics from './components/InventoryAnalytics';
 import MedicineOrderingTable from './components/MedicineOrderingTable';
 import InvoicesManagement from './components/InvoicesManagement';
+import DischargeManagement from './components/DischargeManagement';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -64,6 +65,7 @@ function App() {
     { id: 'inventory', label: 'Inventory', icon: Package, permission: 'inventory' },
     { id: 'prescriptions', label: 'Prescriptions', icon: FileText, permission: 'prescriptions' },
     { id: 'invoices', label: 'Invoices', icon: Receipt, permission: 'invoices' },
+    { id: 'discharge', label: 'Discharge', icon: FileText, permission: 'invoices' },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp, permission: 'analytics' },
     { id: 'scheduling', label: 'Scheduling', icon: Calendar, permission: 'appointments' },
     
@@ -188,6 +190,7 @@ function App() {
         {currentView === 'diet-module' && <DietModule />}
         {currentView === 'analytics' && <InventoryAnalytics />}
         {currentView === 'invoices' && <InvoicesManagement />}
+        {currentView === 'discharge' && <DischargeManagement />}
         
         {currentView === 'prescriptions' && (
           <div className="p-6">
