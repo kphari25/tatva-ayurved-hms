@@ -173,16 +173,6 @@ const Login = ({ onLogin }) => {
               )}
             </button>
           </form>
-
-          {/* Demo Credentials */}
-          <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-xs font-semibold text-gray-700 mb-2">Demo Credentials:</p>
-            <div className="space-y-1 text-xs text-gray-600">
-              <p><strong>Admin:</strong> admin@tatvaayurved.com / admin123</p>
-              <p><strong>Doctor:</strong> doctor@tatvaayurved.com / doctor123</p>
-              <p><strong>Staff:</strong> staff@tatvaayurved.com / staff123</p>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -190,7 +180,7 @@ const Login = ({ onLogin }) => {
       <div className="hidden lg:block lg:w-1/2 relative bg-gradient-to-br from-teal-700 to-teal-900">
         {/* Background Image */}
         <div 
-          className="absolute inset-0 opacity-20"
+          className="absolute inset-0 opacity-30"
           style={{
             backgroundImage: 'url(https://images.unsplash.com/photo-1544161515-4ab6ce6db874?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80)',
             backgroundSize: 'cover',
@@ -206,38 +196,26 @@ const Login = ({ onLogin }) => {
           }}
         ></div>
 
-        {/* Centered Logo */}
-        <div className="relative h-full flex flex-col items-center justify-center p-12">
-          <div className="text-center">
-            {/* Large Logo */}
-            <div className="mb-8 flex justify-center">
-              <img 
-                src="/logo.png" 
-                alt="Tatva Ayurved" 
-                className="w-64 h-64 object-contain drop-shadow-2xl"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  const fallback = document.createElement('div');
-                  fallback.className = 'w-64 h-64 bg-white bg-opacity-20 rounded-full flex items-center justify-center';
-                  fallback.innerHTML = '<div class="text-8xl font-bold text-white">TA</div>';
-                  e.target.parentElement.appendChild(fallback);
-                }}
-              />
-            </div>
+        {/* Content */}
+        <div className="relative h-full flex flex-col justify-end p-12 text-white">
+          <div className="max-w-lg">
+            <h2 className="text-4xl font-bold mb-4">
+              Ayurveda for Health & Happiness
+            </h2>
+            <p className="text-lg text-teal-100 leading-relaxed">
+              Streamline your Ayurvedic hospital operations with our comprehensive management system. From patient care to inventory, we've got you covered.
+            </p>
+          </div>
 
-            {/* Text Content */}
-            <div className="max-w-lg text-white">
-              <h2 className="text-4xl font-bold mb-4">
-                Tatva Ayurved
-              </h2>
-              <p className="text-2xl text-teal-100 mb-6 font-light">
-                Ayurveda for Health & Happiness
-              </p>
-              <div className="w-24 h-1 bg-white mx-auto mb-6 opacity-50"></div>
-              <p className="text-lg text-teal-100 leading-relaxed">
-                Streamline your Ayurvedic hospital operations with our comprehensive management system. From patient care to inventory, we've got you covered.
-              </p>
-            </div>
+          {/* Decorative Element */}
+          <div className="absolute top-1/2 right-12 transform -translate-y-1/2 opacity-10">
+            <svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M100 20C100 20 120 40 120 60C120 71.0457 111.046 80 100 80C88.9543 80 80 71.0457 80 60C80 40 100 20 100 20Z" fill="white"/>
+              <path d="M100 180C100 180 120 160 120 140C120 128.954 111.046 120 100 120C88.9543 120 80 128.954 80 140C80 160 100 180 100 180Z" fill="white"/>
+              <path d="M20 100C20 100 40 80 60 80C71.0457 80 80 88.9543 80 100C80 111.046 71.0457 120 60 120C40 120 20 100 20 100Z" fill="white"/>
+              <path d="M180 100C180 100 160 80 140 80C128.954 80 120 88.9543 120 100C120 111.046 128.954 120 140 120C160 120 180 100 180 100Z" fill="white"/>
+              <circle cx="100" cy="100" r="25" fill="white"/>
+            </svg>
           </div>
         </div>
 
