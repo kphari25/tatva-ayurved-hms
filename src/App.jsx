@@ -17,6 +17,8 @@ import InventoryAnalytics from './components/InventoryAnalytics';
 import MedicineOrderingTable from './components/MedicineOrderingTable';
 import InvoicesManagement from './components/InvoicesManagement';
 import DischargeManagement from './components/DischargeManagement';
+import LeadManagement from './components/LeadManagement';
+import PackageManagement from './components/PackageManagement';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -62,7 +64,9 @@ function App() {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, permission: null },
     { id: 'patients', label: 'Patient Portal', icon: Users, permission: 'patients' },
+    { id: 'leads', label: 'Lead Management', icon: TrendingUp, permission: null },
     { id: 'inventory', label: 'Inventory', icon: Package, permission: 'inventory' },
+    { id: 'packages', label: 'Treatment Packages', icon: Package, permission: null },
     { id: 'prescriptions', label: 'Prescriptions', icon: FileText, permission: 'prescriptions' },
     { id: 'invoices', label: 'Invoices', icon: Receipt, permission: 'invoices' },
     { id: 'discharge', label: 'Discharge', icon: FileText, permission: 'invoices' },
@@ -185,7 +189,9 @@ function App() {
       <div className="flex-1 overflow-auto">
         {currentView === 'dashboard' && <AdminUserPortal />}
         {currentView === 'patients' && <PatientPortal />}
+        {currentView === 'leads' && <LeadManagement />}
         {currentView === 'inventory' && <InventoryManagement />}
+        {currentView === 'packages' && <PackageManagement />}
         {currentView === 'mess-expense' && <MessExpenseTracker />}
         {currentView === 'diet-module' && <DietModule />}
         {currentView === 'analytics' && <InventoryAnalytics />}
