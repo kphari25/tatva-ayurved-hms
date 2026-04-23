@@ -19,6 +19,7 @@ import InvoicesManagement from './components/InvoicesManagement';
 import DischargeManagement from './components/DischargeManagement';
 import LeadManagement from './components/LeadManagement';
 import PackageManagement from './components/PackageManagement';
+import Dashboard from './components/Dashboard';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -187,7 +188,7 @@ function App() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
-        {currentView === 'dashboard' && <AdminUserPortal />}
+        {currentView === 'dashboard' && <Dashboard />}
         {currentView === 'patients' && <PatientPortal />}
         {currentView === 'leads' && <LeadManagement />}
         {currentView === 'inventory' && <InventoryManagement />}
