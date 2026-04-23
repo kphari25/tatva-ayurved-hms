@@ -36,6 +36,16 @@ function App() {
         localStorage.removeItem('currentUser');
       }
     }
+
+    // Listen for navigation events from Dashboard
+    const handleNavigate = (event) => {
+      setCurrentView(event.detail);
+    };
+    window.addEventListener('navigate', handleNavigate);
+
+    return () => {
+      window.removeEventListener('navigate', handleNavigate);
+    };
   }, []);
 
   const handleLogin = (user) => {
@@ -201,10 +211,27 @@ function App() {
         
         {currentView === 'prescriptions' && (
           <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">Scheduling</h1>
+            <h1 className="text-2xl font-bold text-gray-800 mb-4">Prescriptions</h1>
+            <div className="bg-white rounded-xl shadow-md p-8 text-center">
+              <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-600 mb-2">Use Patient Portal to manage prescriptions</p>
+              <button
+                onClick={() => setCurrentView('patients')}
+                className="mt-4 px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+              >
+                Go to Patient Portal
+              </button>
+            </div>
+          </div>
+        )}
+
+        {currentView === 'scheduling' && (
+          <div className="p-6">
+            <h1 className="text-2xl font-bold text-gray-800 mb-4">Appointment Scheduling</h1>
             <div className="bg-white rounded-xl shadow-md p-8 text-center">
               <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Scheduling - Coming soon!</p>
+              <p className="text-gray-600 mb-2">Appointment scheduling module coming soon!</p>
+              <p className="text-sm text-gray-500">Will include calendar view, booking, reminders, and therapist schedules</p>
             </div>
           </div>
         )}

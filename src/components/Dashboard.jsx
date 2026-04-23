@@ -389,15 +389,24 @@ const Dashboard = () => {
           <div className="bg-white rounded-xl shadow-md p-4">
             <h3 className="font-bold text-gray-800 mb-3 text-sm">Quick Actions</h3>
             <div className="space-y-2">
-              <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm flex items-center justify-center gap-2">
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'leads' }))}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm flex items-center justify-center gap-2"
+              >
                 <Phone className="w-4 h-4" />
                 New Lead
               </button>
-              <button className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm flex items-center justify-center gap-2">
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'patients' }))}
+                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm flex items-center justify-center gap-2"
+              >
                 <Users className="w-4 h-4" />
                 Register Patient
               </button>
-              <button className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm flex items-center justify-center gap-2">
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
+                className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm flex items-center justify-center gap-2"
+              >
                 <DollarSign className="w-4 h-4" />
                 Create Invoice
               </button>
