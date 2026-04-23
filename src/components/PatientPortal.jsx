@@ -169,7 +169,10 @@ const PatientPortal = () => {
               Refresh
             </button>
             <button
-              onClick={() => window.location.href = '#/patient-registration'}
+              onClick={() => {
+                setSelectedPatient(null);
+                setShowEditModal(true);
+              }}
               className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />

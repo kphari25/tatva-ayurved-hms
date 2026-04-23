@@ -7,7 +7,10 @@ import { db } from '../lib/firebase';
 const PatientEditModal = ({ patient, onClose, onUpdate }) => {
   const [formData, setFormData] = useState({
     ...patient,
-    prescriptions: patient.prescriptions || []
+    prescriptions: patient.prescriptions || [],
+    enrolled_package: patient.enrolled_package || '',
+    package_start_date: patient.package_start_date || '',
+    package_status: patient.package_status || 'not_enrolled'
   });
   
   const [newMedicine, setNewMedicine] = useState({
@@ -22,14 +25,34 @@ const PatientEditModal = ({ patient, onClose, onUpdate }) => {
   const [filteredMedicines, setFilteredMedicines] = useState([]);
   const [showMedicineSuggestions, setShowMedicineSuggestions] = useState(false);
   const [allMedicines, setAllMedicines] = useState([]);
+  const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const searchRef = useRef(null);
 
-  // Load all medicines from Firebase on component mount
+  // Load all medicines and packages from Firebase on component mount
   useEffect(() => {
     loadMedicines();
+    loadPackages();
   }, []);
+
+  const loadPackages = async () => {
+    try {
+      const packagesRef = collection(db, 'packages');
+      const snapshot = await getDocs(packagesRef);
+      
+      const packagesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      setPackages(packagesData);
+      console.log(`Loaded ${packagesData.length} packages from Firebase`);
+      
+    } catch (error) {
+      console.error('Error loading packages:', error);
+    }
+  };
 
   const loadMedicines = async () => {
     try {
@@ -238,6 +261,79 @@ const PatientEditModal = ({ patient, onClose, onUpdate }) => {
                 onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               />
+            </div>
+          </div>
+
+          {/* Package Enrollment Section */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-green-100 rounded-lg border border-green-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Treatment Package</h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Package</label>
+                <select
+                  value={formData.enrolled_package || ''}
+                  onChange={(e) => setFormData({ 
+                    ...formData, 
+                    enrolled_package: e.target.value,
+                    package_status: e.target.value ? 'enrolled' : 'not_enrolled',
+                    package_start_date: e.target.value && !formData.package_start_date ? new Date().toISOString().split('T')[0] : formData.package_start_date
+                  })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="">No Package</option>
+                  {packages.map(pkg => (
+                    <option key={pkg.id} value={pkg.name}>
+                      {pkg.name} - ₹{pkg.cost?.toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {formData.enrolled_package && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                    <input
+                      type="date"
+                      value={formData.package_start_date || ''}
+                      onChange={(e) => setFormData({ ...formData, package_start_date: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Package Status</label>
+                    <select
+                      value={formData.package_status || 'enrolled'}
+                      onChange={(e) => setFormData({ ...formData, package_status: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    >
+                      <option value="enrolled">Enrolled</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+
+                  {/* Show package details */}
+                  {(() => {
+                    const selectedPkg = packages.find(p => p.name === formData.enrolled_package);
+                    if (selectedPkg) {
+                      return (
+                        <div className="col-span-2 mt-2 p-3 bg-white rounded border border-green-300">
+                          <p className="text-sm font-semibold text-gray-800">{selectedPkg.name}</p>
+                          <p className="text-xs text-gray-600 mt-1">{selectedPkg.description}</p>
+                          <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
+                            <span>⏱️ Duration: {selectedPkg.duration} {selectedPkg.duration_unit}</span>
+                            <span>💰 Cost: ₹{selectedPkg.cost?.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                  })()}
+                </>
+              )}
             </div>
           </div>
 
