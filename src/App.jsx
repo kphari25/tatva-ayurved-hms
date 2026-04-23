@@ -20,6 +20,7 @@ import DischargeManagement from './components/DischargeManagement';
 import LeadManagement from './components/LeadManagement';
 import PackageManagement from './components/PackageManagement';
 import Dashboard from './components/Dashboard';
+import ProfitLoss from './components/ProfitLoss';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -91,7 +92,7 @@ function App() {
     
     // Admin Only Section
     { id: 'admin-section', label: 'Administration', icon: null, isSectionHeader: true, adminOnly: true },
-    { id: 'financial-reports', label: 'Financial Reports', icon: DollarSign, permission: 'all', badge: 'Admin' },
+    { id: 'profit-loss', label: 'P&L Statement', icon: DollarSign, permission: null },
     { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, permission: 'all', badge: 'Admin' },
     { id: 'user-management', label: 'User Management', icon: UserCog, permission: 'all', badge: 'Admin' },
     { id: 'database-backup', label: 'Database Backup', icon: Database, permission: 'all', badge: 'Admin' },
@@ -236,15 +237,7 @@ function App() {
           </div>
         )}
         
-        {currentView === 'financial-reports' && (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">Financial Reports</h1>
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Admin Only</p>
-            </div>
-          </div>
-        )}
+        {currentView === 'profit-loss' && <ProfitLoss />}
         
         {currentView === 'hr-payroll' && (
           <div className="p-6">
