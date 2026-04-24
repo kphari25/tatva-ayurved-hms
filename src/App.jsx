@@ -21,6 +21,7 @@ import LeadManagement from './components/LeadManagement';
 import PackageManagement from './components/PackageManagement';
 import Dashboard from './components/Dashboard';
 import ProfitLoss from './components/ProfitLoss';
+import AIAssist from './components/AIAssist';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -79,6 +80,7 @@ function App() {
     { id: 'leads', label: 'Lead Management', icon: TrendingUp, permission: null },
     { id: 'inventory', label: 'Inventory', icon: Package, permission: 'inventory' },
     { id: 'packages', label: 'Treatment Packages', icon: Package, permission: null },
+    { id: 'ai-assist', label: 'AI Assist', icon: TrendingUp, permission: null },
     { id: 'prescriptions', label: 'Prescriptions', icon: FileText, permission: 'prescriptions' },
     { id: 'invoices', label: 'Invoices', icon: Receipt, permission: 'invoices' },
     { id: 'discharge', label: 'Discharge', icon: FileText, permission: 'invoices' },
@@ -204,6 +206,7 @@ function App() {
         {currentView === 'leads' && <LeadManagement />}
         {currentView === 'inventory' && <InventoryManagement />}
         {currentView === 'packages' && <PackageManagement />}
+        {currentView === 'ai-assist' && <AIAssist />}
         {currentView === 'mess-expense' && <MessExpenseTracker />}
         {currentView === 'diet-module' && <DietModule />}
         {currentView === 'analytics' && <InventoryAnalytics />}
