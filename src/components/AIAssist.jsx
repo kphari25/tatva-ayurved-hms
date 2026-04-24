@@ -78,43 +78,65 @@ const IntelligentIntake = () => {
     if (!userInput.trim()) return;
 
     // Add user message
-    const newMessages = [
-      ...chatMessages,
-      {
-        type: 'user',
-        message: userInput,
-        timestamp: new Date().toISOString()
-      }
-    ];
+    const newUserMessage = {
+      type: 'user',
+      message: userInput,
+      timestamp: new Date().toISOString()
+    };
 
-    // Simulate AI response (in production, this would call Claude API)
-    setTimeout(() => {
-      const aiResponse = generateAIResponse(userInput, chatMessages.length);
-      setChatMessages([
-        ...newMessages,
-        {
-          type: 'ai',
-          message: aiResponse,
-          timestamp: new Date().toISOString()
-        }
-      ]);
-    }, 1000);
-
-    setChatMessages(newMessages);
+    setChatMessages(prev => [...prev, newUserMessage]);
     setUserInput('');
+
+    // Update progress based on conversation
+    const messageCount = chatMessages.filter(m => m.type === 'user').length;
+    updateProgress(messageCount);
+
+    // Generate AI response after a short delay
+    setTimeout(() => {
+      const aiResponse = generateAIResponse(userInput, messageCount);
+      setChatMessages(prev => [...prev, {
+        type: 'ai',
+        message: aiResponse,
+        timestamp: new Date().toISOString()
+      }]);
+    }, 1000);
+  };
+
+  const updateProgress = (userMessageCount) => {
+    const newProgress = { ...intakeProgress };
+    
+    if (userMessageCount >= 1) newProgress.personal = true;
+    if (userMessageCount >= 3) newProgress.lifestyle = true;
+    if (userMessageCount >= 5) newProgress.symptoms = true;
+    if (userMessageCount >= 7) newProgress.history = true;
+    
+    setIntakeProgress(newProgress);
   };
 
   const generateAIResponse = (input, messageCount) => {
-    // Simulated intelligent responses based on conversation flow
-    const responses = [
-      "Thank you! Now, tell me about your daily routine. What time do you usually wake up and sleep?",
-      "Great! How would you describe your appetite and digestion? Do you prefer hot or cold foods?",
-      "I understand. Can you describe any current health concerns or symptoms you're experiencing?",
-      "Thank you for sharing. Do you have any history of chronic conditions or ongoing treatments?",
-      "Excellent! Based on our conversation, I'm analyzing your responses using Ayurvedic principles. Let me prepare a comprehensive intake summary for your physician."
-    ];
+    // Generate contextual responses based on the conversation stage
+    const input_lower = input.toLowerCase();
     
-    return responses[Math.min(messageCount / 2, responses.length - 1)];
+    // Stage-based responses
+    if (messageCount === 0) {
+      return "Thank you for sharing your name and age! Now, let's talk about your daily routine. What time do you usually wake up and go to sleep?";
+    } else if (messageCount === 1) {
+      return "Great! That gives me insight into your body clock. Now, tell me about your appetite and digestion. Do you prefer hot foods or cold foods? How is your hunger level throughout the day?";
+    } else if (messageCount === 2) {
+      return "I understand. Let's discuss your energy levels. How would you describe your energy - do you feel energetic in the morning, afternoon, or evening? Do you experience any fatigue?";
+    } else if (messageCount === 3) {
+      return "Thank you for that information. Now, can you describe any current health concerns or symptoms you're experiencing? For example, any pain, discomfort, sleep issues, or digestive problems?";
+    } else if (messageCount === 4) {
+      return "I see. That's helpful information. Do you have any history of chronic conditions, ongoing treatments, or medications you're currently taking?";
+    } else if (messageCount === 5) {
+      return "Thank you for sharing your medical history. Let me ask about your lifestyle - do you exercise regularly? What type of activities do you enjoy?";
+    } else if (messageCount === 6) {
+      return "Excellent! One last question - how would you describe your stress levels and mental state? Do you experience anxiety, worry, or mental tension?";
+    } else if (messageCount >= 7) {
+      return "Thank you so much for this detailed conversation! Based on everything you've shared, I'm detecting patterns that suggest a Vata imbalance with some Pitta characteristics. Your responses about irregular sleep, preference for warm foods, and digestive variations are particularly telling. I recommend you proceed to the Prakriti Analysis tab where we can do a more detailed assessment. The doctor will review all this information for a complete diagnosis.";
+    }
+    
+    return "Please tell me more about that.";
   };
 
   const progressItems = [
@@ -230,13 +252,31 @@ const IntelligentIntake = () => {
         <div className="bg-white rounded-xl shadow-md p-6">
           <h3 className="font-bold text-gray-800 mb-4">Quick Suggestions</h3>
           <div className="space-y-2">
-            <button className="w-full text-left px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-sm">
+            <button 
+              onClick={() => {
+                setUserInput("I usually wake up at 6 AM and sleep around 11 PM");
+                document.querySelector('input[type="text"]')?.focus();
+              }}
+              className="w-full text-left px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-sm"
+            >
               Tell me about your sleep pattern
             </button>
-            <button className="w-full text-left px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-sm">
+            <button 
+              onClick={() => {
+                setUserInput("I have good energy in the morning but feel tired by afternoon");
+                document.querySelector('input[type="text"]')?.focus();
+              }}
+              className="w-full text-left px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-sm"
+            >
               Describe your energy levels
             </button>
-            <button className="w-full text-left px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-sm">
+            <button 
+              onClick={() => {
+                setUserInput("I crave warm, spicy foods and don't like cold items");
+                document.querySelector('input[type="text"]')?.focus();
+              }}
+              className="w-full text-left px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-sm"
+            >
               What foods do you crave?
             </button>
           </div>
