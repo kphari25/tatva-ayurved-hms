@@ -936,6 +936,7 @@ const AddExpenseModal = ({ onClose, onSave }) => {
               {saving ? 'Saving...' : 'Save Expense'}
             </button>
           </div>
+          </div>
         </div>
       </div>
     </div>
