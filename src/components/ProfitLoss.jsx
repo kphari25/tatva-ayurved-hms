@@ -33,7 +33,11 @@ const ProfitLoss = () => {
     rentExpense: 0,
     maintenanceExpense: 0,
     marketingExpense: 0,
+    utilitiesExpense: 0,
+    suppliesExpense: 0,
+    equipmentExpense: 0,
     miscExpense: 0,
+    otherExpense: 0,
     totalExpenses: 0,
 
     // Net Profit
@@ -152,7 +156,11 @@ const ProfitLoss = () => {
       let rentExpense = 0;
       let maintenanceExpense = 0;
       let marketingExpense = 0;
+      let utilitiesExpense = 0;
+      let suppliesExpense = 0;
+      let equipmentExpense = 0;
       let miscExpense = 0;
+      let otherExpense = 0;
 
       expenses.docs.forEach(doc => {
         const expense = doc.data();
@@ -167,8 +175,10 @@ const ProfitLoss = () => {
               salaryExpense += amount;
               break;
             case 'electricity':
-            case 'utilities':
               electricityExpense += amount;
+              break;
+            case 'utilities':
+              utilitiesExpense += amount;
               break;
             case 'rent':
               rentExpense += amount;
@@ -180,6 +190,19 @@ const ProfitLoss = () => {
             case 'marketing':
             case 'advertising':
               marketingExpense += amount;
+              break;
+            case 'supplies':
+              suppliesExpense += amount;
+              break;
+            case 'equipment':
+              equipmentExpense += amount;
+              break;
+            case 'misc':
+            case 'miscellaneous':
+              miscExpense += amount;
+              break;
+            case 'other':
+              otherExpense += amount;
               break;
             default:
               miscExpense += amount;
@@ -193,7 +216,9 @@ const ProfitLoss = () => {
       const grossProfitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue * 100) : 0;
       
       const totalExpenses = messExpense + salaryExpense + electricityExpense + 
-                           rentExpense + maintenanceExpense + marketingExpense + miscExpense;
+                           rentExpense + maintenanceExpense + marketingExpense + 
+                           utilitiesExpense + suppliesExpense + equipmentExpense +
+                           miscExpense + otherExpense;
       
       const netProfit = grossProfit - totalExpenses;
       const netProfitMargin = totalRevenue > 0 ? (netProfit / totalRevenue * 100) : 0;
@@ -230,7 +255,11 @@ const ProfitLoss = () => {
         rentExpense,
         maintenanceExpense,
         marketingExpense,
+        utilitiesExpense,
+        suppliesExpense,
+        equipmentExpense,
         miscExpense,
+        otherExpense,
         totalExpenses,
         netProfit,
         netProfitMargin,
@@ -487,6 +516,12 @@ const ProfitLoss = () => {
                     <span className="font-semibold text-gray-900">₹{plData.electricityExpense.toLocaleString()}</span>
                   </div>
                 )}
+                {plData.utilitiesExpense > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Utilities</span>
+                    <span className="font-semibold text-gray-900">₹{plData.utilitiesExpense.toLocaleString()}</span>
+                  </div>
+                )}
                 {plData.rentExpense > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">Rent</span>
@@ -499,6 +534,18 @@ const ProfitLoss = () => {
                     <span className="font-semibold text-gray-900">₹{plData.maintenanceExpense.toLocaleString()}</span>
                   </div>
                 )}
+                {plData.suppliesExpense > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Supplies</span>
+                    <span className="font-semibold text-gray-900">₹{plData.suppliesExpense.toLocaleString()}</span>
+                  </div>
+                )}
+                {plData.equipmentExpense > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Equipment</span>
+                    <span className="font-semibold text-gray-900">₹{plData.equipmentExpense.toLocaleString()}</span>
+                  </div>
+                )}
                 {plData.marketingExpense > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">Marketing</span>
@@ -509,6 +556,12 @@ const ProfitLoss = () => {
                   <div className="flex justify-between">
                     <span className="text-gray-700">Miscellaneous</span>
                     <span className="font-semibold text-gray-900">₹{plData.miscExpense.toLocaleString()}</span>
+                  </div>
+                )}
+                {plData.otherExpense > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Other</span>
+                    <span className="font-semibold text-gray-900">₹{plData.otherExpense.toLocaleString()}</span>
                   </div>
                 )}
                 <div className="flex justify-between pt-2 border-t border-gray-200">
@@ -618,7 +671,7 @@ const AddExpenseModal = ({ onClose, onSave }) => {
   const [extractedData, setExtractedData] = useState(null);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    category: 'salary',
+    category: 'other',
     amount: 0,
     description: '',
     payment_mode: 'cash',
@@ -875,12 +928,18 @@ const AddExpenseModal = ({ onClose, onSave }) => {
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg"
             >
-              <option value="salary">Salary</option>
+              <option value="other">Other</option>
               <option value="electricity">Electricity</option>
-              <option value="rent">Rent</option>
+              <option value="mess">Mess</option>
+              <option value="medicine_purchase">Medicine_purchase</option>
+              <option value="utilities">Utilities</option>
               <option value="maintenance">Maintenance</option>
+              <option value="supplies">Supplies</option>
+              <option value="equipment">Equipment</option>
+              <option value="rent">Rent</option>
+              <option value="misc">Misc</option>
+              <option value="salary">Salary</option>
               <option value="marketing">Marketing</option>
-              <option value="miscellaneous">Miscellaneous</option>
             </select>
           </div>
 
