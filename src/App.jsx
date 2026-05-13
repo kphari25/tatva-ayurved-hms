@@ -27,6 +27,7 @@ import PurchaseManagement from './components/PurchaseManagement';
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard');
+  const [showRegistration, setShowRegistration] = useState(false);
 
   useEffect(() => {
     // Check for existing session
@@ -204,7 +205,20 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
         {currentView === 'dashboard' && <Dashboard />}
-        {currentView === 'patients' && <PatientPortal />}
+        {currentView === 'patients' && (
+          <>
+            <PatientPortal onAddPatient={() => setShowRegistration(true)} />
+            {showRegistration && (
+              <PatientRegistrationNew 
+                onClose={() => setShowRegistration(false)}
+                onSuccess={() => {
+                  setShowRegistration(false);
+                  alert('✅ Patient registered successfully!');
+                }}
+              />
+            )}
+          </>
+        )}
         {currentView === 'leads' && <LeadManagement />}
         {currentView === 'inventory' && <InventoryManagement />}
         {currentView === 'packages' && <PackageManagement />}

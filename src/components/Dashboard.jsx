@@ -397,11 +397,18 @@ const Dashboard = () => {
                 New Lead
               </button>
               <button 
-                onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'patients' }))}
+                onClick={() => {
+                  // Navigate to patients view
+                  window.dispatchEvent(new CustomEvent('navigate', { detail: 'patients' }));
+                  // Trigger new patient registration after a short delay
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('openNewPatient'));
+                  }, 100);
+                }}
                 className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm flex items-center justify-center gap-2"
               >
                 <Users className="w-4 h-4" />
-                Register Patient
+                New Patient Registration
               </button>
               <button 
                 onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
