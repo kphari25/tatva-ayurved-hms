@@ -45,10 +45,18 @@ function App() {
     const handleNavigate = (event) => {
       setCurrentView(event.detail);
     };
+    
+    // Listen for new patient registration trigger
+    const handleOpenNewPatient = () => {
+      setShowRegistration(true);
+    };
+    
     window.addEventListener('navigate', handleNavigate);
+    window.addEventListener('openNewPatient', handleOpenNewPatient);
 
     return () => {
       window.removeEventListener('navigate', handleNavigate);
+      window.removeEventListener('openNewPatient', handleOpenNewPatient);
     };
   }, []);
 
@@ -205,19 +213,14 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
         {currentView === 'dashboard' && <Dashboard />}
-        {currentView === 'patients' && (
-          <>
-            <PatientPortal onAddPatient={() => setShowRegistration(true)} />
-            {showRegistration && (
-              <PatientRegistrationNew 
-                onClose={() => setShowRegistration(false)}
-                onSuccess={() => {
-                  setShowRegistration(false);
-                  alert('✅ Patient registered successfully!');
-                }}
-              />
-            )}
-          </>
+        {currentView === 'patients' && !showRegistration && (
+          <PatientPortal onAddPatient={() => setShowRegistration(true)} />
+        )}
+        
+        {currentView === 'patients' && showRegistration && (
+          <PatientRegistrationNew 
+            onClose={() => setShowRegistration(false)}
+          />
         )}
         {currentView === 'leads' && <LeadManagement />}
         {currentView === 'inventory' && <InventoryManagement />}
