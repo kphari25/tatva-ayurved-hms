@@ -44,6 +44,7 @@ function App() {
     // Listen for navigation events from Dashboard
     const handleNavigate = (event) => {
       setCurrentView(event.detail);
+      setShowRegistration(false); // Reset registration when changing views
     };
     
     // Listen for new patient registration trigger
@@ -214,7 +215,10 @@ function App() {
       <div className="flex-1 overflow-auto">
         {currentView === 'dashboard' && <Dashboard />}
         {currentView === 'patients' && !showRegistration && (
-          <PatientPortal onAddPatient={() => setShowRegistration(true)} />
+          <PatientPortal onAddPatient={() => {
+            console.log('New Patient button clicked!');
+            setShowRegistration(true);
+          }} />
         )}
         
         {currentView === 'patients' && showRegistration && (
