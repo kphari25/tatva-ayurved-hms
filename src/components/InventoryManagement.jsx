@@ -3,6 +3,7 @@ import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, Che
 import * as XLSX from 'xlsx';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import AddMedicine from './AddMedicine';
 
 const InventoryManagement = () => {
   const [inventory, setInventory] = useState([]);
@@ -12,6 +13,7 @@ const InventoryManagement = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [showAddMedicine, setShowAddMedicine] = useState(false);
 
   // Load inventory from Firebase
   useEffect(() => {
@@ -296,6 +298,14 @@ const InventoryManagement = () => {
 
           {/* Action Buttons */}
           <div className="flex gap-3">
+            <button
+              onClick={() => setShowAddMedicine(true)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium"
+            >
+              <Plus className="w-5 h-5" />
+              Add Medicine
+            </button>
+
             <label className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 cursor-pointer flex items-center gap-2 font-medium">
               <Upload className="w-5 h-5" />
               Import Excel
@@ -404,6 +414,17 @@ const InventoryManagement = () => {
           </div>
         </div>
       </div>
+
+      {/* Add Medicine Modal */}
+      {showAddMedicine && (
+        <AddMedicine
+          onClose={() => setShowAddMedicine(false)}
+          onSuccess={() => {
+            setShowAddMedicine(false);
+            loadInventory(); // Refresh inventory list
+          }}
+        />
+      )}
     </div>
   );
 };
