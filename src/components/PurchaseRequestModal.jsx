@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 
 const PurchaseRequestModal = ({ onClose, onSave }) => {
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [medicines, setMedicines] = useState([]);
   const [selectedMedicines, setSelectedMedicines] = useState([
     { 
@@ -27,32 +28,44 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
 
   const loadMedicines = async () => {
     try {
+      setLoading(true);
       const inventoryRef = collection(db, 'inventory');
       const snapshot = await getDocs(inventoryRef);
       const medicinesData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      console.log('Loaded medicines:', medicinesData.length, 'items');
+      console.log('Sample medicine:', medicinesData[0]);
       setMedicines(medicinesData);
     } catch (error) {
       console.error('Error loading medicines:', error);
+      alert('Failed to load medicines: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleMedicineSelect = (index, medicineId) => {
+    console.log('Medicine selected:', medicineId, 'Index:', index);
     const medicine = medicines.find(m => m.id === medicineId);
+    console.log('Found medicine:', medicine);
+    
     if (medicine) {
       const currentStock = medicine.stock_quantity || 0;
       const reorderLevel = medicine.reorder_level || 20;
       
+      console.log('Stock info:', { currentStock, reorderLevel, purchasePrice: medicine.purchase_price });
+      
       // Calculate suggested order quantity
-      // If stock is below reorder level, suggest bringing it up to reorder level + 50%
       let suggestedQty = 0;
       if (currentStock < reorderLevel) {
         suggestedQty = Math.ceil(reorderLevel * 1.5 - currentStock);
       } else {
-        suggestedQty = Math.ceil(reorderLevel * 0.5); // Suggest half of reorder level for buffer stock
+        suggestedQty = Math.ceil(reorderLevel * 0.5);
       }
+      
+      console.log('Suggested quantity:', suggestedQty);
       
       const updated = [...selectedMedicines];
       updated[index] = {
@@ -62,11 +75,15 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
         current_stock: currentStock,
         reorder_level: reorderLevel,
         quantity: suggestedQty,
-        estimated_cost: medicine.purchase_price || 0,
+        estimated_cost: medicine.purchase_price || medicine.MRP || 0,
         category: medicine.category || '',
         unit: medicine.unit_of_measurement || 'Nos'
       };
+      
+      console.log('Updated medicine row:', updated[index]);
       setSelectedMedicines(updated);
+    } else {
+      console.error('Medicine not found with ID:', medicineId);
     }
   };
 
@@ -182,7 +199,12 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
           {/* Medicines Table */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-gray-800">Medicines Required</h3>
+              <div>
+                <h3 className="font-bold text-gray-800">Medicines Required</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {loading ? 'Loading medicines...' : `${medicines.length} medicines available`}
+                </p>
+              </div>
               <button
                 onClick={addMedicineRow}
                 className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
@@ -226,11 +248,14 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
                             value={item.medicine_id}
                             onChange={(e) => handleMedicineSelect(index, e.target.value)}
                             className="w-full px-2 py-1 border rounded text-sm"
+                            disabled={loading}
                           >
-                            <option value="">Select Medicine</option>
+                            <option value="">
+                              {loading ? 'Loading medicines...' : 'Select Medicine'}
+                            </option>
                             {medicines.map(med => (
                               <option key={med.id} value={med.id}>
-                                {med.item_name}
+                                {med.item_name} {med.item_code ? `(${med.item_code})` : ''} - Stock: {med.stock_quantity || 0}
                               </option>
                             ))}
                           </select>
