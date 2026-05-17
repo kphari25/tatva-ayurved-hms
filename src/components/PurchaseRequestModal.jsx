@@ -73,50 +73,76 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
   };
 
   const handleMedicineSelect = (index, medicineId) => {
-    console.log('Medicine selected:', medicineId, 'Index:', index);
-    const medicine = medicines.find(m => m.id === medicineId);
-    console.log('Found medicine:', medicine);
+    console.log('🎯 handleMedicineSelect called');
+    console.log('   Index:', index);
+    console.log('   Medicine ID:', medicineId);
+    console.log('   Current selectedMedicines state:', JSON.stringify(selectedMedicines, null, 2));
     
-    if (medicine) {
-      const currentStock = medicine.stock_quantity || 0;
-      const reorderLevel = medicine.reorder_level || medicine.reorder_point || 20; // fallback to 20
-      const purchasePrice = medicine.purchase_price || medicine.purchase_rate || medicine.MRP || medicine.mrp || 0;
-      
-      console.log('Stock info:', { 
-        currentStock, 
-        reorderLevel, 
-        purchasePrice,
-        available_fields: Object.keys(medicine)
-      });
-      
-      // Calculate suggested order quantity
-      let suggestedQty = 0;
-      if (currentStock < reorderLevel) {
-        suggestedQty = Math.ceil(reorderLevel * 1.5 - currentStock);
-      } else {
-        suggestedQty = Math.ceil(reorderLevel * 0.5);
-      }
-      
-      console.log('Suggested quantity:', suggestedQty);
-      
-      const updated = [...selectedMedicines];
-      updated[index] = {
-        medicine_id: medicine.id,
-        medicine_name: medicine.item_name,
-        item_code: medicine.item_code || '',
-        current_stock: currentStock,
-        reorder_level: reorderLevel,
-        quantity: suggestedQty,
-        estimated_cost: purchasePrice,
-        category: medicine.category || '',
-        unit: medicine.unit_of_measurement || medicine.unit || 'Nos'
-      };
-      
-      console.log('Updated medicine row:', updated[index]);
-      setSelectedMedicines(updated);
-    } else {
-      console.error('Medicine not found with ID:', medicineId);
+    const medicine = medicines.find(m => m.id === medicineId);
+    console.log('🔍 Found medicine:', medicine ? 'YES' : 'NO');
+    
+    if (!medicine) {
+      console.error('❌ Medicine not found with ID:', medicineId);
+      console.log('   Available medicine IDs:', medicines.map(m => m.id).slice(0, 5));
+      return;
     }
+    
+    console.log('📦 Medicine details:', JSON.stringify(medicine, null, 2));
+    
+    const currentStock = medicine.stock_quantity || 0;
+    const reorderLevel = medicine.reorder_level || medicine.reorder_point || 20;
+    const purchasePrice = medicine.purchase_price || medicine.purchase_rate || medicine.MRP || medicine.mrp || 0;
+    
+    console.log('💰 Extracted values:', {
+      currentStock,
+      reorderLevel,
+      purchasePrice,
+      item_name: medicine.item_name,
+      item_code: medicine.item_code
+    });
+    
+    // Calculate suggested order quantity
+    let suggestedQty = 0;
+    if (currentStock < reorderLevel) {
+      suggestedQty = Math.ceil(reorderLevel * 1.5 - currentStock);
+    } else {
+      suggestedQty = Math.ceil(reorderLevel * 0.5);
+    }
+    
+    console.log('📊 Calculated suggested quantity:', suggestedQty);
+    
+    const newItem = {
+      medicine_id: medicine.id,
+      medicine_name: medicine.item_name,
+      item_code: medicine.item_code || '',
+      current_stock: currentStock,
+      reorder_level: reorderLevel,
+      quantity: suggestedQty,
+      estimated_cost: purchasePrice,
+      category: medicine.category || '',
+      unit: medicine.unit_of_measurement || medicine.unit || 'Nos'
+    };
+    
+    console.log('✨ New item object:', JSON.stringify(newItem, null, 2));
+    
+    const updated = [...selectedMedicines];
+    console.log('📝 Before update - array length:', updated.length);
+    console.log('📝 Updating index:', index);
+    
+    updated[index] = newItem;
+    
+    console.log('📝 After update - array length:', updated.length);
+    console.log('📝 Updated array:', JSON.stringify(updated, null, 2));
+    
+    console.log('🔄 Calling setSelectedMedicines...');
+    setSelectedMedicines(updated);
+    
+    console.log('✅ setSelectedMedicines called');
+    
+    // Force a console log after state update to verify
+    setTimeout(() => {
+      console.log('⏱️ State after 100ms:', JSON.stringify(selectedMedicines, null, 2));
+    }, 100);
   };
 
   const handleQuantityChange = (index, quantity) => {
@@ -271,6 +297,8 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
                 </thead>
                 <tbody className="divide-y">
                   {selectedMedicines.map((item, index) => {
+                    console.log(`🎨 Rendering row ${index}:`, JSON.stringify(item, null, 2));
+                    
                     const stockStatus = item.current_stock <= 0 ? 'out' : 
                                       item.current_stock < item.reorder_level ? 'low' : 
                                       'good';
@@ -282,11 +310,14 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
                                    'bg-green-50';
                     
                     return (
-                      <tr key={index} className={item.medicine_id && stockStatus !== 'good' ? stockBg : ''}>
+                      <tr key={item.medicine_id || `row-${index}`} className={item.medicine_id && stockStatus !== 'good' ? stockBg : ''}>
                         <td className="px-4 py-2">
                           <select
                             value={item.medicine_id}
-                            onChange={(e) => handleMedicineSelect(index, e.target.value)}
+                            onChange={(e) => {
+                              console.log(`🖱️ Dropdown changed at index ${index} to:`, e.target.value);
+                              handleMedicineSelect(index, e.target.value);
+                            }}
                             className="w-full px-2 py-1 border rounded text-sm"
                             disabled={loading}
                           >
