@@ -141,10 +141,21 @@ const PurchaseOrderModal = ({ request, onClose, onSave }) => {
       // Update request status
       await updateDoc(doc(db, 'purchase_requests', request.id), {
         po_created: true,
+        po_number: poData.po_number,
         po_date: new Date().toISOString()
       });
 
-      alert('✅ Purchase Order created successfully!');
+      // Enhanced success message
+      alert(`✅ Purchase Order Created Successfully!
+
+PO Number: ${poData.po_number}
+Vendor: ${selectedVendor.name}
+Total Amount: ₹${grandTotal.toLocaleString()}
+Items: ${poItems.length}
+Expected Delivery: ${new Date(expectedDelivery).toLocaleDateString()}
+
+The PO has been sent to the vendor. You can track it in the "Purchase Orders" tab.`);
+      
       if (onSave) onSave();
 
     } catch (error) {

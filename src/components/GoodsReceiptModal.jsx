@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 
 const GoodsReceiptModal = ({ po, onClose, onSave }) => {
   const [saving, setSaving] = useState(false);
+  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]); // Actual delivery/arrival date
   const [receivedItems, setReceivedItems] = useState(
     po.items.map(item => ({
       ...item,
@@ -22,6 +23,7 @@ const GoodsReceiptModal = ({ po, onClose, onSave }) => {
     number: '',
     date: new Date().toISOString().split('T')[0]
   });
+  const [deliveryNotes, setDeliveryNotes] = useState(''); // Notes about delivery condition
 
   const handleItemChange = (index, field, value) => {
     const updated = [...receivedItems];
@@ -62,7 +64,14 @@ const GoodsReceiptModal = ({ po, onClose, onSave }) => {
         vendor_name: po.vendor.name,
         vendor_invoice_number: vendorInvoice.number,
         vendor_invoice_date: vendorInvoice.date,
-        received_date: new Date().toISOString().split('T')[0],
+        
+        // Delivery Tracking
+        delivery_date: deliveryDate, // Actual arrival date
+        received_date: new Date().toISOString().split('T')[0], // When GRN was created
+        expected_delivery: po.expected_delivery, // Original expected date
+        delivery_status: deliveryDate <= po.expected_delivery ? 'on_time' : 'delayed',
+        delivery_notes: deliveryNotes,
+        
         received_by: currentUser.email,
         items_received: receivedItems,
         created_at: new Date().toISOString()
@@ -139,10 +148,46 @@ const GoodsReceiptModal = ({ po, onClose, onSave }) => {
         status: newStatus,
         grn_created: true,
         grn_number: grnNumber,
-        grn_date: new Date().toISOString()
+        grn_date: new Date().toISOString(),
+        actual_delivery_date: deliveryDate,
+        delivery_status: grnData.delivery_status
       });
 
-      alert('✅ Goods Receipt created successfully! Inventory updated.');
+      // Calculate totals for summary
+      const totalReceived = receivedItems.reduce((sum, item) => sum + item.received_qty, 0);
+      const totalOrdered = receivedItems.reduce((sum, item) => sum + item.ordered_qty, 0);
+      const totalDamaged = receivedItems.reduce((sum, item) => sum + (item.damaged_qty || 0), 0);
+      
+      // Delivery status message
+      const deliveryStatusMsg = deliveryDate <= po.expected_delivery ? 
+        '✅ Delivered On Time' : 
+        `⚠️ Delayed (Expected: ${new Date(po.expected_delivery).toLocaleDateString()})`;
+
+      // Enhanced success message
+      alert(`✅ Goods Receipt Note Created Successfully!
+
+GRN Number: ${grnNumber}
+PO Number: ${po.po_number}
+Vendor: ${po.vendor.name}
+
+📦 DELIVERY DETAILS:
+Arrival Date: ${new Date(deliveryDate).toLocaleDateString()}
+${deliveryStatusMsg}
+Invoice: ${vendorInvoice.number}
+
+📊 ITEMS RECEIVED:
+Total Ordered: ${totalOrdered} items
+Total Received: ${totalReceived} items
+${totalDamaged > 0 ? `Damaged: ${totalDamaged} items` : ''}
+
+✅ UPDATES COMPLETED:
+• Inventory updated with new stock
+• Batches and expiry dates recorded
+• P&L expense entry created (₹${totalAmount.toLocaleString()})
+• Purchase entry logged
+
+${allReceived ? '✅ All items received!' : '⚠️ Partially received - remaining items pending'}`);
+      
       if (onSave) onSave();
 
     } catch (error) {
@@ -262,6 +307,49 @@ const GoodsReceiptModal = ({ po, onClose, onSave }) => {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Delivery Tracking */}
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+              📦 Delivery & Arrival Tracking
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Actual Delivery/Arrival Date *
+                </label>
+                <input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  max={new Date().toISOString().split('T')[0]}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Expected: {new Date(po.expected_delivery).toLocaleDateString()}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Delivery Condition/Notes
+                </label>
+                <textarea
+                  value={deliveryNotes}
+                  onChange={(e) => setDeliveryNotes(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  rows="2"
+                  placeholder="e.g., Good condition, minor packaging damage, etc."
+                />
+              </div>
+            </div>
+            {deliveryDate > po.expected_delivery && (
+              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800 font-semibold">
+                  ⚠️ Delivery is delayed by {Math.ceil((new Date(deliveryDate) - new Date(po.expected_delivery)) / (1000 * 60 * 60 * 24))} day(s)
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Items Table */}
