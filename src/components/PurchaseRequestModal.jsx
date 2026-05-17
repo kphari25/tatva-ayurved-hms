@@ -28,21 +28,47 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
 
   const loadMedicines = async () => {
     try {
+      console.log('🔍 Starting to load medicines from Firebase...');
       setLoading(true);
+      
       const inventoryRef = collection(db, 'inventory');
+      console.log('📦 Got inventory collection reference');
+      
       const snapshot = await getDocs(inventoryRef);
-      const medicinesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      console.log('Loaded medicines:', medicinesData.length, 'items');
-      console.log('Sample medicine:', medicinesData[0]);
+      console.log('📊 Snapshot received. Document count:', snapshot.size);
+      
+      const medicinesData = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data
+        };
+      });
+      
+      console.log('✅ Loaded medicines:', medicinesData.length, 'items');
+      if (medicinesData.length > 0) {
+        console.log('📋 First 3 medicines:', medicinesData.slice(0, 3));
+        console.log('🔍 Sample medicine structure:', {
+          id: medicinesData[0].id,
+          item_name: medicinesData[0].item_name,
+          stock_quantity: medicinesData[0].stock_quantity,
+          purchase_price: medicinesData[0].purchase_price,
+          item_code: medicinesData[0].item_code,
+          reorder_level: medicinesData[0].reorder_level
+        });
+      } else {
+        console.warn('⚠️ No medicines found in inventory collection!');
+        alert('⚠️ No medicines found in inventory. Please add medicines to inventory first.');
+      }
+      
       setMedicines(medicinesData);
     } catch (error) {
-      console.error('Error loading medicines:', error);
+      console.error('❌ Error loading medicines:', error);
+      console.error('Error details:', error.message);
       alert('Failed to load medicines: ' + error.message);
     } finally {
       setLoading(false);
+      console.log('✅ Medicine loading complete. Total loaded:', medicines.length);
     }
   };
 
@@ -53,9 +79,15 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
     
     if (medicine) {
       const currentStock = medicine.stock_quantity || 0;
-      const reorderLevel = medicine.reorder_level || 20;
+      const reorderLevel = medicine.reorder_level || medicine.reorder_point || 20; // fallback to 20
+      const purchasePrice = medicine.purchase_price || medicine.purchase_rate || medicine.MRP || medicine.mrp || 0;
       
-      console.log('Stock info:', { currentStock, reorderLevel, purchasePrice: medicine.purchase_price });
+      console.log('Stock info:', { 
+        currentStock, 
+        reorderLevel, 
+        purchasePrice,
+        available_fields: Object.keys(medicine)
+      });
       
       // Calculate suggested order quantity
       let suggestedQty = 0;
@@ -75,9 +107,9 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
         current_stock: currentStock,
         reorder_level: reorderLevel,
         quantity: suggestedQty,
-        estimated_cost: medicine.purchase_price || medicine.MRP || 0,
+        estimated_cost: purchasePrice,
         category: medicine.category || '',
-        unit: medicine.unit_of_measurement || 'Nos'
+        unit: medicine.unit_of_measurement || medicine.unit || 'Nos'
       };
       
       console.log('Updated medicine row:', updated[index]);
@@ -185,13 +217,21 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
               <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
               <div className="text-sm text-blue-800">
                 <p className="font-medium mb-1">Smart Purchase Suggestions</p>
-                <p>When you select a medicine, the system will:</p>
-                <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>Show current stock levels with color-coded status</li>
-                  <li>Display reorder levels for each item</li>
-                  <li>Suggest optimal order quantity based on stock status</li>
-                  <li>Highlight items that are out of stock or running low</li>
-                </ul>
+                {loading ? (
+                  <p className="text-blue-600 font-semibold">⏳ Loading medicines from inventory...</p>
+                ) : medicines.length === 0 ? (
+                  <p className="text-red-600 font-semibold">⚠️ No medicines found! Please add medicines to inventory first.</p>
+                ) : (
+                  <>
+                    <p>✅ {medicines.length} medicines loaded. When you select a medicine, the system will:</p>
+                    <ul className="list-disc list-inside mt-2 space-y-1">
+                      <li>Show current stock levels with color-coded status</li>
+                      <li>Display reorder levels for each item</li>
+                      <li>Suggest optimal order quantity based on stock status</li>
+                      <li>Highlight items that are out of stock or running low</li>
+                    </ul>
+                  </>
+                )}
               </div>
             </div>
           </div>
