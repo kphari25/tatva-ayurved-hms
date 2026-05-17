@@ -40,21 +40,20 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
       const medicinesData = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
-          id: doc.id,
+          id: doc.id, // Use Firestore document ID
+          firestore_doc_id: doc.id, // Keep reference
           ...data
         };
       });
       
       console.log('✅ Loaded medicines:', medicinesData.length, 'items');
       if (medicinesData.length > 0) {
-        console.log('📋 First 3 medicines:', medicinesData.slice(0, 3));
-        console.log('🔍 Sample medicine structure:', {
-          id: medicinesData[0].id,
+        console.log('📋 First medicine sample:', {
+          firestore_id: medicinesData[0].id,
           item_name: medicinesData[0].item_name,
           stock_quantity: medicinesData[0].stock_quantity,
-          purchase_price: medicinesData[0].purchase_price,
-          item_code: medicinesData[0].item_code,
-          reorder_level: medicinesData[0].reorder_level
+          purchase_rate: medicinesData[0].purchase_rate,
+          all_fields: Object.keys(medicinesData[0])
         });
       } else {
         console.warn('⚠️ No medicines found in inventory collection!');
@@ -68,7 +67,7 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
       alert('Failed to load medicines: ' + error.message);
     } finally {
       setLoading(false);
-      console.log('✅ Medicine loading complete. Total loaded:', medicines.length);
+      console.log('✅ Medicine loading complete.');
     }
   };
 
