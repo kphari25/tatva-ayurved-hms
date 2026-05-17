@@ -39,22 +39,26 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
       
       const medicinesData = snapshot.docs.map(doc => {
         const data = doc.data();
+        // CRITICAL: We ignore any 'id' field in the data
+        // and ONLY use Firestore's document ID
+        const { id: dataId, ...restData } = data; // Remove id from data if it exists
         return {
-          id: doc.id, // Use Firestore document ID
-          firestore_doc_id: doc.id, // Keep reference
-          ...data
+          docId: doc.id, // Firestore document ID (the real unique ID)
+          data_id: dataId, // The numeric id from your data (just for reference)
+          ...restData
         };
       });
       
       console.log('✅ Loaded medicines:', medicinesData.length, 'items');
       if (medicinesData.length > 0) {
         console.log('📋 First medicine sample:', {
-          firestore_id: medicinesData[0].id,
+          docId: medicinesData[0].docId,
+          data_id: medicinesData[0].data_id,
           item_name: medicinesData[0].item_name,
           stock_quantity: medicinesData[0].stock_quantity,
-          purchase_rate: medicinesData[0].purchase_rate,
-          all_fields: Object.keys(medicinesData[0])
+          purchase_rate: medicinesData[0].purchase_rate
         });
+        console.log('🔍 All fields:', Object.keys(medicinesData[0]));
       } else {
         console.warn('⚠️ No medicines found in inventory collection!');
         alert('⚠️ No medicines found in inventory. Please add medicines to inventory first.');
@@ -71,18 +75,18 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
     }
   };
 
-  const handleMedicineSelect = (index, medicineId) => {
+  const handleMedicineSelect = (index, medicineDocId) => {
     console.log('🎯 handleMedicineSelect called');
     console.log('   Index:', index);
-    console.log('   Medicine ID:', medicineId);
+    console.log('   Medicine DocID:', medicineDocId);
     console.log('   Current selectedMedicines state:', JSON.stringify(selectedMedicines, null, 2));
     
-    const medicine = medicines.find(m => m.id === medicineId);
+    const medicine = medicines.find(m => m.docId === medicineDocId);
     console.log('🔍 Found medicine:', medicine ? 'YES' : 'NO');
     
     if (!medicine) {
-      console.error('❌ Medicine not found with ID:', medicineId);
-      console.log('   Available medicine IDs:', medicines.map(m => m.id).slice(0, 5));
+      console.error('❌ Medicine not found with DocID:', medicineDocId);
+      console.log('   Available medicine DocIDs:', medicines.map(m => m.docId).slice(0, 5));
       return;
     }
     
@@ -111,7 +115,7 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
     console.log('📊 Calculated suggested quantity:', suggestedQty);
     
     const newItem = {
-      medicine_id: medicine.id,
+      medicine_id: medicine.docId, // Use docId
       medicine_name: medicine.item_name,
       item_code: medicine.item_code || '',
       current_stock: currentStock,
@@ -140,7 +144,7 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
     
     // Force a console log after state update to verify
     setTimeout(() => {
-      console.log('⏱️ State after 100ms:', JSON.stringify(selectedMedicines, null, 2));
+      console.log('⏱️ State should be updated now');
     }, 100);
   };
 
@@ -324,7 +328,7 @@ const PurchaseRequestModal = ({ onClose, onSave }) => {
                               {loading ? 'Loading medicines...' : 'Select Medicine'}
                             </option>
                             {medicines.map(med => (
-                              <option key={med.id} value={med.id}>
+                              <option key={med.docId} value={med.docId}>
                                 {med.item_name} {med.item_code ? `(${med.item_code})` : ''} - Stock: {med.stock_quantity || 0}
                               </option>
                             ))}
