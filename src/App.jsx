@@ -216,15 +216,29 @@ function App() {
         {currentView === 'dashboard' && <Dashboard />}
         {currentView === 'patients' && !showRegistration && (
           <PatientPortal onAddPatient={() => {
-            console.log('New Patient button clicked!');
+            console.log('🔵 New Patient button clicked in PatientPortal!');
+            console.log('🔵 Current showRegistration state:', showRegistration);
+            console.log('🔵 Setting showRegistration to true...');
             setShowRegistration(true);
+            console.log('🔵 showRegistration should now be true');
+            setTimeout(() => {
+              console.log('🔵 After 100ms, showRegistration is:', showRegistration);
+            }, 100);
           }} />
         )}
         
         {currentView === 'patients' && showRegistration && (
-          <PatientRegistrationNew 
-            onClose={() => setShowRegistration(false)}
-          />
+          (() => {
+            console.log('🟢 Rendering PatientRegistrationNew! showRegistration:', showRegistration);
+            return (
+              <PatientRegistrationNew 
+                onClose={() => {
+                  console.log('🔴 Close button clicked in registration');
+                  setShowRegistration(false);
+                }}
+              />
+            );
+          })()
         )}
         {currentView === 'leads' && <LeadManagement />}
         {currentView === 'inventory' && <InventoryManagement />}
