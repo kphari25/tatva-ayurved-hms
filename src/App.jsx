@@ -25,6 +25,7 @@ import AIAssist from './components/AIAssist';
 import PurchaseManagement from './components/PurchaseManagement';
 
 function App() {
+  // DEBUG VERSION - Updated 2026-05-22 - New Patient Button Fix
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard');
   const [showRegistration, setShowRegistration] = useState(false);
