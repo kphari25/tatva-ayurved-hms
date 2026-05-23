@@ -216,30 +216,13 @@ function App() {
       <div className="flex-1 overflow-auto">
         {currentView === 'dashboard' && <Dashboard />}
         {currentView === 'patients' && !showRegistration && (
-          <PatientPortal onAddPatient={() => {
-            console.log('🔵 New Patient button clicked in PatientPortal!');
-            console.log('🔵 Current showRegistration state:', showRegistration);
-            console.log('🔵 Setting showRegistration to true...');
-            setShowRegistration(true);
-            console.log('🔵 showRegistration should now be true');
-            setTimeout(() => {
-              console.log('🔵 After 100ms, showRegistration is:', showRegistration);
-            }, 100);
-          }} />
+          <PatientPortal onAddPatient={() => setShowRegistration(true)} />
         )}
         
         {currentView === 'patients' && showRegistration && (
-          (() => {
-            console.log('🟢 Rendering PatientRegistrationNew! showRegistration:', showRegistration);
-            return (
-              <PatientRegistrationNew 
-                onClose={() => {
-                  console.log('🔴 Close button clicked in registration');
-                  setShowRegistration(false);
-                }}
-              />
-            );
-          })()
+          <PatientRegistrationNew 
+            onClose={() => setShowRegistration(false)}
+          />
         )}
         {currentView === 'leads' && <LeadManagement />}
         {currentView === 'inventory' && <InventoryManagement />}
