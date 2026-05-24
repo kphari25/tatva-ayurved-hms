@@ -19,7 +19,9 @@ const AddMedicine = ({ onClose, onSuccess }) => {
     purchase_price: '',
     MRP: '',
     discount_percentage: '',
-    gst_percentage: '12',
+    gst_percentage: '12', // Total GST
+    cgst_percentage: '6',  // Central GST (half of total)
+    sgst_percentage: '6',  // State GST (half of total)
     
     // Stock Information
     stock_quantity: '',
@@ -168,6 +170,8 @@ const AddMedicine = ({ onClose, onSuccess }) => {
         MRP: parseFloat(formData.MRP),
         discount_percentage: parseFloat(formData.discount_percentage) || 0,
         gst_percentage: parseFloat(formData.gst_percentage) || 12,
+        cgst_percentage: parseFloat(formData.cgst_percentage) || 6,
+        sgst_percentage: parseFloat(formData.sgst_percentage) || 6,
         margin: calculateSellingPrice(),
         
         // Stock Information
@@ -404,11 +408,17 @@ const AddMedicine = ({ onClose, onSuccess }) => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  GST %
+                  Total GST %
                 </label>
                 <select
                   value={formData.gst_percentage}
-                  onChange={(e) => handleChange('gst_percentage', e.target.value)}
+                  onChange={(e) => {
+                    const totalGST = parseFloat(e.target.value);
+                    const halfGST = totalGST / 2;
+                    handleChange('gst_percentage', e.target.value);
+                    handleChange('cgst_percentage', halfGST.toString());
+                    handleChange('sgst_percentage', halfGST.toString());
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="0">0%</option>
@@ -417,6 +427,47 @@ const AddMedicine = ({ onClose, onSuccess }) => {
                   <option value="18">18%</option>
                   <option value="28">28%</option>
                 </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  CGST: {formData.cgst_percentage}% + SGST: {formData.sgst_percentage}%
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  CGST % (Central)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.cgst_percentage}
+                  onChange={(e) => {
+                    const cgst = parseFloat(e.target.value) || 0;
+                    const sgst = parseFloat(formData.sgst_percentage) || 0;
+                    handleChange('cgst_percentage', e.target.value);
+                    handleChange('gst_percentage', (cgst + sgst).toString());
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="6"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  SGST % (State)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.sgst_percentage}
+                  onChange={(e) => {
+                    const sgst = parseFloat(e.target.value) || 0;
+                    const cgst = parseFloat(formData.cgst_percentage) || 0;
+                    handleChange('sgst_percentage', e.target.value);
+                    handleChange('gst_percentage', (cgst + sgst).toString());
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="6"
+                />
               </div>
             </div>
 
