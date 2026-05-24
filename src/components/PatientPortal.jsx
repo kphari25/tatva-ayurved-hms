@@ -4,7 +4,7 @@ import {
   Phone, Mail, Calendar, MapPin, Activity,
   X, FileText, Download, Filter
 } from 'lucide-react';
-import { db } from '../firebaseConfig';
+import { db } from '../firebase-components/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy } from 'firebase/firestore';
 
 const PatientPortal = ({ onAddPatient }) => {

@@ -287,7 +287,7 @@ const InventoryAnalytics = () => {
               <div className="flex items-center gap-3">
                 <TrendingDown className="w-8 h-8 text-orange-600" />
                 <div>
-                  <p className="text-sm text-orange-600 font-medium">Stagnant (>2 months)</p>
+                  <p className="text-sm text-orange-600 font-medium">Stagnant (&gt;2 months)</p>
                   <p className="text-2xl font-bold text-orange-700">{analytics.stagnantItems}</p>
                 </div>
               </div>
