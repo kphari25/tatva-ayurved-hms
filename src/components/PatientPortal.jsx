@@ -4,12 +4,8 @@ import {
   Phone, Mail, Calendar, MapPin, Activity,
   X, FileText, Download, Filter
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+import { db } from '../firebaseConfig';
+import { collection, getDocs, doc, deleteDoc, query, orderBy } from 'firebase/firestore';
 
 const PatientPortal = ({ onAddPatient }) => {
   console.log('🔵 PatientPortal rendered, onAddPatient prop:', typeof onAddPatient);
@@ -29,22 +25,18 @@ const PatientPortal = ({ onAddPatient }) => {
   const loadPatients = async () => {
     setLoading(true);
     try {
-      if (supabase) {
-        // Load from Supabase
-        const { data, error } = await supabase
-          .from('patients')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        setPatients(data || []);
-      } else {
-        // Load from localStorage as fallback
-        const savedPatients = localStorage.getItem('patients');
-        if (savedPatients) {
-          setPatients(JSON.parse(savedPatients));
-        }
-      }
+      // Load from Firebase
+      const patientsRef = collection(db, 'patients');
+      const q = query(patientsRef, orderBy('created_at', 'desc'));
+      const snapshot = await getDocs(q);
+      
+      const patientsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      console.log('✅ Loaded patients from Firebase:', patientsData.length);
+      setPatients(patientsData);
     } catch (error) {
       console.error('Error loading patients:', error);
       alert('Error loading patients: ' + error.message);
@@ -57,19 +49,10 @@ const PatientPortal = ({ onAddPatient }) => {
     if (!confirm('Are you sure you want to delete this patient?')) return;
 
     try {
-      if (supabase) {
-        const { error } = await supabase
-          .from('patients')
-          .delete()
-          .eq('id', patientId);
-
-        if (error) throw error;
-      } else {
-        // Delete from localStorage
-        const updatedPatients = patients.filter(p => p.id !== patientId);
-        localStorage.setItem('patients', JSON.stringify(updatedPatients));
-      }
-
+      // Delete from Firebase
+      await deleteDoc(doc(db, 'patients', patientId));
+      
+      console.log('✅ Patient deleted from Firebase');
       // Reload patients
       loadPatients();
       alert('✅ Patient deleted successfully!');
