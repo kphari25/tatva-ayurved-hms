@@ -14,6 +14,7 @@ const InventoryManagement = () => {
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showAddMedicine, setShowAddMedicine] = useState(false);
+  const [expandedRow, setExpandedRow] = useState(null); // For showing detailed view
 
   // Load inventory from Firebase
   useEffect(() => {
@@ -377,26 +378,220 @@ const InventoryManagement = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expand</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Code</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Purchase Rate</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Purchase Price</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">MRP</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock Value</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Purchase Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">GST</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch/Expiry</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredInventory.map((item, index) => (
-                  <tr key={item.firebaseId || index} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.item_code}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{item.item_name}</td>
-                    <td className="px-6 py-4 text-sm text-right text-gray-700">{item.stock_quantity}</td>
-                    <td className="px-6 py-4 text-sm text-right text-gray-700">₹{item.purchase_rate?.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-sm text-right text-gray-700">₹{item.mrp?.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-sm text-right text-gray-700">₹{item.stock_value?.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{item.purchase_date || item.month || '-'}</td>
-                  </tr>
+                  <React.Fragment key={item.firebaseId || index}>
+                    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => setExpandedRow(expandedRow === item.firebaseId ? null : item.firebaseId)}>
+                      <td className="px-6 py-4 text-sm">
+                        <button className="text-blue-600 hover:text-blue-800">
+                          {expandedRow === item.firebaseId ? '▼' : '▶'}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.item_code || '-'}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900">{item.item_name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{item.category || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-right">
+                        <span className={`font-semibold ${
+                          (item.stock_quantity || 0) === 0 ? 'text-red-600' :
+                          (item.stock_quantity || 0) < (item.reorder_level || 10) ? 'text-orange-600' :
+                          'text-green-600'
+                        }`}>
+                          {item.stock_quantity || 0} {item.unit_of_measurement || 'Nos'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">₹{(item.purchase_price || item.purchase_rate || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">₹{(item.MRP || item.mrp || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {item.gst_percentage || 12}%
+                        {item.cgst_percentage && item.sgst_percentage && (
+                          <span className="text-xs block text-gray-500">
+                            C:{item.cgst_percentage}% S:{item.sgst_percentage}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {item.batch_number || (item.batches && item.batches[0]?.batch_number) || '-'}
+                        {(item.expiry_date || (item.batches && item.batches[0]?.expiry_date)) && (
+                          <span className="text-xs block text-gray-500">
+                            Exp: {item.expiry_date || item.batches[0]?.expiry_date}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          item.is_active !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {item.is_active !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                    </tr>
+                    
+                    {/* Expanded Row with Complete Details */}
+                    {expandedRow === item.firebaseId && (
+                      <tr className="bg-blue-50">
+                        <td colSpan="10" className="px-6 py-6">
+                          <div className="grid grid-cols-3 gap-6">
+                            {/* Column 1: Basic Information */}
+                            <div className="space-y-3">
+                              <h4 className="font-bold text-gray-800 mb-3 pb-2 border-b">📋 Basic Information</h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <span className="text-gray-600">Item Code:</span>
+                                <span className="font-medium">{item.item_code || '-'}</span>
+                                
+                                <span className="text-gray-600">Item Name:</span>
+                                <span className="font-medium">{item.item_name}</span>
+                                
+                                <span className="text-gray-600">Category:</span>
+                                <span className="font-medium">{item.category || '-'}</span>
+                                
+                                <span className="text-gray-600">Manufacturer:</span>
+                                <span className="font-medium">{item.manufacturer || '-'}</span>
+                                
+                                <span className="text-gray-600">HSN Code:</span>
+                                <span className="font-medium">{item.hsn_code || '-'}</span>
+                                
+                                <span className="text-gray-600">Dosage Form:</span>
+                                <span className="font-medium">{item.dosage_form || '-'}</span>
+                                
+                                <span className="text-gray-600">Strength:</span>
+                                <span className="font-medium">{item.strength || '-'}</span>
+                                
+                                <span className="text-gray-600">Composition:</span>
+                                <span className="font-medium">{item.composition || '-'}</span>
+                              </div>
+                            </div>
+
+                            {/* Column 2: Pricing & Stock */}
+                            <div className="space-y-3">
+                              <h4 className="font-bold text-gray-800 mb-3 pb-2 border-b">💰 Pricing & Stock</h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <span className="text-gray-600">Purchase Price:</span>
+                                <span className="font-medium text-green-700">₹{(item.purchase_price || item.purchase_rate || 0).toFixed(2)}</span>
+                                
+                                <span className="text-gray-600">MRP:</span>
+                                <span className="font-medium text-blue-700">₹{(item.MRP || item.mrp || 0).toFixed(2)}</span>
+                                
+                                <span className="text-gray-600">Discount:</span>
+                                <span className="font-medium">{item.discount_percentage || 0}%</span>
+                                
+                                <span className="text-gray-600">Total GST:</span>
+                                <span className="font-medium">{item.gst_percentage || 12}%</span>
+                                
+                                <span className="text-gray-600">CGST:</span>
+                                <span className="font-medium">{item.cgst_percentage || (item.gst_percentage/2) || 6}%</span>
+                                
+                                <span className="text-gray-600">SGST:</span>
+                                <span className="font-medium">{item.sgst_percentage || (item.gst_percentage/2) || 6}%</span>
+                                
+                                <span className="text-gray-600">Stock Quantity:</span>
+                                <span className={`font-bold ${
+                                  (item.stock_quantity || 0) === 0 ? 'text-red-600' :
+                                  (item.stock_quantity || 0) < (item.reorder_level || 10) ? 'text-orange-600' :
+                                  'text-green-600'
+                                }`}>
+                                  {item.stock_quantity || 0} {item.unit_of_measurement || 'Nos'}
+                                </span>
+                                
+                                <span className="text-gray-600">Reorder Level:</span>
+                                <span className="font-medium">{item.reorder_level || '-'}</span>
+                                
+                                <span className="text-gray-600">Stock Value:</span>
+                                <span className="font-medium text-purple-700">₹{(item.stock_value || ((item.stock_quantity || 0) * (item.purchase_price || item.purchase_rate || 0))).toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            {/* Column 3: Batch & Storage */}
+                            <div className="space-y-3">
+                              <h4 className="font-bold text-gray-800 mb-3 pb-2 border-b">📦 Batch & Storage</h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <span className="text-gray-600">Batch Number:</span>
+                                <span className="font-medium">{item.batch_number || (item.batches && item.batches[0]?.batch_number) || '-'}</span>
+                                
+                                <span className="text-gray-600">Mfg Date:</span>
+                                <span className="font-medium">{item.manufacturing_date || (item.batches && item.batches[0]?.manufacturing_date) || '-'}</span>
+                                
+                                <span className="text-gray-600">Expiry Date:</span>
+                                <span className="font-medium">{item.expiry_date || (item.batches && item.batches[0]?.expiry_date) || '-'}</span>
+                                
+                                <span className="text-gray-600">Storage Location:</span>
+                                <span className="font-medium">{item.storage_location || '-'}</span>
+                                
+                                <span className="text-gray-600">Rack Number:</span>
+                                <span className="font-medium">{item.rack_number || '-'}</span>
+                                
+                                <span className="text-gray-600">Supplier:</span>
+                                <span className="font-medium">{item.supplier_name || '-'}</span>
+                                
+                                <span className="text-gray-600">Supplier Contact:</span>
+                                <span className="font-medium">{item.supplier_contact || '-'}</span>
+                                
+                                <span className="text-gray-600">Rx Required:</span>
+                                <span className={`font-medium ${item.prescription_required ? 'text-red-600' : 'text-green-600'}`}>
+                                  {item.prescription_required ? 'Yes' : 'No'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Additional Information Row */}
+                          {(item.description || item.usage_instructions || item.side_effects || item.contraindications) && (
+                            <div className="mt-6 pt-4 border-t border-blue-200">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                {item.description && (
+                                  <div>
+                                    <span className="font-semibold text-gray-700">Description:</span>
+                                    <p className="text-gray-600 mt-1">{item.description}</p>
+                                  </div>
+                                )}
+                                {item.usage_instructions && (
+                                  <div>
+                                    <span className="font-semibold text-gray-700">Usage Instructions:</span>
+                                    <p className="text-gray-600 mt-1">{item.usage_instructions}</p>
+                                  </div>
+                                )}
+                                {item.side_effects && (
+                                  <div>
+                                    <span className="font-semibold text-gray-700">Side Effects:</span>
+                                    <p className="text-gray-600 mt-1">{item.side_effects}</p>
+                                  </div>
+                                )}
+                                {item.contraindications && (
+                                  <div>
+                                    <span className="font-semibold text-gray-700">Contraindications:</span>
+                                    <p className="text-gray-600 mt-1">{item.contraindications}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Actions */}
+                          <div className="mt-4 pt-4 border-t border-blue-200 flex gap-3">
+                            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                              <Edit className="w-4 h-4" />
+                              Edit
+                            </button>
+                            <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2">
+                              <Trash2 className="w-4 h-4" />
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
