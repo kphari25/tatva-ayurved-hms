@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
-import { Plus, Save, X, Package, DollarSign, Calendar, Barcode, Tag, FileText, AlertCircle, CheckCircle } from 'lucide-react';
-import { collection, addDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Save, X, Package, DollarSign, Calendar, Barcode, Tag, FileText, AlertCircle, CheckCircle, Search } from 'lucide-react';
+import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const AddMedicine = ({ onClose, onSuccess }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [existingMedicines, setExistingMedicines] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef(null);
   
   const [formData, setFormData] = useState({
     // Basic Information
@@ -108,6 +112,116 @@ const AddMedicine = ({ onClose, onSuccess }) => {
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setError('');
+  };
+
+  // Load existing medicines for auto-complete
+  useEffect(() => {
+    const loadExistingMedicines = async () => {
+      try {
+        const inventoryRef = collection(db, 'inventory');
+        const snapshot = await getDocs(inventoryRef);
+        const medicines = snapshot.docs.map(doc => ({
+          docId: doc.id,
+          ...doc.data()
+        }));
+        console.log('✅ Loaded', medicines.length, 'existing medicines for auto-complete');
+        setExistingMedicines(medicines);
+      } catch (err) {
+        console.error('Error loading existing medicines:', err);
+      }
+    };
+    loadExistingMedicines();
+  }, []);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle medicine name search/auto-complete
+  const handleMedicineNameChange = (value) => {
+    handleChange('item_name', value);
+    
+    if (value.trim().length >= 2) {
+      const searchTerm = value.toLowerCase();
+      const matches = existingMedicines
+        .filter(med => 
+          (med.item_name && med.item_name.toLowerCase().includes(searchTerm)) ||
+          (med.item_code && med.item_code.toLowerCase().includes(searchTerm))
+        )
+        .slice(0, 10); // Show max 10 suggestions
+      
+      setSuggestions(matches);
+      setShowSuggestions(matches.length > 0);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  // Auto-populate all fields from selected existing medicine
+  const handleSelectExistingMedicine = (medicine) => {
+    setFormData(prev => ({
+      ...prev,
+      item_name: medicine.item_name || '',
+      item_code: medicine.item_code || '',
+      category: medicine.category || '',
+      manufacturer: medicine.manufacturer || '',
+      hsn_code: medicine.hsn_code || '',
+      
+      // Pricing
+      purchase_price: medicine.purchase_price?.toString() || medicine.purchase_rate?.toString() || '',
+      MRP: medicine.MRP?.toString() || medicine.mrp?.toString() || '',
+      discount_percentage: medicine.discount_percentage?.toString() || '',
+      gst_percentage: medicine.gst_percentage?.toString() || '12',
+      cgst_percentage: medicine.cgst_percentage?.toString() || (medicine.gst_percentage ? (medicine.gst_percentage / 2).toString() : '6'),
+      sgst_percentage: medicine.sgst_percentage?.toString() || (medicine.gst_percentage ? (medicine.gst_percentage / 2).toString() : '6'),
+      
+      // Stock - keep empty so user enters new stock
+      stock_quantity: '',
+      reorder_level: medicine.reorder_level?.toString() || '',
+      unit_of_measurement: medicine.unit_of_measurement || 'Nos',
+      
+      // Batch - keep empty for new batch
+      batch_number: '',
+      manufacturing_date: '',
+      expiry_date: '',
+      
+      // Storage
+      storage_location: medicine.storage_location || '',
+      rack_number: medicine.rack_number || '',
+      
+      // Medicine Details
+      composition: medicine.composition || '',
+      dosage_form: medicine.dosage_form || '',
+      strength: medicine.strength || '',
+      
+      // Supplier
+      supplier_name: medicine.supplier_name || '',
+      supplier_contact: medicine.supplier_contact || '',
+      
+      // Additional
+      description: medicine.description || '',
+      usage_instructions: medicine.usage_instructions || '',
+      side_effects: medicine.side_effects || '',
+      contraindications: medicine.contraindications || '',
+      
+      // Status
+      is_active: medicine.is_active !== false,
+      prescription_required: medicine.prescription_required || false
+    }));
+    
+    setShowSuggestions(false);
+    setSuggestions([]);
+    
+    // Show confirmation
+    console.log('✅ Auto-populated from:', medicine.item_name);
   };
 
   const calculateSellingPrice = () => {
@@ -266,18 +380,74 @@ const AddMedicine = ({ onClose, onSuccess }) => {
               Basic Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
+              <div className="relative" ref={suggestionsRef}>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Medicine Name *
                 </label>
-                <input
-                  type="text"
-                  value={formData.item_name}
-                  onChange={(e) => handleChange('item_name', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ashwagandha Churna"
-                  required
-                />
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={formData.item_name}
+                    onChange={(e) => handleMedicineNameChange(e.target.value)}
+                    onFocus={() => {
+                      if (formData.item_name.trim().length >= 2 && suggestions.length > 0) {
+                        setShowSuggestions(true);
+                      }
+                    }}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Start typing to search existing medicines..."
+                    required
+                    autoComplete="off"
+                  />
+                </div>
+                {existingMedicines.length > 0 && (
+                  <p className="text-xs text-green-600 mt-1">
+                    {existingMedicines.length} medicines available for auto-complete
+                  </p>
+                )}
+                
+                {/* Auto-Complete Suggestions Dropdown */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                    <div className="p-2 bg-blue-50 border-b text-xs text-blue-700 font-medium">
+                      Found {suggestions.length} matching medicines - Click to auto-fill all fields
+                    </div>
+                    {suggestions.map((med, idx) => (
+                      <div
+                        key={med.docId || idx}
+                        className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
+                        onClick={() => handleSelectExistingMedicine(med)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-gray-900">{med.item_name}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              Code: {med.item_code || '-'} 
+                              {med.category && ` | Category: ${med.category}`}
+                              {med.manufacturer && ` | ${med.manufacturer}`}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-medium text-green-700">
+                              ₹{(med.purchase_price || med.purchase_rate || 0).toFixed(2)}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              MRP: ₹{(med.MRP || med.mrp || 0).toFixed(2)}
+                            </p>
+                            <p className={`text-xs font-medium mt-0.5 ${
+                              (med.stock_quantity || 0) === 0 ? 'text-red-600' :
+                              (med.stock_quantity || 0) < (med.reorder_level || 10) ? 'text-orange-600' :
+                              'text-green-600'
+                            }`}>
+                              Stock: {med.stock_quantity || 0} {med.unit_of_measurement || 'Nos'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
