@@ -23,6 +23,7 @@ import Dashboard from './components/Dashboard';
 import ProfitLoss from './components/ProfitLoss';
 import AIAssist from './components/AIAssist';
 import PurchaseManagement from './components/PurchaseManagement';
+import AppointmentScheduling from './components/AppointmentScheduling';
 
 function App() {
   // DEBUG VERSION - Updated 2026-05-22 - New Patient Button Fix
@@ -251,16 +252,7 @@ function App() {
           </div>
         )}
 
-        {currentView === 'scheduling' && (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">Appointment Scheduling</h1>
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600 mb-2">Appointment scheduling module coming soon!</p>
-              <p className="text-sm text-gray-500">Will include calendar view, booking, reminders, and therapist schedules</p>
-            </div>
-          </div>
-        )}
+        {currentView === 'scheduling' && <AppointmentScheduling />}
         
         {currentView === 'profit-loss' && <ProfitLoss />}
         
