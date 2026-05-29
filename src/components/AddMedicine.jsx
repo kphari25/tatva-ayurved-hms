@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Save, X, Package, DollarSign, Calendar, Barcode, Tag, FileText, AlertCircle, CheckCircle, Search } from 'lucide-react';
+import { Plus, Save, X, Package, IndianRupee, Calendar, Barcode, Tag, FileText, AlertCircle, CheckCircle, Search } from 'lucide-react';
 import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -528,7 +528,7 @@ const AddMedicine = ({ onClose, onSuccess }) => {
           {/* Pricing Information */}
           <div className="bg-gray-50 rounded-lg p-6">
             <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-green-600" />
+              <IndianRupee className="w-5 h-5 text-green-600" />
               Pricing Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
