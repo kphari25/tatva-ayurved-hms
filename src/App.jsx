@@ -24,6 +24,7 @@ import ProfitLoss from './components/ProfitLoss';
 import AIAssist from './components/AIAssist';
 import PurchaseManagement from './components/PurchaseManagement';
 import AppointmentScheduling from './components/AppointmentScheduling';
+import UserManagement, { getUserPermissions, hasModuleAccess } from './components/UserManagement';
 
 function App() {
   // DEBUG VERSION - Updated 2026-05-22 - New Patient Button Fix
@@ -78,8 +79,23 @@ function App() {
 
   const hasPermission = (permission) => {
     if (!currentUser) return false;
+    // System admin / admin role has full access
+    if (currentUser.role === 'system_admin' || currentUser.role === 'admin') return true;
     if (currentUser.permissions?.includes('all')) return true;
+    // Check role-based module access
+    if (permission && permission !== 'all') {
+      return hasModuleAccess(currentUser, permission);
+    }
     return currentUser.permissions?.includes(permission);
+  };
+
+  // Check if user can see a specific module
+  const canAccess = (moduleId) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'system_admin' || currentUser.role === 'admin') return true;
+    if (currentUser.permissions?.includes('all')) return true;
+    const userPerms = getUserPermissions(currentUser);
+    return userPerms.includes(moduleId);
   };
 
   // If not logged in, show login
@@ -88,30 +104,30 @@ function App() {
   }
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home, permission: null },
-    { id: 'patients', label: 'Patient Portal', icon: Users, permission: 'patients' },
-    { id: 'leads', label: 'Lead Management', icon: TrendingUp, permission: null },
-    { id: 'inventory', label: 'Inventory', icon: Package, permission: 'inventory' },
-    { id: 'packages', label: 'Treatment Packages', icon: Package, permission: null },
-    { id: 'purchase', label: 'Purchase Management', icon: ShoppingCart, permission: null },
-    { id: 'ai-assist', label: 'AI Assist', icon: TrendingUp, permission: null },
-    { id: 'prescriptions', label: 'Prescriptions', icon: FileText, permission: 'prescriptions' },
-    { id: 'invoices', label: 'Invoices', icon: Receipt, permission: 'invoices' },
-    { id: 'discharge', label: 'Discharge', icon: FileText, permission: 'invoices' },
-    { id: 'analytics', label: 'Analytics', icon: TrendingUp, permission: 'analytics' },
-    { id: 'scheduling', label: 'Scheduling', icon: Calendar, permission: 'appointments' },
+    { id: 'dashboard', label: 'Dashboard', icon: Home, moduleId: 'dashboard' },
+    { id: 'patients', label: 'Patient Portal', icon: Users, moduleId: 'patients' },
+    { id: 'leads', label: 'Lead Management', icon: TrendingUp, moduleId: 'leads' },
+    { id: 'inventory', label: 'Inventory', icon: Package, moduleId: 'inventory' },
+    { id: 'packages', label: 'Treatment Packages', icon: Package, moduleId: 'packages' },
+    { id: 'purchase', label: 'Purchase Management', icon: ShoppingCart, moduleId: 'purchase' },
+    { id: 'ai-assist', label: 'AI Assist', icon: TrendingUp, moduleId: 'ai-assist' },
+    { id: 'prescriptions', label: 'Prescriptions', icon: FileText, moduleId: 'prescriptions' },
+    { id: 'invoices', label: 'Invoices', icon: Receipt, moduleId: 'invoices' },
+    { id: 'discharge', label: 'Discharge', icon: FileText, moduleId: 'discharge' },
+    { id: 'analytics', label: 'Analytics', icon: TrendingUp, moduleId: 'analytics' },
+    { id: 'scheduling', label: 'Scheduling', icon: Calendar, moduleId: 'scheduling' },
     
     // Kitchen Module Section
     { id: 'kitchen-section', label: 'Kitchen', icon: null, isSectionHeader: true },
-    { id: 'mess-expense', label: 'Mess Expense', icon: ShoppingCart, permission: null },
-    { id: 'diet-module', label: 'Diet Plans', icon: Utensils, permission: null },
+    { id: 'mess-expense', label: 'Mess Expense', icon: ShoppingCart, moduleId: 'mess-expense' },
+    { id: 'diet-module', label: 'Diet Plans', icon: Utensils, moduleId: 'diet-module' },
     
     // Admin Only Section
     { id: 'admin-section', label: 'Administration', icon: null, isSectionHeader: true, adminOnly: true },
-    { id: 'profit-loss', label: 'P&L Statement', icon: DollarSign, permission: null },
-    { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, permission: 'all', badge: 'Admin' },
-    { id: 'user-management', label: 'User Management', icon: UserCog, permission: 'all', badge: 'Admin' },
-    { id: 'database-backup', label: 'Database Backup', icon: Database, permission: 'all', badge: 'Admin' },
+    { id: 'profit-loss', label: 'P&L Statement', icon: DollarSign, moduleId: 'profit-loss' },
+    { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, moduleId: 'hr-payroll', badge: 'Admin' },
+    { id: 'user-management', label: 'User Management', icon: UserCog, moduleId: 'user-management', badge: 'Admin' },
+    { id: 'database-backup', label: 'Database Backup', icon: Database, moduleId: 'user-management', badge: 'Admin' },
   ];
 
   return (
@@ -157,7 +173,7 @@ function App() {
           {menuItems.map((item) => {
             // Section headers
             if (item.isSectionHeader) {
-              if (item.adminOnly && !hasPermission('all')) return null;
+              if (item.adminOnly && !canAccess('user-management')) return null;
               return (
                 <div key={item.id} className="px-4 py-2 mt-4">
                   <p className="text-xs font-semibold text-teal-300 uppercase tracking-wider">
@@ -167,8 +183,8 @@ function App() {
               );
             }
 
-            // Check permissions
-            if (item.permission && !hasPermission(item.permission)) return null;
+            // Check permissions - use role-based access
+            if (item.moduleId && !canAccess(item.moduleId)) return null;
 
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -266,15 +282,7 @@ function App() {
           </div>
         )}
         
-        {currentView === 'user-management' && (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">User Management</h1>
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <UserCog className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Admin Only</p>
-            </div>
-          </div>
-        )}
+        {currentView === 'user-management' && <UserManagement />}
         
         {currentView === 'database-backup' && (
           <div className="p-6">
