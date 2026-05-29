@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -14,52 +16,93 @@ const Login = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      // Simulate authentication
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Mock users for demo
-      const users = {
-        'admin@tatvaayurved.com': {
-          password: 'admin123',
-          name: 'System Administrator',
-          role: 'Admin',
-          permissions: ['all']
-        },
-        'doctor@tatvaayurved.com': {
-          password: 'doctor123',
-          name: 'Dr. Sharma',
-          role: 'Doctor',
-          permissions: ['patients', 'prescriptions', 'appointments']
-        },
-        'staff@tatvaayurved.com': {
-          password: 'staff123',
-          name: 'Front Desk',
-          role: 'Staff',
-          permissions: ['patients', 'appointments', 'inventory']
+      const inputEmail = email.toLowerCase().trim();
+      
+      // 1. First check Firebase users collection
+      let loggedInUser = null;
+      
+      try {
+        const usersRef = collection(db, 'users');
+        const snapshot = await getDocs(usersRef);
+        const firebaseUser = snapshot.docs.find(doc => {
+          const data = doc.data();
+          return data.email && data.email.toLowerCase() === inputEmail;
+        });
+        
+        if (firebaseUser) {
+          const userData = firebaseUser.data();
+          
+          // Check if account is active
+          if (userData.is_active === false) {
+            setError('Your account has been deactivated. Please contact the administrator.');
+            setLoading(false);
+            return;
+          }
+          
+          // Check password
+          if (userData.password !== password) {
+            setError('Invalid email or password');
+            setLoading(false);
+            return;
+          }
+          
+          // Login successful from Firebase
+          loggedInUser = {
+            id: firebaseUser.id,
+            email: inputEmail,
+            name: userData.name,
+            role: userData.role || 'front_office',
+            permissions: userData.permissions || [],
+            department: userData.department || '',
+            qualification: userData.qualification || '',
+            employee_id: userData.employee_id || ''
+          };
         }
-      };
+      } catch (firebaseError) {
+        console.warn('Firebase user check failed, trying fallback:', firebaseError.message);
+      }
+      
+      // 2. If not found in Firebase, check built-in admin accounts
+      if (!loggedInUser) {
+        const builtInUsers = {
+          'admin@tatvaayurved.com': {
+            password: 'admin123',
+            name: 'System Administrator',
+            role: 'system_admin',
+            permissions: ['all']
+          },
+          'admin123': {
+            password: 'admin123',
+            name: 'System Administrator',
+            role: 'system_admin',
+            permissions: ['all']
+          }
+        };
 
-      const user = users[email.toLowerCase()];
-
-      if (!user || user.password !== password) {
+        const builtIn = builtInUsers[inputEmail];
+        if (builtIn && builtIn.password === password) {
+          loggedInUser = {
+            email: inputEmail,
+            name: builtIn.name,
+            role: builtIn.role,
+            permissions: builtIn.permissions
+          };
+        }
+      }
+      
+      // 3. If still not found, show error
+      if (!loggedInUser) {
         setError('Invalid email or password');
         setLoading(false);
         return;
       }
-
-      // Store user info
-      const userInfo = {
-        email: email.toLowerCase(),
-        name: user.name,
-        role: user.role,
-        permissions: user.permissions
-      };
-
-      localStorage.setItem('currentUser', JSON.stringify(userInfo));
-
-      // Call parent login handler
+      
+      // Save to localStorage and login
+      localStorage.setItem('currentUser', JSON.stringify(loggedInUser));
+      console.log('✅ Login successful:', loggedInUser.name, '| Role:', loggedInUser.role);
+      
       if (onLogin) {
-        onLogin(userInfo);
+        onLogin(loggedInUser);
       }
 
     } catch (err) {
