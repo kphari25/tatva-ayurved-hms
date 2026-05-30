@@ -1,7 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
 
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -10,6 +8,69 @@ const Login = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Built-in admin accounts (always work, even if Firebase is down)
+  const BUILT_IN_USERS = {
+    'admin@tatvaayurved.com': {
+      password: 'admin123',
+      name: 'System Administrator',
+      role: 'system_admin',
+      permissions: ['all']
+    },
+    'admin123': {
+      password: 'admin123',
+      name: 'System Administrator',
+      role: 'system_admin',
+      permissions: ['all']
+    }
+  };
+
+  // Try to check Firebase users
+  const checkFirebaseUser = async (inputEmail, inputPassword) => {
+    try {
+      // Dynamic import so Login doesn't crash if Firebase fails
+      const { db } = await import('../lib/firebase');
+      const { collection, getDocs } = await import('firebase/firestore');
+      
+      const usersRef = collection(db, 'users');
+      const snapshot = await getDocs(usersRef);
+      
+      const firebaseUser = snapshot.docs.find(d => {
+        const data = d.data();
+        return data.email && data.email.toLowerCase() === inputEmail;
+      });
+      
+      if (firebaseUser) {
+        const userData = firebaseUser.data();
+        
+        // Check if account is active
+        if (userData.is_active === false) {
+          return { error: 'Your account has been deactivated. Please contact the administrator.' };
+        }
+        
+        // Check password
+        if (userData.password === inputPassword) {
+          return {
+            user: {
+              id: firebaseUser.id,
+              email: inputEmail,
+              name: userData.name,
+              role: userData.role || 'front_office',
+              permissions: userData.permissions || [],
+              department: userData.department || '',
+              qualification: userData.qualification || '',
+              employee_id: userData.employee_id || ''
+            }
+          };
+        }
+      }
+      
+      return { user: null };
+    } catch (err) {
+      console.warn('Firebase user check failed:', err.message);
+      return { user: null };
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -17,89 +78,46 @@ const Login = ({ onLogin }) => {
 
     try {
       const inputEmail = email.toLowerCase().trim();
-      
-      // 1. First check Firebase users collection
       let loggedInUser = null;
       
-      try {
-        const usersRef = collection(db, 'users');
-        const snapshot = await getDocs(usersRef);
-        const firebaseUser = snapshot.docs.find(doc => {
-          const data = doc.data();
-          return data.email && data.email.toLowerCase() === inputEmail;
-        });
-        
-        if (firebaseUser) {
-          const userData = firebaseUser.data();
-          
-          // Check if account is active
-          if (userData.is_active === false) {
-            setError('Your account has been deactivated. Please contact the administrator.');
-            setLoading(false);
-            return;
-          }
-          
-          // Check password
-          if (userData.password !== password) {
-            setError('Invalid email or password');
-            setLoading(false);
-            return;
-          }
-          
-          // Login successful from Firebase
-          loggedInUser = {
-            id: firebaseUser.id,
-            email: inputEmail,
-            name: userData.name,
-            role: userData.role || 'front_office',
-            permissions: userData.permissions || [],
-            department: userData.department || '',
-            qualification: userData.qualification || '',
-            employee_id: userData.employee_id || ''
-          };
-        }
-      } catch (firebaseError) {
-        console.warn('Firebase user check failed, trying fallback:', firebaseError.message);
-      }
-      
-      // 2. If not found in Firebase, check built-in admin accounts
-      if (!loggedInUser) {
-        const builtInUsers = {
-          'admin@tatvaayurved.com': {
-            password: 'admin123',
-            name: 'System Administrator',
-            role: 'system_admin',
-            permissions: ['all']
-          },
-          'admin123': {
-            password: 'admin123',
-            name: 'System Administrator',
-            role: 'system_admin',
-            permissions: ['all']
-          }
+      // STEP 1: Check built-in admin accounts FIRST (always works)
+      const builtIn = BUILT_IN_USERS[inputEmail];
+      if (builtIn && builtIn.password === password) {
+        loggedInUser = {
+          email: inputEmail,
+          name: builtIn.name,
+          role: builtIn.role,
+          permissions: builtIn.permissions
         };
-
-        const builtIn = builtInUsers[inputEmail];
-        if (builtIn && builtIn.password === password) {
-          loggedInUser = {
-            email: inputEmail,
-            name: builtIn.name,
-            role: builtIn.role,
-            permissions: builtIn.permissions
-          };
+        console.log('✅ Login via built-in admin');
+      }
+      
+      // STEP 2: If not built-in, check Firebase
+      if (!loggedInUser) {
+        const result = await checkFirebaseUser(inputEmail, password);
+        
+        if (result.error) {
+          setError(result.error);
+          setLoading(false);
+          return;
+        }
+        
+        if (result.user) {
+          loggedInUser = result.user;
+          console.log('✅ Login via Firebase:', result.user.name);
         }
       }
       
-      // 3. If still not found, show error
+      // STEP 3: No match
       if (!loggedInUser) {
         setError('Invalid email or password');
         setLoading(false);
         return;
       }
       
-      // Save to localStorage and login
+      // Save and login
       localStorage.setItem('currentUser', JSON.stringify(loggedInUser));
-      console.log('✅ Login successful:', loggedInUser.name, '| Role:', loggedInUser.role);
+      console.log('✅ Logged in:', loggedInUser.name, '| Role:', loggedInUser.role);
       
       if (onLogin) {
         onLogin(loggedInUser);

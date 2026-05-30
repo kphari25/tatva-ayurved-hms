@@ -80,7 +80,7 @@ function App() {
   const hasPermission = (permission) => {
     if (!currentUser) return false;
     // System admin / admin role has full access
-    if (currentUser.role === 'system_admin' || currentUser.role === 'admin') return true;
+    if (currentUser.role === 'system_admin' || currentUser.role === 'admin' || currentUser.role === 'Admin') return true;
     if (currentUser.permissions?.includes('all')) return true;
     // Check role-based module access
     if (permission && permission !== 'all') {
@@ -92,7 +92,7 @@ function App() {
   // Check if user can see a specific module
   const canAccess = (moduleId) => {
     if (!currentUser) return false;
-    if (currentUser.role === 'system_admin' || currentUser.role === 'admin') return true;
+    if (currentUser.role === 'system_admin' || currentUser.role === 'admin' || currentUser.role === 'Admin') return true;
     if (currentUser.permissions?.includes('all')) return true;
     const userPerms = getUserPermissions(currentUser);
     return userPerms.includes(moduleId);
