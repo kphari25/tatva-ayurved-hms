@@ -48,7 +48,8 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP', supabase }) => {
     consultantDoctor: '',
     
     // IP Specific
-    roomCategory: 'General',
+    roomCategory: 'A/C',
+    roomNumber: '21',
     numberOfDays: 1,
     
     // Payment
@@ -349,7 +350,8 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP', supabase }) => {
             ${invoiceType === 'IP' ? `
               <div class="detail-row"><span class="detail-label">Admission:</span> ${invoiceData.dateOfAdmission ? new Date(invoiceData.dateOfAdmission).toLocaleDateString('en-IN') : '-'}</div>
               <div class="detail-row"><span class="detail-label">Discharge:</span> ${invoiceData.dateOfDischarge ? new Date(invoiceData.dateOfDischarge).toLocaleDateString('en-IN') : '-'}</div>
-              <div class="detail-row"><span class="detail-label">Room Category:</span> ${invoiceData.roomCategory}</div>
+              <div class="detail-row"><span class="detail-label">Room Type:</span> ${invoiceData.roomCategory}</div>
+              <div class="detail-row"><span class="detail-label">Room Number:</span> ${invoiceData.roomNumber || '-'}</div>
               <div class="detail-row"><span class="detail-label">Number of Days:</span> ${invoiceData.numberOfDays}</div>
             ` : `
               <div class="detail-row"><span class="detail-label">Date of Visit:</span> ${new Date(invoiceData.dateOfVisit).toLocaleDateString('en-IN')}</div>
@@ -697,16 +699,28 @@ const AyurvedicInvoice = ({ onClose, invoiceType = 'OP', supabase }) => {
                       />
                     </div>
                     <div className="flex">
-                      <span className="font-semibold w-40">Room Category:</span>
+                      <span className="font-semibold w-40">Room Type:</span>
                       <select
                         value={invoiceData.roomCategory}
                         onChange={(e) => setInvoiceData({...invoiceData, roomCategory: e.target.value})}
                         className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
                       >
-                        <option>General</option>
-                        <option>Semi-Private</option>
-                        <option>Private</option>
-                        <option>Deluxe</option>
+                        <option value="A/C">A/C</option>
+                        <option value="Non-A/C">Non-A/C</option>
+                      </select>
+                    </div>
+                    <div className="flex">
+                      <span className="font-semibold w-40">Room Number:</span>
+                      <select
+                        value={invoiceData.roomNumber}
+                        onChange={(e) => setInvoiceData({...invoiceData, roomNumber: e.target.value})}
+                        className="flex-1 border-b border-gray-300 focus:border-teal-500 outline-none"
+                      >
+                        <option value="21">21</option>
+                        <option value="22">22</option>
+                        <option value="23">23</option>
+                        <option value="24">24</option>
+                        <option value="25">25</option>
                       </select>
                     </div>
                     <div className="flex">

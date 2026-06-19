@@ -9,8 +9,9 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
-    date_of_birth: '',
+    age: '',
     gender: '',
+    patient_type: 'OP',
     phone: '',
     email: '',
     address: '',
@@ -71,8 +72,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
     e.preventDefault();
     
     // Validation
-    if (!formData.first_name || !formData.last_name || !formData.date_of_birth || !formData.gender) {
-      alert('Please fill in all required fields (Name, DOB, Gender)');
+    if (!formData.first_name || !formData.last_name || !formData.age || !formData.gender) {
+      alert('Please fill in all required fields (Name, Age, Gender)');
       return;
     }
 
@@ -128,8 +129,9 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
       setFormData({
         first_name: '',
         last_name: '',
-        date_of_birth: '',
+        age: '',
         gender: '',
+        patient_type: 'OP',
         phone: '',
         email: '',
         address: '',
@@ -216,14 +218,17 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date of Birth <span className="text-red-500">*</span>
+                  Age <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="date"
-                  name="date_of_birth"
-                  value={formData.date_of_birth}
+                  type="number"
+                  name="age"
+                  value={formData.age}
                   onChange={handleChange}
                   required
+                  min="0"
+                  max="150"
+                  placeholder="Enter age in years"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
@@ -243,6 +248,22 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Patient Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="patient_type"
+                  value={formData.patient_type}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="OP">OP (Out-Patient)</option>
+                  <option value="IP">IP (In-Patient)</option>
                 </select>
               </div>
 

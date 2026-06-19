@@ -14,6 +14,7 @@ const PatientPortal = ({ onAddPatient }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGender, setFilterGender] = useState('all');
+  const [filterPatientType, setFilterPatientType] = useState('all');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -76,11 +77,15 @@ const PatientPortal = ({ onAddPatient }) => {
       (patient.phone?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
       (patient.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
 
-    const matchesGender = 
-      filterGender === 'all' || 
+    const matchesGender =
+      filterGender === 'all' ||
       patient.gender?.toLowerCase() === filterGender.toLowerCase();
 
-    return matchesSearch && matchesGender;
+    const matchesType =
+      filterPatientType === 'all' ||
+      (patient.patient_type || 'OP') === filterPatientType;
+
+    return matchesSearch && matchesGender && matchesType;
   });
 
   const calculateAge = (dob) => {
@@ -209,6 +214,15 @@ const PatientPortal = ({ onAddPatient }) => {
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
+            <select
+              value={filterPatientType}
+              onChange={(e) => setFilterPatientType(e.target.value)}
+              className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+            >
+              <option value="all">All Types</option>
+              <option value="IP">IP (In-Patient)</option>
+              <option value="OP">OP (Out-Patient)</option>
+            </select>
           </div>
 
           <button
@@ -260,6 +274,7 @@ const PatientPortal = ({ onAddPatient }) => {
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Patient #</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Age/Gender</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Contact</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Registration Date</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
@@ -293,9 +308,14 @@ const PatientPortal = ({ onAddPatient }) => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm">
-                        <p className="text-gray-900">{calculateAge(patient.date_of_birth)} years</p>
+                        <p className="text-gray-900">{patient.age ? `${patient.age} yrs` : calculateAge(patient.date_of_birth) !== 'N/A' ? `${calculateAge(patient.date_of_birth)} yrs` : 'N/A'}</p>
                         <p className="text-gray-500">{patient.gender || 'N/A'}</p>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 text-xs rounded-full font-semibold ${(patient.patient_type || 'OP') === 'IP' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {patient.patient_type || 'OP'}
+                      </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm">
