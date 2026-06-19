@@ -18,6 +18,7 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
     medicines: [],
     room_rent: 0,
     room_type: '',
+    room_number: '',
     days: 0,
     mess_charges: 0,
     mess_days: 0,
@@ -165,6 +166,7 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
         medicines: formData.medicines,
         room_rent: invoiceType === 'IP' ? parseFloat(formData.room_rent) || 0 : 0,
         room_type: invoiceType === 'IP' ? formData.room_type : '',
+        room_number: invoiceType === 'IP' ? formData.room_number : '',
         days: invoiceType === 'IP' ? parseFloat(formData.days) || 0 : 0,
         mess_charges: invoiceType === 'IP' ? parseFloat(formData.mess_charges) || 0 : 0,
         mess_days: invoiceType === 'IP' ? parseFloat(formData.mess_days) || 0 : 0,
@@ -454,7 +456,7 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
               <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <h3 className="font-bold text-gray-800 mb-4">In-Patient Charges</h3>
                 
-                <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="grid grid-cols-4 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Room Type</label>
                     <select
@@ -463,11 +465,23 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                     >
                       <option value="">Select Type</option>
-                      <option value="General Ward">General Ward</option>
-                      <option value="Semi-Private">Semi-Private</option>
-                      <option value="Private">Private</option>
-                      <option value="Deluxe">Deluxe</option>
-                      <option value="ICU">ICU</option>
+                      <option value="A/C">A/C</option>
+                      <option value="Non-A/C">Non-A/C</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Room Number</label>
+                    <select
+                      value={formData.room_number || ''}
+                      onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    >
+                      <option value="">Select</option>
+                      <option value="21">21</option>
+                      <option value="22">22</option>
+                      <option value="23">23</option>
+                      <option value="24">24</option>
+                      <option value="25">25</option>
                     </select>
                   </div>
                   <div>
