@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Users, Bed, LogOut, DollarSign, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X } from 'lucide-react';
-import { collection, getDocs, query, where, orderBy, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const AddAppointmentModal = ({ onClose, onSave, saving }) => {
@@ -105,6 +105,24 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardData();
+
+    // Real-time listener for today's appointments
+    const today = new Date().toISOString().split('T')[0];
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'appointments'), where('date', '==', today)),
+      (snap) => {
+        const todayAppointments = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+        setDashboardData(prev => ({
+          ...prev,
+          todayAppointments,
+          stats: { ...prev.stats, totalAppointments: todayAppointments.length },
+        }));
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const loadDashboardData = async () => {
@@ -112,22 +130,18 @@ const Dashboard = () => {
       setLoading(true);
       const today = new Date().toISOString().split('T')[0];
 
-      // Load all necessary data
-      const [patients, discharges, invoices, leads, appointmentsSnap] = await Promise.all([
+      // Load all necessary data (appointments handled by real-time listener)
+      const [patients, discharges, invoices, leads] = await Promise.all([
         getDocs(collection(db, 'patients')),
         getDocs(collection(db, 'discharges')),
         getDocs(collection(db, 'invoices')),
         getDocs(collection(db, 'leads')),
-        getDocs(query(collection(db, 'appointments'), where('date', '==', today)))
       ]);
 
       const patientsData = patients.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const dischargesData = discharges.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const invoicesData = invoices.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const leadsData = leads.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const todayAppointments = appointmentsSnap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
       // Filter today's discharges
       const todayDischarges = dischargesData.filter(d => 
@@ -158,8 +172,8 @@ const Dashboard = () => {
       // Therapist schedule - empty until connected to scheduling module
       const therapistSchedule = [];
 
-      setDashboardData({
-        todayAppointments,
+      setDashboardData(prev => ({
+        ...prev,
         ipPatients,
         pendingAdmissions,
         todayDischarges,
@@ -167,7 +181,7 @@ const Dashboard = () => {
         leads: pendingFollowups,
         therapistSchedule,
         stats: {
-          totalAppointments: todayAppointments.length,
+          ...prev.stats,
           ipPatientsCount: ipPatients.length,
           pendingAdmissionsCount: pendingAdmissions.length,
           todayDischargesCount: todayDischarges.length,
@@ -175,7 +189,7 @@ const Dashboard = () => {
           hotLeads: hotLeads.length,
           pendingFollowups: pendingFollowups.length
         }
-      });
+      }));
 
       console.log('✅ Dashboard data loaded');
 
@@ -190,14 +204,7 @@ const Dashboard = () => {
     if (!window.confirm('Remove this appointment?')) return;
     try {
       await deleteDoc(doc(db, 'appointments', aptId));
-      setDashboardData(prev => ({
-        ...prev,
-        todayAppointments: prev.todayAppointments.filter(a => a.id !== aptId),
-        stats: {
-          ...prev.stats,
-          totalAppointments: prev.stats.totalAppointments - 1
-        }
-      }));
+      // onSnapshot listener will update todayAppointments automatically
     } catch (error) {
       console.error('Error deleting appointment:', error);
       alert('Failed to delete appointment. Please try again.');
