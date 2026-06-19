@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserPlus, Save, X } from 'lucide-react';
 import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { sendWelcomeSMS } from '../lib/sms';
 
 const PatientRegistrationNew = ({ onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
@@ -102,27 +103,19 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
       console.log('✅ Patient created successfully:', docRef.id);
 
       // Send Welcome SMS if enabled
+      let smsSent = false;
       if (sendWelcomeSMS && formData.phone) {
         try {
-          const welcomeMessage = `Welcome to Tatva Ayurved! Your Patient ID is ${patientNumber}. For appointments call: [Your Number]. Thank you!`;
-          
-          console.log('Sending welcome SMS to:', formData.phone);
-          console.log('Message:', welcomeMessage);
-          
-          // Here you would integrate with SMS API (e.g., Twilio, MSG91, etc.)
-          // await sendSMS(formData.phone, welcomeMessage);
-          
-          // Simulate SMS send
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          console.log('✅ Welcome SMS sent successfully');
+          const patientName = `${formData.first_name} ${formData.last_name}`;
+          const result = await sendWelcomeSMS(formData.phone, patientName, patientNumber);
+          smsSent = result.success;
+          if (!result.success) console.warn('SMS not sent:', result.error);
         } catch (smsError) {
           console.error('⚠️ Failed to send welcome SMS:', smsError);
-          // Don't fail registration if SMS fails
         }
       }
-      
-      alert(`Patient registered successfully!\nPatient Number: ${patientNumber}${sendWelcomeSMS && formData.phone ? '\n✅ Welcome SMS sent!' : ''}`);
+
+      alert(`Patient registered successfully!\nPatient Number: ${patientNumber}${smsSent ? '\n✅ Welcome SMS sent!' : sendWelcomeSMS && formData.phone ? '\n⚠️ SMS failed - check MSG91 config' : ''}`);
 
 
       // Reset form

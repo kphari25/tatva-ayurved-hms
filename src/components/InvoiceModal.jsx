@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, Save, Plus, Trash2, FileText, Search } from 'lucide-react';
+import { X, Printer, Save, Plus, Trash2, FileText, Search, MessageSquare } from 'lucide-react';
 import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { sendInvoiceSMS } from '../lib/sms';
 
 const InvoiceModal = ({ patient, onClose, onSave }) => {
   const [invoiceType, setInvoiceType] = useState('OP'); // OP or IP
   const [saving, setSaving] = useState(false);
+  const [sendingSMS, setSendingSMS] = useState(false);
+  const [smsStatus, setSmsStatus] = useState(null); // null | 'sent' | 'failed'
+  const [savedInvoiceData, setSavedInvoiceData] = useState(null);
   const [allMedicines, setAllMedicines] = useState([]);
   const [medicineSearch, setMedicineSearch] = useState('');
   const [filteredMedicines, setFilteredMedicines] = useState([]);
@@ -198,11 +202,13 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
       const docRef = await addDoc(invoicesRef, invoiceData);
 
       console.log('✅ Invoice created:', docRef.id);
-      
+
+      setSavedInvoiceData(invoiceData);
+      setSmsStatus(null);
       alert('✅ Invoice saved successfully!');
-      
+
       if (onSave) onSave(invoiceData);
-      
+
       // Open print view
       handlePrint(invoiceData);
 
@@ -211,6 +217,34 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
       alert('Failed to save invoice: ' + error.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSendSMS = async () => {
+    const phone = patient.phone;
+    if (!phone) {
+      alert('No phone number on file for this patient.');
+      return;
+    }
+    const data = savedInvoiceData || {
+      invoice_type: invoiceType,
+      invoice_date: formData.invoice_date,
+      total_amount: calculateTotal(),
+      payment_mode: formData.payment_mode,
+      patient_number: patient.patient_number
+    };
+    const patientName = `${patient.first_name} ${patient.last_name}`;
+    try {
+      setSendingSMS(true);
+      setSmsStatus(null);
+      const result = await sendInvoiceSMS(phone, patientName, data);
+      setSmsStatus(result.success ? 'sent' : 'failed');
+      if (!result.success) console.warn('Invoice SMS failed:', result.error);
+    } catch (err) {
+      setSmsStatus('failed');
+      console.error('SMS error:', err);
+    } finally {
+      setSendingSMS(false);
     }
   };
 
@@ -821,7 +855,30 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
                 </>
               )}
             </button>
+            <button
+              onClick={handleSendSMS}
+              disabled={sendingSMS}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 disabled:opacity-50"
+              title={patient.phone ? `Send invoice SMS to ${patient.phone}` : 'No phone number on file'}
+            >
+              {sendingSMS ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="w-5 h-5" />
+                  Send SMS
+                </>
+              )}
+            </button>
           </div>
+          {smsStatus && (
+            <div className={`text-center text-sm mt-2 font-medium ${smsStatus === 'sent' ? 'text-green-600' : 'text-red-500'}`}>
+              {smsStatus === 'sent' ? '✅ Invoice SMS sent successfully!' : '⚠️ SMS failed — check MSG91 config in .env'}
+            </div>
+          )}
         </div>
       </div>
     </div>
