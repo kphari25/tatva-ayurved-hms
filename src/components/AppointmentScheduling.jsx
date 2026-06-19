@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User } from 'lucide-react';
 import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -14,11 +14,20 @@ const STATUS_STYLES = {
 
 const todayISO = () => new Date().toISOString().split('T')[0];
 
-const AppointmentModal = ({ initialData, onClose, onSave, saving }) => {
+const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists }) => {
   const [formData, setFormData] = useState(
-    initialData || { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled' }
+    initialData || { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled', therapistId: '', therapistName: '' }
   );
   const [error, setError] = useState('');
+
+  const handleTherapistChange = (e) => {
+    const selected = therapists.find(t => t.id === e.target.value);
+    setFormData({
+      ...formData,
+      therapistId: selected ? selected.id : '',
+      therapistName: selected ? selected.name : '',
+    });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -87,6 +96,19 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving }) => {
             />
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Assign Therapist</label>
+            <select
+              value={formData.therapistId}
+              onChange={handleTherapistChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">— Unassigned —</option>
+              {therapists.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
               value={formData.status}
@@ -123,14 +145,30 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving }) => {
 const AppointmentScheduling = () => {
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [appointments, setAppointments] = useState([]);
+  const [therapists, setTherapists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
 
   useEffect(() => {
+    loadTherapists();
+  }, []);
+
+  useEffect(() => {
     loadAppointments();
   }, [selectedDate]);
+
+  const loadTherapists = async () => {
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'users'), where('role', '==', 'therapist'))
+      );
+      setTherapists(snap.docs.map(d => ({ id: d.id, name: d.data().name || d.data().email, ...d.data() })));
+    } catch (error) {
+      console.error('Error loading therapists:', error);
+    }
+  };
 
   const loadAppointments = async () => {
     try {
@@ -168,27 +206,22 @@ const AppointmentScheduling = () => {
   const saveAppointment = async (formData) => {
     try {
       setSaving(true);
+      const payload = {
+        patient: formData.patient,
+        time: formData.time,
+        type: formData.type,
+        date: formData.date,
+        status: formData.status,
+        therapistId: formData.therapistId || '',
+        therapistName: formData.therapistName || '',
+      };
       if (editingAppointment) {
-        await updateDoc(doc(db, 'appointments', editingAppointment.id), {
-          patient: formData.patient,
-          time: formData.time,
-          type: formData.type,
-          date: formData.date,
-          status: formData.status,
-        });
+        await updateDoc(doc(db, 'appointments', editingAppointment.id), payload);
       } else {
-        await addDoc(collection(db, 'appointments'), {
-          patient: formData.patient,
-          time: formData.time,
-          type: formData.type,
-          date: formData.date,
-          status: formData.status,
-          createdAt: new Date().toISOString(),
-        });
+        await addDoc(collection(db, 'appointments'), { ...payload, createdAt: new Date().toISOString() });
       }
       setShowModal(false);
       setEditingAppointment(null);
-      // If the saved appointment is for the currently viewed date, refresh; otherwise jump to it
       if (formData.date === selectedDate) {
         await loadAppointments();
       } else {
@@ -220,6 +253,12 @@ const AppointmentScheduling = () => {
     day: 'numeric',
   });
 
+  // Group appointments by therapist for the schedule view
+  const therapistSchedule = therapists.map(t => ({
+    ...t,
+    appointments: appointments.filter(a => a.therapistId === t.id),
+  })).filter(t => t.appointments.length > 0);
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -239,85 +278,122 @@ const AppointmentScheduling = () => {
 
       {/* Date Navigator */}
       <div className="bg-white rounded-xl shadow-md p-4 mb-6 flex items-center justify-between">
-        <button
-          onClick={() => shiftDate(-1)}
-          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
-        >
+        <button onClick={() => shiftDate(-1)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600">
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-3">
           <Calendar className="w-5 h-5 text-blue-600" />
           <span className="font-semibold text-gray-900">{formattedDate}</span>
           {selectedDate !== todayISO() && (
-            <button
-              onClick={() => setSelectedDate(todayISO())}
-              className="text-xs text-blue-600 hover:underline ml-2"
-            >
+            <button onClick={() => setSelectedDate(todayISO())} className="text-xs text-blue-600 hover:underline ml-2">
               Jump to today
             </button>
           )}
         </div>
-        <button
-          onClick={() => shiftDate(1)}
-          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
-        >
+        <button onClick={() => shiftDate(1)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600">
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Appointments List */}
-      <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Clock className="w-5 h-5 text-white" />
-            <h2 className="text-lg font-bold text-white">Appointments</h2>
-          </div>
-          <span className="bg-white text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
-            {appointments.length} Total
-          </span>
-        </div>
-        <div className="divide-y divide-gray-100">
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading...</div>
-          ) : appointments.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-              <p>No appointments scheduled for this day</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Appointments List */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-md overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-white" />
+              <h2 className="text-lg font-bold text-white">Appointments</h2>
             </div>
-          ) : (
-            appointments.map((apt) => (
-              <div key={apt.id} className="p-4 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <p className="text-lg font-bold text-blue-600 w-16">{apt.time}</p>
-                    <div>
-                      <p className="font-semibold text-gray-900">{apt.patient}</p>
-                      <p className="text-sm text-gray-600">{apt.type}</p>
+            <span className="bg-white text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
+              {appointments.length} Total
+            </span>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {loading ? (
+              <div className="p-8 text-center text-gray-500">Loading...</div>
+            ) : appointments.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">
+                <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                <p>No appointments scheduled for this day</p>
+              </div>
+            ) : (
+              appointments.map((apt) => (
+                <div key={apt.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <p className="text-lg font-bold text-blue-600 w-16">{apt.time}</p>
+                      <div>
+                        <p className="font-semibold text-gray-900">{apt.patient}</p>
+                        <p className="text-sm text-gray-600">{apt.type}</p>
+                        {apt.therapistName && (
+                          <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
+                            <User className="w-3 h-3" />
+                            {apt.therapistName}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${STATUS_STYLES[apt.status] || STATUS_STYLES.scheduled}`}>
+                        {apt.status ? apt.status.charAt(0).toUpperCase() + apt.status.slice(1) : 'Scheduled'}
+                      </span>
+                      <button
+                        onClick={() => openEditModal(apt)}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit appointment"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteAppointment(apt.id)}
+                        className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Remove appointment"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${STATUS_STYLES[apt.status] || STATUS_STYLES.scheduled}`}>
-                      {apt.status ? apt.status.charAt(0).toUpperCase() + apt.status.slice(1) : 'Scheduled'}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Therapist Schedule Panel */}
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4 flex items-center gap-3">
+            <User className="w-5 h-5 text-white" />
+            <h2 className="text-lg font-bold text-white">Therapist Schedule</h2>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {therapists.length === 0 ? (
+              <div className="p-6 text-center text-gray-500 text-sm">
+                No therapists found. Add therapists via User Management.
+              </div>
+            ) : therapistSchedule.length === 0 ? (
+              <div className="p-6 text-center text-gray-500 text-sm">
+                No therapist assignments for this day.
+              </div>
+            ) : (
+              therapistSchedule.map(t => (
+                <div key={t.id} className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
+                    <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">
+                      {t.appointments.length} session{t.appointments.length !== 1 ? 's' : ''}
                     </span>
-                    <button
-                      onClick={() => openEditModal(apt)}
-                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Edit appointment"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteAppointment(apt.id)}
-                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Remove appointment"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {t.appointments.map(a => (
+                      <div key={a.id} className="flex items-center gap-2 text-xs text-gray-600">
+                        <span className="font-medium text-blue-600 w-12">{a.time}</span>
+                        <span className="truncate">{a.patient}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
 
@@ -327,6 +403,7 @@ const AppointmentScheduling = () => {
           onClose={() => { setShowModal(false); setEditingAppointment(null); }}
           onSave={saveAppointment}
           saving={saving}
+          therapists={therapists}
         />
       )}
     </div>

@@ -114,9 +114,26 @@ const Dashboard = () => {
         const todayAppointments = snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
           .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+        // Build therapist schedule from assigned appointments
+        const therapistMap = {};
+        todayAppointments.forEach(a => {
+          if (a.therapistId && a.therapistName) {
+            if (!therapistMap[a.therapistId]) {
+              therapistMap[a.therapistId] = { id: a.therapistId, therapist: a.therapistName, sessions: 0, nextSlot: null, availability: 'busy' };
+            }
+            therapistMap[a.therapistId].sessions += 1;
+            if (!therapistMap[a.therapistId].nextSlot) {
+              therapistMap[a.therapistId].nextSlot = a.time;
+            }
+          }
+        });
+        const therapistSchedule = Object.values(therapistMap);
+
         setDashboardData(prev => ({
           ...prev,
           todayAppointments,
+          therapistSchedule,
           stats: { ...prev.stats, totalAppointments: todayAppointments.length },
         }));
       }
@@ -493,6 +510,9 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="p-4 space-y-3">
+              {(!dashboardData.therapistSchedule || dashboardData.therapistSchedule.length === 0) && (
+                <p className="text-sm text-gray-500 text-center py-2">No therapist assignments today</p>
+              )}
               {dashboardData.therapistSchedule?.map(therapist => (
                 <div key={therapist.id} className="p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
