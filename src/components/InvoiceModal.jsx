@@ -20,13 +20,19 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
     room_type: '',
     room_number: '',
     days: 0,
-    mess_charges: 0,
     mess_days: 0,
+    patient_meals: { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 },
+    bystander_meals: { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 },
     gst_percentage: 18,
     discount: 0,
     payment_mode: 'Cash',
     notes: ''
   });
+
+  const [messTab, setMessTab] = useState('patient'); // 'patient' | 'bystander'
+
+  const calcMessTotal = (meals) =>
+    Object.values(meals).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
 
   const [newMedicine, setNewMedicine] = useState({
     name: '',
@@ -103,7 +109,9 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
     // IP specific charges
     if (invoiceType === 'IP') {
       subtotal += (parseFloat(formData.room_rent) || 0) * (parseFloat(formData.days) || 0);
-      subtotal += (parseFloat(formData.mess_charges) || 0) * (parseFloat(formData.mess_days) || 0);
+      const patientMess = calcMessTotal(formData.patient_meals) * (parseFloat(formData.mess_days) || 0);
+      const bystanderMess = calcMessTotal(formData.bystander_meals) * (parseFloat(formData.mess_days) || 0);
+      subtotal += patientMess + bystanderMess;
     }
 
     return subtotal;
@@ -168,8 +176,10 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
         room_type: invoiceType === 'IP' ? formData.room_type : '',
         room_number: invoiceType === 'IP' ? formData.room_number : '',
         days: invoiceType === 'IP' ? parseFloat(formData.days) || 0 : 0,
-        mess_charges: invoiceType === 'IP' ? parseFloat(formData.mess_charges) || 0 : 0,
+        mess_charges: invoiceType === 'IP' ? (calcMessTotal(formData.patient_meals) + calcMessTotal(formData.bystander_meals)) : 0,
         mess_days: invoiceType === 'IP' ? parseFloat(formData.mess_days) || 0 : 0,
+        patient_meals: invoiceType === 'IP' ? formData.patient_meals : null,
+        bystander_meals: invoiceType === 'IP' ? formData.bystander_meals : null,
         subtotal: calculateSubtotal(),
         gst_percentage: parseFloat(formData.gst_percentage) || 0,
         gst_amount: calculateGST(),
@@ -506,26 +516,74 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Mess Charges/Day (₹)</label>
-                    <input
-                      type="number"
-                      value={formData.mess_charges}
-                      onChange={(e) => setFormData({ ...formData, mess_charges: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      placeholder="0.00"
-                    />
+                {/* Mess Charges */}
+                <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between bg-gray-100 px-4 py-2">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setMessTab('patient')}
+                        className={`px-4 py-1 rounded-full text-sm font-medium transition-colors ${messTab === 'patient' ? 'bg-teal-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        Patient Mess
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMessTab('bystander')}
+                        className={`px-4 py-1 rounded-full text-sm font-medium transition-colors ${messTab === 'bystander' ? 'bg-teal-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        Bystander
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-700">Days:</label>
+                      <input
+                        type="number"
+                        value={formData.mess_days}
+                        onChange={(e) => setFormData({ ...formData, mess_days: e.target.value })}
+                        className="w-20 px-2 py-1 border border-gray-300 rounded-lg text-sm"
+                        placeholder="0"
+                        min="0"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Mess Days</label>
-                    <input
-                      type="number"
-                      value={formData.mess_days}
-                      onChange={(e) => setFormData({ ...formData, mess_days: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      placeholder="0"
-                    />
+
+                  <div className="p-4">
+                    {(['patient', 'bystander']).map((tab) => (
+                      messTab === tab && (
+                        <div key={tab}>
+                          <div className="grid grid-cols-2 gap-3">
+                            {['breakfast', 'lunch', 'dinner', 'snacks'].map((meal) => (
+                              <div key={meal}>
+                                <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">{meal} (₹/day)</label>
+                                <input
+                                  type="number"
+                                  value={formData[`${tab}_meals`][meal]}
+                                  onChange={(e) => setFormData({
+                                    ...formData,
+                                    [`${tab}_meals`]: { ...formData[`${tab}_meals`], [meal]: e.target.value }
+                                  })}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                  placeholder="0.00"
+                                  min="0"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-3 text-right text-sm text-gray-600">
+                            Daily total: <span className="font-semibold text-teal-700">₹{calcMessTotal(formData[`${tab}_meals`]).toFixed(2)}</span>
+                            {formData.mess_days > 0 && (
+                              <span className="ml-2">× {formData.mess_days} days = <span className="font-bold text-gray-800">₹{(calcMessTotal(formData[`${tab}_meals`]) * formData.mess_days).toFixed(2)}</span></span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    ))}
+                  </div>
+
+                  <div className="bg-blue-50 px-4 py-2 text-sm text-blue-800 flex justify-between">
+                    <span>Total Mess Charges ({formData.mess_days || 0} days)</span>
+                    <span className="font-bold">₹{((calcMessTotal(formData.patient_meals) + calcMessTotal(formData.bystander_meals)) * (parseFloat(formData.mess_days) || 0)).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
