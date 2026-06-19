@@ -176,8 +176,10 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
         room_type: invoiceType === 'IP' ? formData.room_type : '',
         room_number: invoiceType === 'IP' ? formData.room_number : '',
         days: invoiceType === 'IP' ? parseFloat(formData.days) || 0 : 0,
-        mess_charges: invoiceType === 'IP' ? (calcMessTotal(formData.patient_meals) + calcMessTotal(formData.bystander_meals)) : 0,
         mess_days: invoiceType === 'IP' ? parseFloat(formData.mess_days) || 0 : 0,
+        patient_mess_per_day: invoiceType === 'IP' ? calcMessTotal(formData.patient_meals) : 0,
+        bystander_mess_per_day: invoiceType === 'IP' ? calcMessTotal(formData.bystander_meals) : 0,
+        mess_charges: invoiceType === 'IP' ? (calcMessTotal(formData.patient_meals) + calcMessTotal(formData.bystander_meals)) : 0,
         patient_meals: invoiceType === 'IP' ? formData.patient_meals : null,
         bystander_meals: invoiceType === 'IP' ? formData.bystander_meals : null,
         subtotal: calculateSubtotal(),
@@ -322,12 +324,20 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
               </tr>
             ` : ''}
             
-            ${data.invoice_type === 'IP' && data.mess_charges > 0 ? `
+            ${data.invoice_type === 'IP' && data.patient_mess_per_day > 0 ? `
               <tr>
-                <td>Mess Charges</td>
+                <td>Mess Charges - Patient</td>
                 <td>${data.mess_days} days</td>
-                <td>₹${data.mess_charges.toFixed(2)}</td>
-                <td>₹${(data.mess_charges * data.mess_days).toFixed(2)}</td>
+                <td>₹${data.patient_mess_per_day.toFixed(2)}</td>
+                <td>₹${(data.patient_mess_per_day * data.mess_days).toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${data.invoice_type === 'IP' && data.bystander_mess_per_day > 0 ? `
+              <tr>
+                <td>Mess Charges - Bystander</td>
+                <td>${data.mess_days} days</td>
+                <td>₹${data.bystander_mess_per_day.toFixed(2)}</td>
+                <td>₹${(data.bystander_mess_per_day * data.mess_days).toFixed(2)}</td>
               </tr>
             ` : ''}
             
