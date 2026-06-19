@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Bed, LogOut, DollarSign, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle } from 'lucide-react';
+import { Calendar, Users, Bed, LogOut, DollarSign, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -64,34 +64,17 @@ const Dashboard = () => {
         l.status !== 'converted'
       );
 
-      // Simulate appointments (In production, you'd have an appointments collection)
-      const todayAppointments = [
-        { id: 1, time: '09:00 AM', patient: 'Mrs. Sharma', type: 'Consultation', status: 'scheduled' },
-        { id: 2, time: '10:30 AM', patient: 'Mr. Kumar', type: 'Follow-up', status: 'scheduled' },
-        { id: 3, time: '11:00 AM', patient: 'Ms. Patel', type: 'Therapy', status: 'in-progress' },
-        { id: 4, time: '02:00 PM', patient: 'Mr. Singh', type: 'Consultation', status: 'scheduled' },
-        { id: 5, time: '03:30 PM', patient: 'Mrs. Reddy', type: 'Follow-up', status: 'scheduled' }
-      ];
+      // Appointments start empty - add real ones via your Scheduling module
+      const todayAppointments = [];
 
-      // Simulate IP patients
-      const ipPatients = [
-        { id: 1, name: 'Mr. Verma', room: 'Private-101', admission: '2026-04-05', condition: 'Arthritis', status: 'stable' },
-        { id: 2, name: 'Mrs. Gupta', room: 'Semi-Private-203', admission: '2026-04-07', condition: 'PCOS', status: 'recovering' },
-        { id: 3, name: 'Mr. Joshi', room: 'Deluxe-301', admission: '2026-04-06', condition: 'Detox', status: 'stable' }
-      ];
+      // IP patients loaded from Firebase discharges/patients data
+      const ipPatients = patientsData.filter(p => p.admission_type === 'ip' && p.status === 'admitted');
 
-      // Simulate pending admissions
-      const pendingAdmissions = [
-        { id: 1, patient: 'Mrs. Iyer', scheduledFor: today, package: 'Weight Loss Program', status: 'pending' },
-        { id: 2, patient: 'Mr. Desai', scheduledFor: today, package: 'Arthritis Relief', status: 'pending' }
-      ];
+      // Pending admissions from patients collection
+      const pendingAdmissions = patientsData.filter(p => p.admission_type === 'ip' && p.status === 'pending_admission');
 
-      // Simulate therapist schedule
-      const therapistSchedule = [
-        { id: 1, therapist: 'Dr. Ramesh', sessions: '5/8', availability: 'available', nextSlot: '11:30 AM' },
-        { id: 2, therapist: 'Dr. Priya', sessions: '7/8', availability: 'busy', nextSlot: '02:30 PM' },
-        { id: 3, therapist: 'Dr. Anil', sessions: '4/8', availability: 'available', nextSlot: '10:00 AM' }
-      ];
+      // Therapist schedule - empty until connected to scheduling module
+      const therapistSchedule = [];
 
       setDashboardData({
         todayAppointments,
@@ -119,6 +102,18 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const deleteAppointment = (aptId) => {
+    if (!window.confirm('Remove this appointment from the dashboard?')) return;
+    setDashboardData(prev => ({
+      ...prev,
+      todayAppointments: prev.todayAppointments.filter(a => a.id !== aptId),
+      stats: {
+        ...prev.stats,
+        totalAppointments: prev.stats.totalAppointments - 1
+      }
+    }));
   };
 
   const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }) => (
@@ -234,13 +229,22 @@ const Dashboard = () => {
                           <p className="text-sm text-gray-600">{apt.type}</p>
                         </div>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        apt.status === 'in-progress' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          apt.status === 'in-progress' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
+                        </span>
+                        <button
+                          onClick={() => deleteAppointment(apt.id)}
+                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Remove appointment"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
