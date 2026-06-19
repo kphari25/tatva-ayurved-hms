@@ -1,10 +1,91 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Bed, LogOut, DollarSign, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { Calendar, Users, Bed, LogOut, DollarSign, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X } from 'lucide-react';
+import { collection, getDocs, query, where, orderBy, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+
+const AddAppointmentModal = ({ onClose, onSave, saving }) => {
+  const [formData, setFormData] = useState({ patient: '', time: '', type: '' });
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.patient.trim() || !formData.time) {
+      setError('Patient name and time are required.');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h3 className="text-lg font-bold text-gray-900">Add Appointment</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name</label>
+            <input
+              type="text"
+              value={formData.patient}
+              onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. Anjali Menon"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+            <input
+              type="time"
+              value={formData.time}
+              onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
+            <input
+              type="text"
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. Consultation, Panchakarma Session"
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Appointment'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
+  const [showAddAppointment, setShowAddAppointment] = useState(false);
+  const [savingAppointment, setSavingAppointment] = useState(false);
   const [dashboardData, setDashboardData] = useState({
     todayAppointments: [],
     ipPatients: [],
@@ -32,17 +113,21 @@ const Dashboard = () => {
       const today = new Date().toISOString().split('T')[0];
 
       // Load all necessary data
-      const [patients, discharges, invoices, leads] = await Promise.all([
+      const [patients, discharges, invoices, leads, appointmentsSnap] = await Promise.all([
         getDocs(collection(db, 'patients')),
         getDocs(collection(db, 'discharges')),
         getDocs(collection(db, 'invoices')),
-        getDocs(collection(db, 'leads'))
+        getDocs(collection(db, 'leads')),
+        getDocs(query(collection(db, 'appointments'), where('date', '==', today)))
       ]);
 
       const patientsData = patients.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const dischargesData = discharges.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const invoicesData = invoices.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const leadsData = leads.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const todayAppointments = appointmentsSnap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
       // Filter today's discharges
       const todayDischarges = dischargesData.filter(d => 
@@ -63,9 +148,6 @@ const Dashboard = () => {
         new Date(l.next_followup) <= new Date() && 
         l.status !== 'converted'
       );
-
-      // Appointments start empty - add real ones via your Scheduling module
-      const todayAppointments = [];
 
       // IP patients loaded from Firebase discharges/patients data
       const ipPatients = patientsData.filter(p => p.admission_type === 'ip' && p.status === 'admitted');
@@ -104,16 +186,44 @@ const Dashboard = () => {
     }
   };
 
-  const deleteAppointment = (aptId) => {
-    if (!window.confirm('Remove this appointment from the dashboard?')) return;
-    setDashboardData(prev => ({
-      ...prev,
-      todayAppointments: prev.todayAppointments.filter(a => a.id !== aptId),
-      stats: {
-        ...prev.stats,
-        totalAppointments: prev.stats.totalAppointments - 1
-      }
-    }));
+  const deleteAppointment = async (aptId) => {
+    if (!window.confirm('Remove this appointment?')) return;
+    try {
+      await deleteDoc(doc(db, 'appointments', aptId));
+      setDashboardData(prev => ({
+        ...prev,
+        todayAppointments: prev.todayAppointments.filter(a => a.id !== aptId),
+        stats: {
+          ...prev.stats,
+          totalAppointments: prev.stats.totalAppointments - 1
+        }
+      }));
+    } catch (error) {
+      console.error('Error deleting appointment:', error);
+      alert('Failed to delete appointment. Please try again.');
+    }
+  };
+
+  const saveAppointment = async (formData) => {
+    try {
+      setSavingAppointment(true);
+      const today = new Date().toISOString().split('T')[0];
+      await addDoc(collection(db, 'appointments'), {
+        patient: formData.patient,
+        time: formData.time,
+        type: formData.type,
+        status: 'scheduled',
+        date: today,
+        createdAt: new Date().toISOString()
+      });
+      setShowAddAppointment(false);
+      await loadDashboardData();
+    } catch (error) {
+      console.error('Error adding appointment:', error);
+      alert('Failed to add appointment. Please try again.');
+    } finally {
+      setSavingAppointment(false);
+    }
   };
 
   const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }) => (
@@ -204,9 +314,18 @@ const Dashboard = () => {
                   <Calendar className="w-6 h-6 text-white" />
                   <h2 className="text-xl font-bold text-white">Today's Appointments</h2>
                 </div>
-                <span className="bg-white text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
-                  {dashboardData.stats.totalAppointments} Total
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowAddAppointment(true)}
+                    className="flex items-center gap-1 bg-white text-blue-700 px-3 py-1 rounded-full text-sm font-semibold hover:bg-blue-50 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add
+                  </button>
+                  <span className="bg-blue-800 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                    {dashboardData.stats.totalAppointments} Total
+                  </span>
+                </div>
               </div>
             </div>
             <div className="divide-y divide-gray-100">
@@ -221,8 +340,7 @@ const Dashboard = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="text-center">
-                          <p className="text-2xl font-bold text-blue-600">{apt.time.split(':')[0]}</p>
-                          <p className="text-xs text-gray-500">{apt.time.split(' ')[1]}</p>
+                          <p className="text-lg font-bold text-blue-600">{apt.time}</p>
                         </div>
                         <div>
                           <p className="font-semibold text-gray-900">{apt.patient}</p>
@@ -439,6 +557,14 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showAddAppointment && (
+        <AddAppointmentModal
+          onClose={() => setShowAddAppointment(false)}
+          onSave={saveAppointment}
+          saving={savingAppointment}
+        />
       )}
     </div>
   );
