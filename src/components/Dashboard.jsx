@@ -369,6 +369,11 @@ const Dashboard = () => {
                         <div>
                           <p className="font-semibold text-gray-900">{apt.patient}</p>
                           <p className="text-sm text-gray-600">{apt.type}</p>
+                          {apt.therapistName && (
+                            <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
+                              👤 {apt.therapistName}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
