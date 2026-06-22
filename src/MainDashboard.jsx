@@ -106,11 +106,11 @@ const MainDashboard = ({ supabase }) => {
       bgColor: 'bg-orange-100',
       textColor: 'text-orange-600',
       hoverColor: 'hover:bg-orange-50',
-      roles: ['admin', 'doctor', 'pharmacy'] 
+      roles: ['admin', 'doctor', 'pharmacy', 'front_desk']
     },
-    { 
-      id: 'prescriptions', 
-      label: 'Prescriptions', 
+    {
+      id: 'prescriptions',
+      label: 'Prescriptions',
       icon: Stethoscope, 
       color: 'pink',
       bgColor: 'bg-pink-100',
