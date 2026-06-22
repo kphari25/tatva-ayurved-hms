@@ -351,7 +351,7 @@ const MainDashboard = ({ supabase }) => {
         )}
 
         {currentView === 'scheduling' && (
-          <AdvancedScheduling appointments={appointments} setAppointments={setAppointments} userRole={userRole} />
+          <AdvancedScheduling appointments={appointments} setAppointments={setAppointments} userRole={userRole} supabase={supabase} />
         )}
 
         {currentView === 'financial' && userRole === 'admin' && (
