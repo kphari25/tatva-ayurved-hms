@@ -183,6 +183,183 @@ const DayDetailPopup = ({ date, therapist, appointments, onClose }) => {
   );
 };
 
+// ─── Weekly Therapist Grid ────────────────────────────────────────────────────
+const TIME_SLOTS = Array.from({ length: 26 }, (_, i) => {
+  const totalMin = 7 * 60 + i * 30;
+  const h = Math.floor(totalMin / 60).toString().padStart(2, '0');
+  const m = (totalMin % 60).toString().padStart(2, '0');
+  return `${h}:${m}`;
+});
+
+const THERAPIST_COLORS = [
+  'bg-purple-500', 'bg-blue-500', 'bg-pink-500', 'bg-emerald-500',
+  'bg-orange-500', 'bg-indigo-500', 'bg-teal-500', 'bg-rose-500',
+];
+
+function getWeekDates(baseDate) {
+  const d = new Date(baseDate + 'T00:00:00');
+  const day = d.getDay();
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((day + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => {
+    const dd = new Date(monday);
+    dd.setDate(monday.getDate() + i);
+    return dd.toISOString().split('T')[0];
+  });
+}
+
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const WeeklyGridView = ({ therapists, allAppointments, weekBase, setWeekBase, onAddAppointment }) => {
+  const weekDates = getWeekDates(weekBase);
+  const todayStr = todayISO();
+
+  const shiftWeek = (dir) => {
+    const d = new Date(weekBase + 'T00:00:00');
+    d.setDate(d.getDate() + dir * 7);
+    setWeekBase(d.toISOString().split('T')[0]);
+  };
+
+  const weekLabel = `${new Date(weekDates[0] + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${new Date(weekDates[6] + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+
+  // lookup: date → therapistId → time → appointment
+  const lookup = {};
+  allAppointments.forEach(a => {
+    if (!lookup[a.date]) lookup[a.date] = {};
+    if (!lookup[a.date][a.therapistId]) lookup[a.date][a.therapistId] = {};
+    lookup[a.date][a.therapistId][a.time] = a;
+  });
+
+  const getApt = (date, therapistId, time) => lookup[date]?.[therapistId]?.[time];
+
+  if (therapists.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-md p-12 text-center text-gray-500">
+        <User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+        <p>No therapists found. Add therapists via User Management.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-md overflow-hidden">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => shiftWeek(-1)} className="p-1.5 rounded-lg hover:bg-indigo-500 text-white">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-lg font-bold text-white">{weekLabel}</h2>
+          <button onClick={() => shiftWeek(1)} className="p-1.5 rounded-lg hover:bg-indigo-500 text-white">
+            <ChevronRight className="w-5 h-5" />
+          </button>
+          <button onClick={() => setWeekBase(todayStr)} className="ml-2 text-xs bg-white text-indigo-700 px-3 py-1 rounded-full font-semibold hover:bg-indigo-50">
+            This Week
+          </button>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-white">
+          {therapists.slice(0, 5).map((t, i) => (
+            <span key={t.id} className="flex items-center gap-1">
+              <span className={`w-3 h-3 rounded-full inline-block ${THERAPIST_COLORS[i % THERAPIST_COLORS.length]}`}></span>
+              {t.name}
+            </span>
+          ))}
+          {therapists.length > 5 && <span>+{therapists.length - 5} more</span>}
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div className="overflow-auto max-h-[70vh]">
+        <table className="border-collapse text-xs" style={{ minWidth: `${120 + weekDates.length * therapists.length * 100}px` }}>
+          <thead className="sticky top-0 z-20">
+            {/* Day row */}
+            <tr>
+              <th className="sticky left-0 z-30 bg-gray-50 border border-gray-200 px-3 py-2 text-left font-bold text-gray-700 w-20 min-w-[5rem]">
+                Time
+              </th>
+              {weekDates.map((date, di) => {
+                const isToday = date === todayStr;
+                return (
+                  <th
+                    key={date}
+                    colSpan={therapists.length}
+                    className={`border border-gray-200 px-2 py-2 text-center font-bold ${isToday ? 'bg-blue-100 text-blue-700' : 'bg-gray-50 text-gray-700'}`}
+                  >
+                    <div className="text-xs font-normal text-gray-500">{DAY_LABELS[di]}</div>
+                    <div>{new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>
+                  </th>
+                );
+              })}
+            </tr>
+            {/* Therapist sub-row */}
+            <tr>
+              <th className="sticky left-0 z-30 bg-gray-50 border border-gray-200 px-3 py-1"></th>
+              {weekDates.map((date) =>
+                therapists.map((t, ti) => (
+                  <th
+                    key={`${date}-${t.id}`}
+                    className="border border-gray-200 px-1 py-1 text-center bg-gray-50"
+                    style={{ minWidth: '90px' }}
+                  >
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-white text-[10px] font-semibold ${THERAPIST_COLORS[ti % THERAPIST_COLORS.length]}`}>
+                      {t.name.split(' ')[0]}
+                    </span>
+                  </th>
+                ))
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {TIME_SLOTS.map((slot) => {
+              const isHour = slot.endsWith(':00');
+              return (
+                <tr key={slot} className={isHour ? 'border-t-2 border-gray-300' : ''}>
+                  <td className={`sticky left-0 z-10 bg-white border border-gray-200 px-3 py-1 font-mono font-semibold ${isHour ? 'text-indigo-700' : 'text-gray-400'}`}>
+                    {isHour ? slot : <span className="opacity-50 text-[10px]">{slot}</span>}
+                  </td>
+                  {weekDates.map((date) =>
+                    therapists.map((t, ti) => {
+                      const apt = getApt(date, t.id, slot);
+                      return (
+                        <td
+                          key={`${date}-${t.id}-${slot}`}
+                          className={`border border-gray-100 p-0.5 align-top cursor-pointer transition-colors hover:bg-indigo-50 ${apt ? '' : ''}`}
+                          style={{ minWidth: '90px', height: '32px' }}
+                          onClick={() => onAddAppointment()}
+                          title={apt ? `${apt.patient} — ${apt.type}` : 'Click to add'}
+                        >
+                          {apt && (
+                            <div className={`rounded px-1 py-0.5 text-white text-[10px] font-medium truncate ${THERAPIST_COLORS[ti % THERAPIST_COLORS.length]}`}>
+                              <div className="font-semibold truncate">{apt.patient}</div>
+                              {apt.type && <div className="opacity-80 truncate">{apt.type}</div>}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer */}
+      <div className="px-6 py-3 bg-gray-50 border-t flex items-center gap-6 text-sm text-gray-600">
+        <span><strong>{therapists.length}</strong> therapists</span>
+        <span><strong>{allAppointments.filter(a => weekDates.includes(a.date)).length}</strong> appointments this week</span>
+        <button
+          onClick={onAddAppointment}
+          className="ml-auto flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-semibold"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add Appointment
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ─── Monthly Calendar View ────────────────────────────────────────────────────
 const MonthlyCalendarView = ({ therapists, allAppointments, calendarMonth, setCalendarMonth, onAddAppointment }) => {
   const [popup, setPopup] = useState(null); // { date, therapist, appointments }
@@ -359,9 +536,10 @@ const MonthlyCalendarView = ({ therapists, allAppointments, calendarMonth, setCa
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const AppointmentScheduling = () => {
-  const [view, setView] = useState('daily'); // 'daily' | 'monthly'
+  const [view, setView] = useState('daily'); // 'daily' | 'weekly' | 'monthly'
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [weekBase, setWeekBase] = useState(todayISO());
   const [appointments, setAppointments] = useState([]);
   const [allAppointments, setAllAppointments] = useState([]);
   const [therapists, setTherapists] = useState([]);
@@ -485,6 +663,12 @@ const AppointmentScheduling = () => {
               <List className="w-4 h-4" /> Daily
             </button>
             <button
+              onClick={() => setView('weekly')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${view === 'weekly' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              <Calendar className="w-4 h-4" /> Weekly
+            </button>
+            <button
               onClick={() => setView('monthly')}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${view === 'monthly' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
             >
@@ -499,6 +683,17 @@ const AppointmentScheduling = () => {
           </button>
         </div>
       </div>
+
+      {/* ── Weekly Grid View ── */}
+      {view === 'weekly' && (
+        <WeeklyGridView
+          therapists={therapists}
+          allAppointments={allAppointments}
+          weekBase={weekBase}
+          setWeekBase={setWeekBase}
+          onAddAppointment={openAddModal}
+        />
+      )}
 
       {/* ── Monthly Calendar View ── */}
       {view === 'monthly' && (
