@@ -157,22 +157,31 @@ const UserManagement = () => {
   // ADD/EDIT USER MODAL
   // ==========================================
   const UserModal = ({ editUser = null }) => {
+    const initRoles = editUser
+      ? (editUser.roles && editUser.roles.length > 0 ? editUser.roles : [editUser.role || 'front_office'])
+      : ['front_office'];
+    const initPerms = editUser
+      ? (editUser.permissions || DEFAULT_PERMISSIONS[editUser.role || 'front_office'] || [])
+      : DEFAULT_PERMISSIONS['front_office'];
+
     const [userData, setUserData] = useState(editUser ? {
       name: editUser.name || '',
       email: editUser.email || '',
       phone: editUser.phone || '',
-      role: editUser.role || 'front_office',
+      roles: initRoles,
+      role: initRoles[0],
       qualification: editUser.qualification || '',
       department: editUser.department || '',
       employee_id: editUser.employee_id || '',
       password: '',
       is_active: editUser.is_active !== false,
-      permissions: editUser.permissions || DEFAULT_PERMISSIONS[editUser.role || 'front_office'] || [],
+      permissions: initPerms,
       notes: editUser.notes || ''
     } : {
       name: '',
       email: '',
       phone: '',
+      roles: ['front_office'],
       role: 'front_office',
       qualification: '',
       department: '',
@@ -186,12 +195,17 @@ const UserManagement = () => {
     const [saving, setSaving] = useState(false);
     const [showAdvancedPerms, setShowAdvancedPerms] = useState(false);
 
-    const handleRoleChange = (newRole) => {
-      setUserData(prev => ({
-        ...prev,
-        role: newRole,
-        permissions: DEFAULT_PERMISSIONS[newRole] || []
-      }));
+    const handleRoleChange = (roleKey) => {
+      setUserData(prev => {
+        const already = prev.roles.includes(roleKey);
+        const newRoles = already
+          ? prev.roles.filter(r => r !== roleKey)
+          : [...prev.roles, roleKey];
+        if (newRoles.length === 0) return prev; // must have at least one
+        // Merge permissions from all selected roles (union)
+        const merged = [...new Set(newRoles.flatMap(r => DEFAULT_PERMISSIONS[r] || []))];
+        return { ...prev, roles: newRoles, role: newRoles[0], permissions: merged };
+      });
     };
 
     const togglePermission = (moduleId) => {
@@ -218,7 +232,8 @@ const UserManagement = () => {
           name: userData.name.trim(),
           email: userData.email.trim().toLowerCase(),
           phone: userData.phone.trim(),
-          role: userData.role,
+          role: userData.roles[0],
+          roles: userData.roles,
           qualification: userData.qualification.trim(),
           department: userData.department.trim(),
           employee_id: userData.employee_id.trim(),
@@ -234,11 +249,11 @@ const UserManagement = () => {
 
         if (editUser) {
           await updateDoc(doc(db, 'users', editUser.id), saveData);
-          alert(`✅ User Updated Successfully!\n\nName: ${saveData.name}\nRole: ${ROLES[saveData.role]?.label}\nModules: ${saveData.permissions.length} accessible`);
+          alert(`✅ User Updated Successfully!\n\nName: ${saveData.name}\nGroups: ${saveData.roles.map(r => ROLES[r]?.label).join(', ')}\nModules: ${saveData.permissions.length} accessible`);
         } else {
           saveData.created_at = new Date().toISOString();
           await addDoc(collection(db, 'users'), saveData);
-          alert(`✅ User Created Successfully!\n\nName: ${saveData.name}\nEmail: ${saveData.email}\nRole: ${ROLES[saveData.role]?.label}\nModules: ${saveData.permissions.length} accessible\n\nThe user can now log in with their email and password.`);
+          alert(`✅ User Created Successfully!\n\nName: ${saveData.name}\nEmail: ${saveData.email}\nGroups: ${saveData.roles.map(r => ROLES[r]?.label).join(', ')}\nModules: ${saveData.permissions.length} accessible\n\nThe user can now log in with their email and password.`);
         }
 
         setShowAddUser(false);
@@ -357,44 +372,59 @@ const UserManagement = () => {
 
             {/* Role Selection */}
             <div>
-              <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-gray-800 mb-1 flex items-center gap-2">
                 <Shield className="w-4 h-4 text-teal-600" />
-                User Role & Group
+                User Groups
               </h3>
+              <p className="text-xs text-gray-500 mb-3">Select one or more groups. Permissions from all selected groups will be merged.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {Object.entries(ROLES).map(([roleKey, roleData]) => (
-                  <button key={roleKey}
-                    onClick={() => handleRoleChange(roleKey)}
-                    className={`p-4 rounded-xl border-2 text-left transition-all ${
-                      userData.role === roleKey
-                        ? 'border-teal-500 bg-teal-50 shadow-md'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{roleData.icon}</span>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">{roleData.label}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{roleData.description}</p>
+                {Object.entries(ROLES).map(([roleKey, roleData]) => {
+                  const isSelected = userData.roles.includes(roleKey);
+                  const isPrimary = userData.roles[0] === roleKey;
+                  return (
+                    <button key={roleKey}
+                      onClick={() => handleRoleChange(roleKey)}
+                      className={`p-4 rounded-xl border-2 text-left transition-all ${
+                        isSelected
+                          ? 'border-teal-500 bg-teal-50 shadow-md'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}>
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{roleData.icon}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-900">{roleData.label}</p>
+                            {isPrimary && isSelected && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-teal-600 text-white rounded-full font-semibold">Primary</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">{roleData.description}</p>
+                        </div>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-teal-600 border-teal-600' : 'border-gray-300'}`}>
+                          {isSelected && <CheckCircle className="w-4 h-4 text-white" />}
+                        </div>
                       </div>
-                      {userData.role === roleKey && (
-                        <CheckCircle className="w-5 h-5 text-teal-600" />
-                      )}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {(DEFAULT_PERMISSIONS[roleKey] || []).slice(0, 5).map(perm => (
-                        <span key={perm} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">
-                          {MODULES[perm]?.label || perm}
-                        </span>
-                      ))}
-                      {(DEFAULT_PERMISSIONS[roleKey] || []).length > 5 && (
-                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">
-                          +{(DEFAULT_PERMISSIONS[roleKey] || []).length - 5} more
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {(DEFAULT_PERMISSIONS[roleKey] || []).slice(0, 5).map(perm => (
+                          <span key={perm} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">
+                            {MODULES[perm]?.label || perm}
+                          </span>
+                        ))}
+                        {(DEFAULT_PERMISSIONS[roleKey] || []).length > 5 && (
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">
+                            +{(DEFAULT_PERMISSIONS[roleKey] || []).length - 5} more
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+              {userData.roles.length > 1 && (
+                <p className="text-xs text-teal-700 mt-2 font-medium">
+                  ✓ {userData.roles.length} groups selected — permissions merged ({userData.permissions.length} modules)
+                </p>
+              )}
             </div>
 
             {/* Custom Permissions */}
@@ -577,12 +607,13 @@ const UserManagement = () => {
               </thead>
               <tbody className="divide-y">
                 {filteredUsers.map(user => {
-                  const roleInfo = ROLES[user.role] || ROLES.front_office;
+                  const userRoles = user.roles && user.roles.length > 0 ? user.roles : [user.role || 'front_office'];
+                  const primaryRoleInfo = ROLES[userRoles[0]] || ROLES.front_office;
                   return (
                     <tr key={user.id} className="hover:bg-gray-50">
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full ${roleInfo.badgeColor} text-white flex items-center justify-center font-bold text-sm`}>
+                          <div className={`w-10 h-10 rounded-full ${primaryRoleInfo.badgeColor} text-white flex items-center justify-center font-bold text-sm`}>
                             {user.name?.charAt(0) || '?'}
                           </div>
                           <div>
@@ -592,9 +623,16 @@ const UserManagement = () => {
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${roleInfo.color}`}>
-                          {roleInfo.icon} {roleInfo.label}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {userRoles.map(r => {
+                            const info = ROLES[r] || ROLES.front_office;
+                            return (
+                              <span key={r} className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${info.color}`}>
+                                {info.icon} {info.label}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600">{user.department || '-'}</td>
                       <td className="px-4 py-4">
