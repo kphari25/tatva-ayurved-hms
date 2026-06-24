@@ -25,6 +25,7 @@ import AIAssist from './components/AIAssist';
 import PurchaseManagement from './components/PurchaseManagement';
 import AppointmentScheduling from './components/AppointmentScheduling';
 import UserManagement, { getUserPermissions, hasModuleAccess } from './components/UserManagement';
+import HRPayrollModule from './components/HRPayrollModule';
 
 function App() {
   // DEBUG VERSION - Updated 2026-05-22 - New Patient Button Fix
@@ -272,15 +273,7 @@ function App() {
         
         {currentView === 'profit-loss' && <ProfitLoss />}
         
-        {currentView === 'hr-payroll' && (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">HR & Payroll</h1>
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <UserCog className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Admin Only</p>
-            </div>
-          </div>
-        )}
+        {currentView === 'hr-payroll' && <HRPayrollModule userRole={currentUser?.role} currentUser={currentUser} />}
         
         {currentView === 'user-management' && <UserManagement />}
         
