@@ -70,12 +70,16 @@ const PatientPortal = ({ onAddPatient }) => {
 
   // Filter patients based on search and gender
   const filteredPatients = patients.filter(patient => {
-    const matchesSearch = 
-      (patient.first_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (patient.last_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (patient.patient_number?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (patient.phone?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (patient.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    const s = searchTerm.toLowerCase();
+    const matchesSearch =
+      (patient.first_name?.toLowerCase() || '').includes(s) ||
+      (patient.last_name?.toLowerCase() || '').includes(s) ||
+      (`${patient.first_name || ''} ${patient.last_name || ''}`.toLowerCase()).includes(s) ||
+      (patient.patient_number?.toLowerCase() || '').includes(s) ||
+      (patient.mrd_number?.toLowerCase() || '').includes(s) ||
+      (patient.ip_number?.toLowerCase() || '').includes(s) ||
+      (patient.phone?.toLowerCase() || '').includes(s) ||
+      (patient.email?.toLowerCase() || '').includes(s);
 
     const matchesGender =
       filterGender === 'all' ||
@@ -195,7 +199,7 @@ const PatientPortal = ({ onAddPatient }) => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by name, patient number, phone, or email..."
+              placeholder="Search by name, MRD number, IP number, phone, or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
@@ -271,7 +275,7 @@ const PatientPortal = ({ onAddPatient }) => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Patient #</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">MRD / IP No.</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Age/Gender</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
@@ -285,9 +289,20 @@ const PatientPortal = ({ onAddPatient }) => {
                 {filteredPatients.map((patient) => (
                   <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
-                      <span className="font-mono text-sm text-gray-900">
-                        {patient.patient_number || 'N/A'}
-                      </span>
+                      <div className="space-y-1">
+                        {patient.mrd_number ? (
+                          <span className="block font-mono text-sm font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded">
+                            {patient.mrd_number}
+                          </span>
+                        ) : (
+                          <span className="block font-mono text-xs text-gray-400">{patient.patient_number || 'N/A'}</span>
+                        )}
+                        {patient.ip_number && (
+                          <span className="block font-mono text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded">
+                            {patient.ip_number}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center">

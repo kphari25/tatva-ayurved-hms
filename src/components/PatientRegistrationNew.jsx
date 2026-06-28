@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserPlus, Save, X } from 'lucide-react';
-import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
 
@@ -29,34 +29,59 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
     notes: ''
   });
 
-  // Generate next patient number
+  // Generate next MRD number (MRD-1001, MRD-1002, …)
+  const generateMRDNumber = async () => {
+    try {
+      const snap = await getDocs(query(collection(db, 'patients'), orderBy('mrd_number', 'desc'), limit(1)));
+      if (snap.empty) return 'MRD-1001';
+      const last = snap.docs[0].data().mrd_number || 'MRD-1000';
+      const match = last.match(/MRD-(\d+)/);
+      const next = match ? parseInt(match[1]) + 1 : 1001;
+      return `MRD-${next}`;
+    } catch {
+      // Fallback: count all patients and start from 1001
+      try {
+        const snap = await getDocs(collection(db, 'patients'));
+        return `MRD-${1001 + snap.size}`;
+      } catch {
+        return `MRD-${Date.now().toString().slice(-4)}`;
+      }
+    }
+  };
+
+  // Generate next IP number (IP-3000, IP-3001, …)
+  const generateIPNumber = async () => {
+    try {
+      const snap = await getDocs(query(collection(db, 'patients'), orderBy('ip_number', 'desc'), limit(1)));
+      if (snap.empty) return 'IP-3000';
+      const last = snap.docs[0].data().ip_number;
+      if (!last) return 'IP-3000';
+      const match = last.match(/IP-(\d+)/);
+      const next = match ? parseInt(match[1]) + 1 : 3000;
+      return `IP-${next}`;
+    } catch {
+      try {
+        const snap = await getDocs(query(collection(db, 'patients'), where('patient_type', '==', 'IP')));
+        return `IP-${3000 + snap.size}`;
+      } catch {
+        return `IP-${Date.now().toString().slice(-4)}`;
+      }
+    }
+  };
+
+  // Keep old PAT number for backward compat
   const generatePatientNumber = async () => {
     try {
-      // Get the latest patient to determine next number
-      const patientsRef = collection(db, 'patients');
-      const q = query(patientsRef, orderBy('created_at', 'desc'), limit(1));
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        // First patient
-        return 'PAT-2026-0001';
-      }
-
-      const lastPatient = snapshot.docs[0].data();
-      const lastNumber = lastPatient.patient_number || 'PAT-2026-0000';
-      
-      // Extract number and increment
-      const match = lastNumber.match(/PAT-(\d{4})-(\d{4})/);
+      const snap = await getDocs(query(collection(db, 'patients'), orderBy('created_at', 'desc'), limit(1)));
+      if (snap.empty) return 'PAT-2026-0001';
+      const last = snap.docs[0].data().patient_number || 'PAT-2026-0000';
+      const match = last.match(/PAT-(\d{4})-(\d{4})/);
       if (match) {
         const year = new Date().getFullYear();
-        const num = parseInt(match[2]) + 1;
-        return `PAT-${year}-${num.toString().padStart(4, '0')}`;
+        return `PAT-${year}-${(parseInt(match[2]) + 1).toString().padStart(4, '0')}`;
       }
-
-      // Fallback
       return `PAT-2026-${Date.now().toString().slice(-4)}`;
-    } catch (error) {
-      console.error('Error generating patient number:', error);
+    } catch {
       return `PAT-2026-${Date.now().toString().slice(-4)}`;
     }
   };
@@ -81,13 +106,17 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
     try {
       setLoading(true);
 
-      // Generate patient number
+      // Generate numbers
       const patientNumber = await generatePatientNumber();
+      const mrdNumber = await generateMRDNumber();
+      const ipNumber = formData.patient_type === 'IP' ? await generateIPNumber() : null;
 
       // Prepare patient data
       const patientData = {
         ...formData,
         patient_number: patientNumber,
+        mrd_number: mrdNumber,
+        ...(ipNumber ? { ip_number: ipNumber } : {}),
         prescriptions: [],
         visits: [],
         created_at: new Date().toISOString(),
@@ -115,7 +144,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
         }
       }
 
-      alert(`Patient registered successfully!\nPatient Number: ${patientNumber}${smsSent ? '\n✅ Welcome SMS sent!' : sendWelcomeSMS && formData.phone ? '\n⚠️ SMS failed - check MSG91 config' : ''}`);
+      alert(`Patient registered successfully!\nMRD Number: ${mrdNumber}${ipNumber ? `\nIP Number: ${ipNumber}` : ''}\nPatient Number: ${patientNumber}${smsSent ? '\n✅ Welcome SMS sent!' : sendWelcomeSMS && formData.phone ? '\n⚠️ SMS failed - check MSG91 config' : ''}`);
 
 
       // Reset form
@@ -259,6 +288,30 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   <option value="IP">IP (In-Patient)</option>
                 </select>
               </div>
+
+              {/* MRD Number - auto-generated, read-only */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  MRD Number <span className="text-xs text-gray-400 font-normal">(auto-generated)</span>
+                </label>
+                <div className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-teal-50 text-teal-700 font-semibold text-sm flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-teal-400 inline-block"></span>
+                  Will be assigned on save (MRD-1001+)
+                </div>
+              </div>
+
+              {/* IP Number - only for IP patients */}
+              {formData.patient_type === 'IP' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    IP Number <span className="text-xs text-gray-400 font-normal">(auto-generated)</span>
+                  </label>
+                  <div className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-purple-50 text-purple-700 font-semibold text-sm flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-purple-400 inline-block"></span>
+                    Will be assigned on save (IP-3000+)
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Blood Group</label>
