@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileText, Plus, Search, Printer, Send, AlertCircle, IndianRupee, CheckCircle, Clock, User, Star, Link as LinkIcon } from 'lucide-react';
 import { collection, getDocs, addDoc, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import DischargeSummaryModal from './DischargeSummaryModal';
 
 const DischargeManagement = () => {
   const [patients, setPatients] = useState([]);
@@ -13,6 +14,8 @@ const DischargeManagement = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [activeTab, setActiveTab] = useState('pending'); // pending, completed
   const [showReviewLinkModal, setShowReviewLinkModal] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [summaryPatient, setSummaryPatient] = useState(null);
   const [reviewPatient, setReviewPatient] = useState(null);
 
   // Google Review Link - Update this with your actual Google Business link
@@ -153,13 +156,22 @@ ${GOOGLE_REVIEW_LINK}
               <p className="text-gray-600 text-sm">Fast discharge workflow & final billing</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowDischargeModal(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            New Discharge
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setSummaryPatient(null); setShowSummaryModal(true); }}
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
+            >
+              <FileText className="w-5 h-5" />
+              Discharge Summary
+            </button>
+            <button
+              onClick={() => setShowDischargeModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              New Discharge
+            </button>
+          </div>
         </div>
       </div>
 
@@ -323,6 +335,20 @@ ${GOOGLE_REVIEW_LINK}
                         >
                           View
                         </button>
+                        <button
+                          onClick={() => {
+                            const patient = patients.find(p =>
+                              p.patient_number === discharge.patient_number || p.id === discharge.patient_id
+                            ) || { first_name: discharge.patient_name, last_name: '', patient_number: discharge.patient_number };
+                            setSummaryPatient(patient);
+                            setShowSummaryModal(true);
+                          }}
+                          className="px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700 flex items-center gap-1"
+                          title="Discharge Summary"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>Summary</span>
+                        </button>
                         {discharge.status === 'completed' && (
                           <>
                             <button
@@ -336,11 +362,6 @@ ${GOOGLE_REVIEW_LINK}
                               title="Share Google Review Link"
                             >
                               <Star className="w-4 h-4" />
-                            </button>
-                            <button
-                              className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
-                            >
-                              <Printer className="w-4 h-4" />
                             </button>
                           </>
                         )}
@@ -368,6 +389,15 @@ ${GOOGLE_REVIEW_LINK}
             setSelectedPatient(null);
             loadData();
           }}
+        />
+      )}
+
+      {/* Discharge Summary Modal */}
+      {showSummaryModal && (
+        <DischargeSummaryModal
+          patient={summaryPatient}
+          onClose={() => { setShowSummaryModal(false); setSummaryPatient(null); }}
+          onSave={() => { setShowSummaryModal(false); setSummaryPatient(null); }}
         />
       )}
 

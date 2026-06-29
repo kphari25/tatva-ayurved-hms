@@ -1,0 +1,813 @@
+import React, { useState } from 'react';
+import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { addDoc, updateDoc, doc, collection } from 'firebase/firestore';
+
+const HOSPITAL = {
+  name: 'Tatva Ayurved',
+  tagline: 'Ayurveda for Health & Happiness',
+  address: 'Thekkuveedu Lane, Kannur Road, Kozhikode',
+  phone: '9895112264, 0495 2766717',
+  email: 'info@tatvaayurved.com',
+  website: 'www.tatvaayurved.com',
+  regNo: 'BFHP03-C110100-00061-2025',
+  preparedBy: 'Dr. Satheesh Kumar – Chief Physician\nDr. Abirami PB – RMO\nTatva Ayurved Hospital, Calicut',
+};
+
+const emptyForm = () => ({
+  // Patient identifiers (pre-filled from patient record)
+  ward_no: '',
+  ip_no: '',
+  mrd_no: '',
+  admission_date: '',
+  admission_time: '03:00PM',
+  discharge_date: new Date().toISOString().split('T')[0],
+  discharge_time: '12:00PM',
+  duration_days: '',
+  doctor_in_charge: '',
+
+  // Chief Complaints — array of strings
+  chief_complaints: [''],
+
+  // Provisional Diagnosis
+  provisional_diagnosis: '',
+
+  // Relevant Medical History — array of strings
+  medical_history: [''],
+
+  // Vital Parameters on Admission
+  vitals: { bp: '', pulse: '', weight: '', spo2: '', temperature: '' },
+
+  // Clinical Examination Findings
+  clinical_findings: {
+    tremor: '',
+    rigidity: '',
+    slowness: '',
+    postural_instability: '',
+    other: '',
+  },
+
+  // Ashtasthana Pareeksha
+  ashtasthana: {
+    nadi: '', mutra: '', malam: '', jihva: '',
+    sabda: '', sparsha: '', drik: '', akrithi: '',
+  },
+
+  // Diagnosis
+  diagnosis: '',
+
+  // Ayurvedic Samprapthi
+  samprapthi: { dosha: '', dushya: '', srothas: '', srotho_dushti: '' },
+
+  // Treatment Given
+  internal_medicines: [''],
+  external_treatments: [{ treatment: '', days: '' }],
+
+  // Diet and Lifestyle
+  diet_lifestyle: '',
+
+  // Response to Treatment — array of { parameter, before, after }
+  response_to_treatment: [
+    { parameter: 'Weight', before: '', after: '' },
+    { parameter: 'Sleep', before: '', after: '' },
+    { parameter: 'Wellbeing', before: '', after: '' },
+  ],
+
+  // Summary at Discharge
+  summary_at_discharge: [''],
+
+  // Advise on Discharge
+  discharge_internal_medicines: [''],
+  discharge_external_treatments: [''],
+
+  // Pathya-Apathya
+  pathya_dos: [''],
+  apathya_donts: [''],
+
+  // Lifestyle Modification
+  lifestyle_modification: '',
+
+  // Follow-Up Plan
+  next_review: '',
+  review_procedure: 'Tele-consultation / In-person review',
+
+  // Prognosis & Remarks
+  prognosis: '',
+  remarks: '',
+});
+
+// ── List editor helper ──────────────────────────────────────────────────
+const ListEditor = ({ label, items, onChange, placeholder = 'Add item...' }) => {
+  const update = (i, val) => { const n = [...items]; n[i] = val; onChange(n); };
+  const add = () => onChange([...items, '']);
+  const remove = (i) => { if (items.length === 1) return; const n = [...items]; n.splice(i, 1); onChange(n); };
+  return (
+    <div>
+      {label && <label className="block text-sm font-semibold text-gray-700 mb-2">{label}</label>}
+      <div className="space-y-2">
+        {items.map((item, i) => (
+          <div key={i} className="flex gap-2">
+            <input
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+              value={item}
+              onChange={e => update(i, e.target.value)}
+              placeholder={placeholder}
+            />
+            <button onClick={() => remove(i)} className="text-red-400 hover:text-red-600 px-1">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button onClick={add} className="mt-2 text-teal-600 text-sm flex items-center gap-1 hover:text-teal-800">
+        <Plus className="w-3 h-3" /> Add
+      </button>
+    </div>
+  );
+};
+
+// ── Print HTML generator ────────────────────────────────────────────────
+const buildPrintHTML = (patient, form) => {
+  const patientName = `${patient?.title || ''} ${patient?.first_name || ''} ${patient?.last_name || ''}`.trim().toUpperCase();
+  const address = [patient?.address, patient?.city, patient?.state, patient?.pincode].filter(Boolean).join(', ').toUpperCase();
+  const age = patient?.age || '';
+  const gender = patient?.gender?.[0]?.toUpperCase() || '';
+
+  const admDate = form.admission_date ? new Date(form.admission_date).toLocaleDateString('en-IN') : '';
+  const disDate = form.discharge_date ? new Date(form.discharge_date).toLocaleDateString('en-IN') : '';
+
+  const bullet = (arr) => arr.filter(Boolean).map(i => `<li>${i}</li>`).join('');
+  const tableRow = (label, val) => `<tr><td style="padding:4px 8px;font-weight:bold;">${label}</td><td style="padding:4px 8px;">${val}</td></tr>`;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Discharge Summary – ${patientName}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; }
+    @page { size: A4; margin: 15mm 12mm; }
+    @media print { body { -webkit-print-color-adjust: exact; } }
+
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 10px; }
+    .logo-block { background: #1a5f4e; color: #fff; padding: 10px 16px; border-radius: 4px; min-width: 160px; }
+    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
+    .logo-block .tagline { font-size: 9px; color: #a8d8c8; }
+    .contact-block { text-align: right; font-size: 10px; line-height: 1.6; }
+    .contact-block .reg { font-size: 9px; color: #555; }
+
+    .title { text-align: center; font-size: 15px; font-weight: bold; text-decoration: underline; margin: 8px 0 12px; letter-spacing: 1px; }
+
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 10px; }
+    .info-left, .info-right { padding: 0 6px; }
+    .info-row { display: flex; gap: 4px; margin-bottom: 4px; font-size: 11px; }
+    .info-label { font-weight: bold; min-width: 120px; }
+
+    .section-title { font-size: 12px; font-weight: bold; margin: 10px 0 5px; text-transform: uppercase; }
+    ul { margin-left: 18px; }
+    ul li { margin-bottom: 2px; }
+
+    table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
+    table.grid th, table.grid td { border: 1px solid #aaa; padding: 4px 8px; }
+    table.grid th { background: #f0f0f0; font-weight: bold; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .footer { margin-top: 20px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
+    .sig-block { text-align: right; }
+    .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; }
+    .prepared-by { font-size: 10px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo-block">
+    <div class="brand">TATVA AYURVED</div>
+    <div class="tagline">Ayurveda for Health &amp; Happiness</div>
+  </div>
+  <div class="contact-block">
+    📍 ${HOSPITAL.address}<br>
+    📞 ${HOSPITAL.phone}<br>
+    ✉ ${HOSPITAL.email}<br>
+    🌐 ${HOSPITAL.website}<br>
+    <span class="reg">Reg No: ${HOSPITAL.regNo}</span>
+  </div>
+</div>
+
+<div class="title">DISCHARGE SUMMARY</div>
+
+<!-- PATIENT INFO -->
+<div class="info-grid">
+  <div class="info-left">
+    <div class="info-row"><span class="info-label">Name of Patient:</span> ${patientName}</div>
+    <div class="info-row"><span class="info-label">Address:</span> ${address}</div>
+    <div class="info-row"><span class="info-label">Tel no:</span> ${patient?.phone || ''}</div>
+    <div class="info-row"><span class="info-label">Age / sex:</span> ${age}/${gender}</div>
+    <div class="info-row"><span class="info-label">Date of Admission:</span> ${admDate} (${form.admission_time || ''})</div>
+    <div class="info-row"><span class="info-label">Duration of stay:</span> ${form.duration_days ? form.duration_days + ' DAYS' : ''}</div>
+    <div class="info-row"><span class="info-label">Doctor in Charge:</span> ${form.doctor_in_charge?.toUpperCase() || ''}</div>
+  </div>
+  <div class="info-right">
+    <div class="info-row"><span class="info-label">Ward no:</span> ${form.ward_no}</div>
+    <div class="info-row"><span class="info-label">IP No:</span> ${form.ip_no || patient?.ip_number || ''}</div>
+    <div class="info-row"><span class="info-label">MRD No:</span> ${form.mrd_no || patient?.mrd_number || ''}</div>
+    <div class="info-row"><span class="info-label">Date of Discharge:</span> ${disDate} (${form.discharge_time || ''})</div>
+  </div>
+</div>
+
+<!-- CHIEF COMPLAINTS -->
+<div class="section-title">Chief Complaints</div>
+<ul>${bullet(form.chief_complaints)}</ul>
+
+<!-- PROVISIONAL DIAGNOSIS -->
+<div class="section-title">Provisional Diagnosis: <span style="font-weight:normal;">${form.provisional_diagnosis}</span></div>
+
+<!-- MEDICAL HISTORY -->
+${form.medical_history.filter(Boolean).length ? `
+<div class="section-title">Relevant Medical History:</div>
+<ul>${bullet(form.medical_history)}</ul>
+` : ''}
+
+<!-- VITAL PARAMETERS -->
+<div class="section-title">Vital Parameters on Admission</div>
+<table class="grid">
+  <thead><tr><th>PARAMETERS</th><th>READING</th></tr></thead>
+  <tbody>
+    ${form.vitals.bp ? `<tr><td>BP</td><td>${form.vitals.bp}</td></tr>` : ''}
+    ${form.vitals.pulse ? `<tr><td>PULSE</td><td>${form.vitals.pulse}</td></tr>` : ''}
+    ${form.vitals.weight ? `<tr><td>WEIGHT</td><td>${form.vitals.weight}</td></tr>` : ''}
+    ${form.vitals.spo2 ? `<tr><td>SPO2</td><td>${form.vitals.spo2}</td></tr>` : ''}
+    ${form.vitals.temperature ? `<tr><td>TEMPERATURE</td><td>${form.vitals.temperature}</td></tr>` : ''}
+  </tbody>
+</table>
+
+<!-- CLINICAL FINDINGS -->
+<div class="section-title">Clinical Examination Finding:</div>
+${form.clinical_findings.tremor ? `<p>Tremor – ${form.clinical_findings.tremor}</p>` : ''}
+${form.clinical_findings.rigidity ? `<p>Rigidity – ${form.clinical_findings.rigidity}</p>` : ''}
+${form.clinical_findings.slowness ? `<p>Slowness – ${form.clinical_findings.slowness}</p>` : ''}
+${form.clinical_findings.postural_instability ? `<p>Postural instability – ${form.clinical_findings.postural_instability}</p>` : ''}
+${form.clinical_findings.other ? `<p>${form.clinical_findings.other}</p>` : ''}
+
+<!-- ASHTASTHANA PAREEKSHA -->
+${Object.values(form.ashtasthana).some(Boolean) ? `
+<div class="section-title">Ashtasthana Pareeksha:</div>
+<table class="grid">
+  <tbody>
+    <tr>
+      <td><strong>NADI</strong></td><td>${form.ashtasthana.nadi}</td>
+      <td><strong>SABDA</strong></td><td>${form.ashtasthana.sabda}</td>
+    </tr>
+    <tr>
+      <td><strong>MUTRA</strong></td><td>${form.ashtasthana.mutra}</td>
+      <td><strong>SPARSHA</strong></td><td>${form.ashtasthana.sparsha}</td>
+    </tr>
+    <tr>
+      <td><strong>MALAM</strong></td><td>${form.ashtasthana.malam}</td>
+      <td><strong>DRIK</strong></td><td>${form.ashtasthana.drik}</td>
+    </tr>
+    <tr>
+      <td><strong>JIHVA</strong></td><td>${form.ashtasthana.jihva}</td>
+      <td><strong>AKRITHI</strong></td><td>${form.ashtasthana.akrithi}</td>
+    </tr>
+  </tbody>
+</table>
+` : ''}
+
+<!-- DIAGNOSIS -->
+<div class="section-title">Diagnosis: <span style="font-weight:normal;">${form.diagnosis}</span></div>
+
+<!-- SAMPRAPTHI -->
+${Object.values(form.samprapthi).some(Boolean) ? `
+<div class="section-title">Ayurvedic Samprapthi</div>
+<ul>
+  ${form.samprapthi.dosha ? `<li>DOSHA: ${form.samprapthi.dosha}</li>` : ''}
+  ${form.samprapthi.dushya ? `<li>DUSHYA: ${form.samprapthi.dushya}</li>` : ''}
+  ${form.samprapthi.srothas ? `<li>SROTHAS: ${form.samprapthi.srothas}</li>` : ''}
+  ${form.samprapthi.srotho_dushti ? `<li>SROTHO DUSHTI: ${form.samprapthi.srotho_dushti}</li>` : ''}
+</ul>
+` : ''}
+
+<!-- TREATMENT GIVEN -->
+<div class="section-title">Treatment Given</div>
+${form.internal_medicines.filter(Boolean).length ? `
+<p style="font-style:italic;font-weight:bold;margin-bottom:4px;">Internal Medicines:</p>
+<ul>${bullet(form.internal_medicines)}</ul>
+` : ''}
+${form.external_treatments.filter(t => t.treatment).length ? `
+<p style="font-style:italic;font-weight:bold;margin:6px 0 4px;">External Treatment</p>
+<ul>${form.external_treatments.filter(t => t.treatment).map(t => `<li>${t.treatment}${t.days ? ` *${t.days} days` : ''}</li>`).join('')}</ul>
+` : ''}
+
+<!-- DIET AND LIFESTYLE -->
+${form.diet_lifestyle ? `
+<div class="section-title">Diet and Lifestyle During Treatment</div>
+<p style="white-space:pre-line;">${form.diet_lifestyle}</p>
+` : ''}
+
+<!-- RESPONSE TO TREATMENT -->
+${form.response_to_treatment.filter(r => r.parameter && (r.before || r.after)).length ? `
+<div class="section-title">Response to Treatment</div>
+<table class="grid">
+  <thead><tr><th>PARAMETERS</th><th>BEFORE</th><th>AFTER</th></tr></thead>
+  <tbody>
+    ${form.response_to_treatment.filter(r => r.parameter).map(r => `<tr><td>${r.parameter}</td><td>${r.before}</td><td>${r.after}</td></tr>`).join('')}
+  </tbody>
+</table>
+` : ''}
+
+<!-- SUMMARY AT DISCHARGE -->
+${form.summary_at_discharge.filter(Boolean).length ? `
+<div class="section-title">Summary at Discharge</div>
+<ul>${bullet(form.summary_at_discharge)}</ul>
+` : ''}
+
+<!-- ADVISE ON DISCHARGE -->
+${(form.discharge_internal_medicines.filter(Boolean).length || form.discharge_external_treatments.filter(Boolean).length) ? `
+<div class="section-title">Advise on Discharge:</div>
+${form.discharge_internal_medicines.filter(Boolean).length ? `
+<p style="font-weight:bold;margin:4px 0 2px;">INTERNAL MEDICINE</p>
+<ul>${bullet(form.discharge_internal_medicines)}</ul>` : ''}
+${form.discharge_external_treatments.filter(Boolean).length ? `
+<p style="font-weight:bold;margin:6px 0 2px;">EXTERNAL TREATMENT</p>
+<ul>${bullet(form.discharge_external_treatments)}</ul>` : ''}
+` : ''}
+
+<!-- PATHYA-APATHYA -->
+${(form.pathya_dos.filter(Boolean).length || form.apathya_donts.filter(Boolean).length) ? `
+<div class="section-title">Pathya-Apathya (Do's and Don'ts)</div>
+${form.pathya_dos.filter(Boolean).length ? `<p style="font-weight:bold;">Do's:</p><ul>${bullet(form.pathya_dos)}</ul>` : ''}
+${form.apathya_donts.filter(Boolean).length ? `<p style="font-weight:bold;margin-top:6px;">Don'ts:</p><ul>${bullet(form.apathya_donts)}</ul>` : ''}
+` : ''}
+
+<!-- LIFESTYLE -->
+${form.lifestyle_modification ? `
+<div class="section-title">Life Style Modification</div>
+<p style="white-space:pre-line;">${form.lifestyle_modification}</p>
+` : ''}
+
+<!-- FOLLOW-UP -->
+<div class="section-title">Follow-Up Plan</div>
+<p>Next Review Date: ${form.next_review ? `After ${form.next_review}` : '—'}</p>
+<p>Review Procedure: ${form.review_procedure}</p>
+
+<!-- PROGNOSIS -->
+${form.prognosis ? `<div class="section-title">Prognosis</div><p>${form.prognosis}</p>` : ''}
+
+<!-- REMARKS -->
+${form.remarks ? `<div class="section-title">Remarks</div><p>${form.remarks}</p>` : ''}
+
+<!-- FOOTER -->
+<div class="footer">
+  <div class="prepared-by">
+    <strong>Prepared &amp; Verified by:</strong><br>
+    ${HOSPITAL.preparedBy.replace(/\n/g, '<br>')}
+    <br>📞 ${HOSPITAL.phone} | 🌐 ${HOSPITAL.website}
+  </div>
+  <div class="sig-block">
+    <div class="sig-line"></div>
+    <p style="font-size:10px;margin-top:4px;">Signature of Medical Superintendent</p>
+  </div>
+</div>
+
+</body>
+</html>`;
+};
+
+// ── Main Modal ──────────────────────────────────────────────────────────
+const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) => {
+  const [form, setForm] = useState(() => {
+    if (existingSummary) return { ...emptyForm(), ...existingSummary };
+    const f = emptyForm();
+    f.ip_no = patient?.ip_number || '';
+    f.mrd_no = patient?.mrd_number || patient?.patient_number || '';
+    f.admission_date = patient?.admission_date || '';
+    return f;
+  });
+  const [saving, setSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState('patient');
+
+  const set = (path, val) => {
+    setForm(prev => {
+      const next = { ...prev };
+      const keys = path.split('.');
+      let obj = next;
+      for (let i = 0; i < keys.length - 1; i++) {
+        obj[keys[i]] = { ...obj[keys[i]] };
+        obj = obj[keys[i]];
+      }
+      obj[keys[keys.length - 1]] = val;
+      return next;
+    });
+  };
+
+  const handlePrint = () => {
+    const html = buildPrintHTML(patient, form);
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 500);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const data = {
+        patient_id: patient?.id || patient?.firebaseId,
+        patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
+        patient_number: patient?.patient_number || '',
+        mrd_number: form.mrd_no,
+        ip_number: form.ip_no,
+        ...form,
+        saved_at: new Date().toISOString(),
+      };
+      if (existingSummary?.id) {
+        await updateDoc(doc(db, 'discharge_summaries', existingSummary.id), data);
+      } else {
+        await addDoc(collection(db, 'discharge_summaries'), data);
+      }
+      alert('✅ Discharge summary saved!');
+      if (onSave) onSave();
+    } catch (e) {
+      alert('Error saving: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sections = [
+    { id: 'patient', label: 'Patient Info' },
+    { id: 'clinical', label: 'Clinical' },
+    { id: 'treatment', label: 'Treatment' },
+    { id: 'discharge', label: 'Discharge Advice' },
+    { id: 'followup', label: 'Follow-Up' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-3">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-teal-700 rounded-t-xl">
+          <div>
+            <h2 className="text-xl font-bold text-white">Discharge Summary</h2>
+            <p className="text-teal-200 text-sm mt-0.5">
+              {patient?.first_name} {patient?.last_name}
+              {(form.mrd_no || patient?.mrd_number) && <span className="ml-2 font-mono">MRD: {form.mrd_no || patient?.mrd_number}</span>}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-teal-700 rounded-lg hover:bg-teal-50 font-medium text-sm"
+            >
+              <Printer className="w-4 h-4" /> Print
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-400 font-medium text-sm disabled:opacity-60"
+            >
+              <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button onClick={onClose} className="p-2 text-white hover:bg-teal-600 rounded-lg">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Section tabs */}
+        <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
+          {sections.map(s => (
+            <button
+              key={s.id}
+              onClick={() => setActiveSection(s.id)}
+              className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${activeSection === s.id ? 'border-teal-600 text-teal-700 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Form Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          {/* ── PATIENT INFO ── */}
+          {activeSection === 'patient' && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-3 gap-4">
+                {[['Ward No', 'ward_no'], ['IP No', 'ip_no'], ['MRD No', 'mrd_no']].map(([lbl, key]) => (
+                  <div key={key}>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{lbl}</label>
+                    <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                      value={form[key]} onChange={e => set(key, e.target.value)} />
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Admission</label>
+                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.admission_date} onChange={e => set('admission_date', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Admission Time</label>
+                  <input type="text" placeholder="e.g. 03:00PM" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.admission_time} onChange={e => set('admission_time', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Discharge</label>
+                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.discharge_date} onChange={e => set('discharge_date', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Discharge Time</label>
+                  <input type="text" placeholder="e.g. 04:00PM" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.discharge_time} onChange={e => set('discharge_time', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration of Stay (days)</label>
+                  <input type="number" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.duration_days} onChange={e => set('duration_days', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Doctor in Charge</label>
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.doctor_in_charge} onChange={e => set('doctor_in_charge', e.target.value)} />
+                </div>
+              </div>
+
+              <ListEditor label="Chief Complaints" items={form.chief_complaints}
+                onChange={v => set('chief_complaints', v)}
+                placeholder="e.g. C/O weakness of both legs while walking since 2 years" />
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Provisional Diagnosis</label>
+                <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                  value={form.provisional_diagnosis} onChange={e => set('provisional_diagnosis', e.target.value)} placeholder="e.g. KAMPAVATA" />
+              </div>
+
+              <ListEditor label="Relevant Medical History" items={form.medical_history}
+                onChange={v => set('medical_history', v)} placeholder="e.g. H/O DIABETES MELLITUS since 2 months" />
+            </div>
+          )}
+
+          {/* ── CLINICAL ── */}
+          {activeSection === 'clinical' && (
+            <div className="space-y-5">
+              {/* Vitals */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-800 mb-3 uppercase tracking-wide">Vital Parameters on Admission</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  {[['BP', 'bp', 'e.g. 150/100'], ['Pulse', 'pulse', 'e.g. 70/MIN'], ['Weight', 'weight', 'e.g. 63KG'], ['SPO2', 'spo2', 'e.g. 98%'], ['Temperature', 'temperature', 'e.g. 98.6°F']].map(([lbl, key, ph]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{lbl}</label>
+                      <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                        value={form.vitals[key]} onChange={e => set(`vitals.${key}`, e.target.value)} placeholder={ph} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Clinical Findings */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-800 mb-3 uppercase tracking-wide">Clinical Examination Findings</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {[['Tremor', 'tremor'], ['Rigidity', 'rigidity'], ['Slowness', 'slowness'], ['Postural Instability', 'postural_instability']].map(([lbl, key]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{lbl}</label>
+                      <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                        value={form.clinical_findings[key]} onChange={e => set(`clinical_findings.${key}`, e.target.value)}
+                        placeholder="present / absent / present occasionally" />
+                    </div>
+                  ))}
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Other Findings</label>
+                    <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                      value={form.clinical_findings.other} onChange={e => set('clinical_findings.other', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Ashtasthana Pareeksha */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-800 mb-3 uppercase tracking-wide">Ashtasthana Pareeksha</h3>
+                <div className="grid grid-cols-4 gap-3">
+                  {[['Nadi', 'nadi'], ['Mutra', 'mutra'], ['Malam', 'malam'], ['Jihva', 'jihva'],
+                    ['Sabda', 'sabda'], ['Sparsha', 'sparsha'], ['Drik', 'drik'], ['Akrithi', 'akrithi']].map(([lbl, key]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{lbl}</label>
+                      <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                        value={form.ashtasthana[key]} onChange={e => set(`ashtasthana.${key}`, e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Diagnosis */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Diagnosis</label>
+                <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                  value={form.diagnosis} onChange={e => set('diagnosis', e.target.value)} placeholder="e.g. KAMPA VATA" />
+              </div>
+
+              {/* Samprapthi */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-800 mb-3 uppercase tracking-wide">Ayurvedic Samprapthi</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {[['Dosha', 'dosha'], ['Dushya', 'dushya'], ['Srothas', 'srothas'], ['Srotho Dushti', 'srotho_dushti']].map(([lbl, key]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{lbl}</label>
+                      <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                        value={form.samprapthi[key]} onChange={e => set(`samprapthi.${key}`, e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TREATMENT ── */}
+          {activeSection === 'treatment' && (
+            <div className="space-y-6">
+              <ListEditor label="Internal Medicines" items={form.internal_medicines}
+                onChange={v => set('internal_medicines', v)}
+                placeholder="e.g. GANDHARVA HASTHADI KASHAYAM 10ML+60ML LWW 4TIMES/DAY" />
+
+              {/* External Treatments */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">External Treatments</label>
+                <div className="space-y-2">
+                  {form.external_treatments.map((t, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                        value={t.treatment} placeholder="Treatment name (e.g. KADI KIZHI)"
+                        onChange={e => {
+                          const n = [...form.external_treatments];
+                          n[i] = { ...n[i], treatment: e.target.value };
+                          set('external_treatments', n);
+                        }}
+                      />
+                      <input
+                        className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                        value={t.days} placeholder="Days"
+                        onChange={e => {
+                          const n = [...form.external_treatments];
+                          n[i] = { ...n[i], days: e.target.value };
+                          set('external_treatments', n);
+                        }}
+                      />
+                      <button onClick={() => {
+                        if (form.external_treatments.length === 1) return;
+                        const n = [...form.external_treatments]; n.splice(i, 1); set('external_treatments', n);
+                      }} className="text-red-400 hover:text-red-600 px-1"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => set('external_treatments', [...form.external_treatments, { treatment: '', days: '' }])}
+                  className="mt-2 text-teal-600 text-sm flex items-center gap-1 hover:text-teal-800">
+                  <Plus className="w-3 h-3" /> Add External Treatment
+                </button>
+              </div>
+
+              {/* Diet & Lifestyle */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Diet and Lifestyle During Treatment</label>
+                <textarea rows={5} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+                  value={form.diet_lifestyle} onChange={e => set('diet_lifestyle', e.target.value)}
+                  placeholder="• Advised warm, light, non-oily, non-spicy diet&#10;• Avoid curd, cold water, refrigerated food..." />
+              </div>
+
+              {/* Response to Treatment */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Response to Treatment</label>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="border border-gray-300 px-3 py-2 text-left">Parameter</th>
+                      <th className="border border-gray-300 px-3 py-2 text-left">Before</th>
+                      <th className="border border-gray-300 px-3 py-2 text-left">After</th>
+                      <th className="w-8 border border-gray-300"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.response_to_treatment.map((r, i) => (
+                      <tr key={i}>
+                        <td className="border border-gray-200 p-1">
+                          <input className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:ring-1 focus:ring-teal-400 outline-none"
+                            value={r.parameter} onChange={e => {
+                              const n = [...form.response_to_treatment]; n[i] = { ...n[i], parameter: e.target.value }; set('response_to_treatment', n);
+                            }} />
+                        </td>
+                        <td className="border border-gray-200 p-1">
+                          <input className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:ring-1 focus:ring-teal-400 outline-none"
+                            value={r.before} onChange={e => {
+                              const n = [...form.response_to_treatment]; n[i] = { ...n[i], before: e.target.value }; set('response_to_treatment', n);
+                            }} />
+                        </td>
+                        <td className="border border-gray-200 p-1">
+                          <input className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:ring-1 focus:ring-teal-400 outline-none"
+                            value={r.after} onChange={e => {
+                              const n = [...form.response_to_treatment]; n[i] = { ...n[i], after: e.target.value }; set('response_to_treatment', n);
+                            }} />
+                        </td>
+                        <td className="border border-gray-200 p-1 text-center">
+                          <button onClick={() => {
+                            if (form.response_to_treatment.length === 1) return;
+                            const n = [...form.response_to_treatment]; n.splice(i, 1); set('response_to_treatment', n);
+                          }} className="text-red-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button onClick={() => set('response_to_treatment', [...form.response_to_treatment, { parameter: '', before: '', after: '' }])}
+                  className="mt-2 text-teal-600 text-sm flex items-center gap-1 hover:text-teal-800">
+                  <Plus className="w-3 h-3" /> Add Row
+                </button>
+              </div>
+
+              <ListEditor label="Summary at Discharge" items={form.summary_at_discharge}
+                onChange={v => set('summary_at_discharge', v)}
+                placeholder="e.g. The patient demonstrated significant improvement in overall energy" />
+            </div>
+          )}
+
+          {/* ── DISCHARGE ADVICE ── */}
+          {activeSection === 'discharge' && (
+            <div className="space-y-6">
+              <ListEditor label="Advise on Discharge — Internal Medicines" items={form.discharge_internal_medicines}
+                onChange={v => set('discharge_internal_medicines', v)}
+                placeholder="e.g. KALYANAKAM KASHAYAM 10ML +60ML LWW TID B/F" />
+
+              <ListEditor label="Advise on Discharge — External Treatments" items={form.discharge_external_treatments}
+                onChange={v => set('discharge_external_treatments', v)}
+                placeholder="e.g. Continue Abhyangam at home with sesame oil" />
+
+              <div className="grid grid-cols-2 gap-6">
+                <ListEditor label="Pathya — Do's" items={form.pathya_dos}
+                  onChange={v => set('pathya_dos', v)} placeholder="e.g. Drink lukewarm water" />
+                <ListEditor label="Apathya — Don'ts" items={form.apathya_donts}
+                  onChange={v => set('apathya_donts', v)} placeholder="e.g. Avoid fried, oily, cold, salty food" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Life Style Modification</label>
+                <textarea rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+                  value={form.lifestyle_modification} onChange={e => set('lifestyle_modification', e.target.value)}
+                  placeholder="• Continue morning oil massage (Abhyanga) with warm oil followed by a warm-water bath.&#10;• Regular walking 20–30 minutes daily." />
+              </div>
+            </div>
+          )}
+
+          {/* ── FOLLOW-UP ── */}
+          {activeSection === 'followup' && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Next Review (e.g. 2 WEEKS)</label>
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.next_review} onChange={e => set('next_review', e.target.value)} placeholder="e.g. 2 WEEKS" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Review Procedure</label>
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.review_procedure} onChange={e => set('review_procedure', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Prognosis</label>
+                <textarea rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+                  value={form.prognosis} onChange={e => set('prognosis', e.target.value)}
+                  placeholder="e.g. Improved and stable. Continue medicines and follow lifestyle advice." />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Remarks</label>
+                <textarea rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+                  value={form.remarks} onChange={e => set('remarks', e.target.value)}
+                  placeholder="e.g. The integrated Ayurvedic management — KASHAYAVASTHI demonstrated excellent results in controlling pain." />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom nav */}
+        <div className="border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
+          <span>Fill all sections then Save or Print directly.</span>
+          <div className="flex gap-2">
+            <button onClick={handlePrint} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
+              <Printer className="w-4 h-4" /> Print Discharge Summary
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default DischargeSummaryModal;
