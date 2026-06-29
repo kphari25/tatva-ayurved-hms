@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, Search, Plus, Edit, Eye, Trash2, 
+import {
+  Users, Search, Plus, Edit, Eye, Trash2,
   Phone, Mail, Calendar, MapPin, Activity,
-  X, FileText, Download, Filter
+  X, FileText, Download, Filter, CalendarPlus,
+  Stethoscope, Clock, MessageSquare, CheckCircle, AlertCircle, Send
 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, doc, deleteDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc } from 'firebase/firestore';
+import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
 
 const PatientPortal = ({ onAddPatient }) => {
   console.log('🔵 PatientPortal rendered, onAddPatient prop:', typeof onAddPatient);
@@ -18,10 +20,141 @@ const PatientPortal = ({ onAddPatient }) => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
 
+  // Appointment scheduling state
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [appointmentPatient, setAppointmentPatient] = useState(null);
+  const [doctors, setDoctors] = useState([]);
+  const [apptSaving, setApptSaving] = useState(false);
+  const [apptSMSStatus, setApptSMSStatus] = useState({ patient: null, doctor: null });
+  const [apptForm, setApptForm] = useState({
+    appointment_type: 'Follow-up Treatment',
+    doctor_id: '',
+    doctor_name: '',
+    doctor_phone: '',
+    date: '',
+    time: '',
+    duration_minutes: 30,
+    notes: '',
+    send_sms_patient: true,
+    send_sms_doctor: true,
+  });
+  const [savedAppt, setSavedAppt] = useState(null);
+
   // Load patients on component mount
   useEffect(() => {
     loadPatients();
+    loadDoctors();
   }, []);
+
+  const loadDoctors = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'hr_employees'));
+      const docs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(e => ['doctor', 'physician', 'therapist', 'consultant'].some(r =>
+          (e.department || e.designation || '').toLowerCase().includes(r) ||
+          (e.role || '').toLowerCase().includes(r)
+        ));
+      setDoctors(docs);
+    } catch (e) {
+      // silently ignore — doctor list is optional
+    }
+  };
+
+  const openAppointmentModal = (patient) => {
+    setAppointmentPatient(patient);
+    setApptForm({
+      appointment_type: 'Follow-up Treatment',
+      doctor_id: '',
+      doctor_name: '',
+      doctor_phone: '',
+      date: '',
+      time: '',
+      duration_minutes: 30,
+      notes: '',
+      send_sms_patient: true,
+      send_sms_doctor: true,
+    });
+    setApptSMSStatus({ patient: null, doctor: null });
+    setSavedAppt(null);
+    setShowAppointmentModal(true);
+  };
+
+  const handleDoctorChange = (doctorId) => {
+    if (!doctorId) {
+      setApptForm(f => ({ ...f, doctor_id: '', doctor_name: '', doctor_phone: '' }));
+      return;
+    }
+    if (doctorId === '__manual__') {
+      setApptForm(f => ({ ...f, doctor_id: '__manual__', doctor_name: '', doctor_phone: '' }));
+      return;
+    }
+    const doc = doctors.find(d => d.id === doctorId);
+    if (doc) {
+      setApptForm(f => ({
+        ...f,
+        doctor_id: doctorId,
+        doctor_name: `${doc.first_name || ''} ${doc.last_name || ''}`.trim() || doc.name || '',
+        doctor_phone: doc.phone || doc.mobile || '',
+      }));
+    }
+  };
+
+  const handleSaveAppointment = async () => {
+    if (!apptForm.date || !apptForm.time || !apptForm.doctor_name) {
+      alert('Please fill in Date, Time, and Doctor Name.');
+      return;
+    }
+    setApptSaving(true);
+    try {
+      const apptData = {
+        patient_id: appointmentPatient.id,
+        patient_name: `${appointmentPatient.first_name} ${appointmentPatient.last_name}`,
+        patient_phone: appointmentPatient.phone || '',
+        mrd_number: appointmentPatient.mrd_number || appointmentPatient.patient_number || '',
+        ip_number: appointmentPatient.ip_number || '',
+        appointment_type: apptForm.appointment_type,
+        doctor_id: apptForm.doctor_id,
+        doctor_name: apptForm.doctor_name,
+        doctor_phone: apptForm.doctor_phone,
+        date: apptForm.date,
+        time: apptForm.time,
+        duration_minutes: apptForm.duration_minutes,
+        notes: apptForm.notes,
+        status: 'scheduled',
+        created_at: new Date().toISOString(),
+      };
+      const ref = await addDoc(collection(db, 'patient_appointments'), apptData);
+      setSavedAppt({ id: ref.id, ...apptData });
+
+      // Send SMS
+      const smsDetails = {
+        appointmentType: apptForm.appointment_type,
+        doctorName: apptForm.doctor_name,
+        date: apptForm.date,
+        time: apptForm.time,
+        notes: apptForm.notes,
+        patientName: apptData.patient_name,
+        mrdNumber: apptData.mrd_number,
+      };
+
+      const newSMSStatus = { patient: null, doctor: null };
+
+      if (apptForm.send_sms_patient && appointmentPatient.phone) {
+        const res = await sendAppointmentSMSToPatient(appointmentPatient.phone, appointmentPatient.first_name, smsDetails);
+        newSMSStatus.patient = res.success ? 'sent' : 'failed';
+      }
+      if (apptForm.send_sms_doctor && apptForm.doctor_phone) {
+        const res = await sendAppointmentSMSToDoctor(apptForm.doctor_phone, apptForm.doctor_name, smsDetails);
+        newSMSStatus.doctor = res.success ? 'sent' : 'failed';
+      }
+      setApptSMSStatus(newSMSStatus);
+    } catch (err) {
+      alert('Error saving appointment: ' + err.message);
+    } finally {
+      setApptSaving(false);
+    }
+  };
 
   const loadPatients = async () => {
     setLoading(true);
@@ -374,11 +507,11 @@ const PatientPortal = ({ onAddPatient }) => {
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => alert('Edit functionality coming soon!')}
+                          onClick={() => openAppointmentModal(patient)}
                           className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                          title="Edit Patient"
+                          title="Schedule Appointment"
                         >
-                          <Edit className="w-4 h-4" />
+                          <CalendarPlus className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(patient.id)}
@@ -396,6 +529,250 @@ const PatientPortal = ({ onAddPatient }) => {
           </div>
         )}
       </div>
+
+      {/* ── Appointment Scheduling Modal ─────────────────────────── */}
+      {showAppointmentModal && appointmentPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <CalendarPlus className="w-6 h-6 text-teal-600" />
+                  Schedule Appointment
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {appointmentPatient.first_name} {appointmentPatient.last_name}
+                  {appointmentPatient.mrd_number && <span className="ml-2 text-teal-600 font-mono">{appointmentPatient.mrd_number}</span>}
+                </p>
+              </div>
+              <button onClick={() => setShowAppointmentModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Success state after saving */}
+              {savedAppt ? (
+                <div className="space-y-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+                    <CheckCircle className="w-6 h-6 text-green-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-green-800">Appointment saved successfully!</p>
+                      <p className="text-sm text-green-700 mt-1">
+                        {savedAppt.appointment_type} with {savedAppt.doctor_name} on{' '}
+                        {new Date(savedAppt.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} at {savedAppt.time}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* SMS Status */}
+                  <div className="space-y-2">
+                    {apptForm.send_sms_patient && (
+                      <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${apptSMSStatus.patient === 'sent' ? 'bg-green-50 text-green-700' : apptSMSStatus.patient === 'failed' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500'}`}>
+                        {apptSMSStatus.patient === 'sent' ? <CheckCircle className="w-4 h-4" /> : apptSMSStatus.patient === 'failed' ? <AlertCircle className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+                        SMS to patient ({appointmentPatient.phone}): {apptSMSStatus.patient === 'sent' ? 'Sent' : apptSMSStatus.patient === 'failed' ? 'Failed (check MSG91 config)' : 'Not requested'}
+                      </div>
+                    )}
+                    {apptForm.send_sms_doctor && (
+                      <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${apptSMSStatus.doctor === 'sent' ? 'bg-green-50 text-green-700' : apptSMSStatus.doctor === 'failed' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500'}`}>
+                        {apptSMSStatus.doctor === 'sent' ? <CheckCircle className="w-4 h-4" /> : apptSMSStatus.doctor === 'failed' ? <AlertCircle className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+                        SMS to Dr. {savedAppt.doctor_name} ({savedAppt.doctor_phone || 'no phone'}): {apptSMSStatus.doctor === 'sent' ? 'Sent' : apptSMSStatus.doctor === 'failed' ? 'Failed (check MSG91 config)' : 'No phone number'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => { setSavedAppt(null); setApptSMSStatus({ patient: null, doctor: null }); }}
+                      className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                    >
+                      Schedule Another
+                    </button>
+                    <button
+                      onClick={() => setShowAppointmentModal(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Appointment Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Appointment Type</label>
+                    <select
+                      value={apptForm.appointment_type}
+                      onChange={e => setApptForm(f => ({ ...f, appointment_type: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                    >
+                      <option>Follow-up Treatment</option>
+                      <option>Doctor Consultation</option>
+                      <option>Panchakarma Session</option>
+                      <option>Ayurvedic Therapy</option>
+                      <option>Diet Consultation</option>
+                      <option>Yoga Session</option>
+                      <option>General Check-up</option>
+                      <option>Discharge Follow-up</option>
+                    </select>
+                  </div>
+
+                  {/* Doctor Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Stethoscope className="w-4 h-4 inline mr-1" />
+                      Attending Doctor / Therapist
+                    </label>
+                    <select
+                      value={apptForm.doctor_id}
+                      onChange={e => handleDoctorChange(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none mb-2"
+                    >
+                      <option value="">-- Select from staff --</option>
+                      {doctors.map(d => (
+                        <option key={d.id} value={d.id}>
+                          {`${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name} — {d.designation || d.department || d.role || ''}
+                        </option>
+                      ))}
+                      <option value="__manual__">+ Enter manually</option>
+                    </select>
+
+                    {/* Manual name + phone entry */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Doctor / Therapist name"
+                          value={apptForm.doctor_name}
+                          onChange={e => setApptForm(f => ({ ...f, doctor_name: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="tel"
+                          placeholder="Doctor mobile (for SMS)"
+                          value={apptForm.doctor_phone}
+                          onChange={e => setApptForm(f => ({ ...f, doctor_phone: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Date & Time */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <Calendar className="w-4 h-4 inline mr-1" />Date
+                      </label>
+                      <input
+                        type="date"
+                        value={apptForm.date}
+                        min={new Date().toISOString().split('T')[0]}
+                        onChange={e => setApptForm(f => ({ ...f, date: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <Clock className="w-4 h-4 inline mr-1" />Time
+                      </label>
+                      <input
+                        type="time"
+                        value={apptForm.time}
+                        onChange={e => setApptForm(f => ({ ...f, time: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Duration (min)</label>
+                      <select
+                        value={apptForm.duration_minutes}
+                        onChange={e => setApptForm(f => ({ ...f, duration_minutes: Number(e.target.value) }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                      >
+                        <option value={15}>15 min</option>
+                        <option value={30}>30 min</option>
+                        <option value={45}>45 min</option>
+                        <option value={60}>1 hour</option>
+                        <option value={90}>1.5 hours</option>
+                        <option value={120}>2 hours</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Notes / Instructions</label>
+                    <textarea
+                      rows={3}
+                      value={apptForm.notes}
+                      onChange={e => setApptForm(f => ({ ...f, notes: e.target.value }))}
+                      placeholder="e.g. Bring previous reports, fasting required, specific treatment details..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm resize-none"
+                    />
+                  </div>
+
+                  {/* SMS Options */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                    <p className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4" />
+                      SMS Notifications
+                    </p>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={apptForm.send_sms_patient}
+                        onChange={e => setApptForm(f => ({ ...f, send_sms_patient: e.target.checked }))}
+                        className="w-4 h-4 accent-teal-600"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Send SMS to patient
+                        <span className="text-gray-400 ml-1">({appointmentPatient.phone || 'no phone on file'})</span>
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={apptForm.send_sms_doctor}
+                        onChange={e => setApptForm(f => ({ ...f, send_sms_doctor: e.target.checked }))}
+                        className="w-4 h-4 accent-teal-600"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Send SMS to doctor
+                        <span className="text-gray-400 ml-1">{apptForm.doctor_phone ? `(${apptForm.doctor_phone})` : '(enter doctor phone above)'}</span>
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex justify-end gap-3 pt-1">
+                    <button
+                      onClick={() => setShowAppointmentModal(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveAppointment}
+                      disabled={apptSaving}
+                      className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-60 flex items-center gap-2"
+                    >
+                      {apptSaving ? (
+                        <><span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving...</>
+                      ) : (
+                        <><Send className="w-4 h-4" />Save &amp; Send SMS</>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Patient Details Modal */}
       {showDetails && selectedPatient && (

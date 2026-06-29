@@ -53,3 +53,19 @@ export const sendInvoiceSMS = async (phone, patientName, invoiceDetails) => {
   const message = `Dear ${patientName}, Your invoice at Tatva Ayurved dated ${date} (${invoice_type}) is generated. Total Amount: Rs.${Number(total_amount).toFixed(2)}. Payment Mode: ${payment_mode}. Patient ID: ${patient_number}. Thank you! - Tatva Ayurved`;
   return sendSMS(phone, message);
 };
+
+// Appointment SMS to patient
+export const sendAppointmentSMSToPatient = async (phone, patientName, apptDetails) => {
+  const { appointmentType, doctorName, date, time, notes } = apptDetails;
+  const dateStr = new Date(date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const message = `Dear ${patientName}, Your ${appointmentType} at Tatva Ayurved is scheduled on ${dateStr} at ${time} with ${doctorName}.${notes ? ` Notes: ${notes}` : ''} Please arrive 10 mins early. - Tatva Ayurved`;
+  return sendSMS(phone, message);
+};
+
+// Appointment SMS to doctor
+export const sendAppointmentSMSToDoctor = async (phone, doctorName, apptDetails) => {
+  const { patientName, mrdNumber, appointmentType, date, time, notes } = apptDetails;
+  const dateStr = new Date(date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const message = `Dr. ${doctorName}, Appointment scheduled: Patient ${patientName} (${mrdNumber}) for ${appointmentType} on ${dateStr} at ${time}.${notes ? ` Notes: ${notes}` : ''} - Tatva Ayurved`;
+  return sendSMS(phone, message);
+};
