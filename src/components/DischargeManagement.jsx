@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Printer, Send, AlertCircle, DollarSign, CheckCircle, Clock, User, Star, Link as LinkIcon } from 'lucide-react';
+import { FileText, Plus, Search, Printer, Send, AlertCircle, IndianRupee, CheckCircle, Clock, User, Star, Link as LinkIcon } from 'lucide-react';
 import { collection, getDocs, addDoc, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -192,7 +192,7 @@ ${GOOGLE_REVIEW_LINK}
         <StatCard
           title="Pending Dues"
           value={`₹${getPendingDischarges().reduce((sum, d) => sum + (d.pending_amount || 0), 0).toLocaleString()}`}
-          icon={DollarSign}
+          icon={IndianRupee}
           color="#ef4444"
           subtitle="Outstanding payments"
         />

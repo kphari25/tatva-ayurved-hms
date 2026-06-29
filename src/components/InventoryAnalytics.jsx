@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Package, AlertTriangle, DollarSign, ShoppingCart, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, AlertTriangle, IndianRupee, ShoppingCart, Activity } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
@@ -239,7 +239,7 @@ const InventoryAnalytics = () => {
             <StatCard
               title="Total Inventory Value"
               value={`₹${analytics.totalValue.toLocaleString()}`}
-              icon={DollarSign}
+              icon={IndianRupee}
               color="#10b981"
               trend={8.5}
             />

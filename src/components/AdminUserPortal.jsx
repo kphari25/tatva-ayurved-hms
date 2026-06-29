@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Activity, Calendar, DollarSign, Package, TrendingUp, AlertCircle } from 'lucide-react';
+import { Users, Activity, Calendar, IndianRupee, Package, TrendingUp, AlertCircle } from 'lucide-react';
 import { collection, query, getDocs, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -168,7 +168,7 @@ const AdminUserPortal = () => {
         <StatCard
           title="Total Revenue"
           value={`₹${stats.totalRevenue.toLocaleString()}`}
-          icon={DollarSign}
+          icon={IndianRupee}
           color="#10b981"
           subtitle="All time"
         />

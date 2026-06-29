@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Users, FileText, Package, Activity,
-  TrendingUp, Calendar, DollarSign, Database, Menu, X,
+  TrendingUp, Calendar, IndianRupee, Database, Menu, X,
   LogOut, User, Shield, Briefcase, Stethoscope, Lock
 } from 'lucide-react';
 
@@ -141,7 +141,7 @@ const MainDashboard = ({ supabase }) => {
     { 
       id: 'financial', 
       label: 'Financial Reports', 
-      icon: DollarSign, 
+      icon: IndianRupee, 
       color: 'green',
       bgColor: 'bg-green-100',
       textColor: 'text-green-600',
@@ -292,7 +292,7 @@ const MainDashboard = ({ supabase }) => {
 
               <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow">
                 <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4">
-                  <DollarSign className="w-6 h-6 text-emerald-600" />
+                  <IndianRupee className="w-6 h-6 text-emerald-600" />
                 </div>
                 <p className="text-slate-600 text-sm mb-1">Total Revenue</p>
                 <p className="text-3xl font-bold text-slate-800">₹0</p>

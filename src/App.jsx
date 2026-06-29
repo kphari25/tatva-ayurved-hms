@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Home, Users, Package, FileText, Receipt, TrendingUp, 
-  Calendar, DollarSign, UserCog, Database, LogOut,
+  Calendar, IndianRupee, UserCog, Database, LogOut,
   ShoppingCart, Utensils, BarChart3
 } from 'lucide-react';
 
@@ -125,7 +125,7 @@ function App() {
     
     // Admin Only Section
     { id: 'admin-section', label: 'Administration', icon: null, isSectionHeader: true, adminOnly: true },
-    { id: 'profit-loss', label: 'P&L Statement', icon: DollarSign, moduleId: 'profit-loss' },
+    { id: 'profit-loss', label: 'P&L Statement', icon: IndianRupee, moduleId: 'profit-loss' },
     { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, moduleId: 'hr-payroll', badge: 'Admin' },
     { id: 'user-management', label: 'User Management', icon: UserCog, moduleId: 'user-management', badge: 'Admin' },
     { id: 'database-backup', label: 'Database Backup', icon: Database, moduleId: 'user-management', badge: 'Admin' },

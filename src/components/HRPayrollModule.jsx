@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Users, DollarSign, Calendar, Award, TrendingUp, Download, Plus,
+  Users, IndianRupee, Calendar, Award, TrendingUp, Download, Plus,
   Edit, Trash2, Eye, EyeOff, Lock, Shield, AlertCircle, CheckCircle,
   CreditCard, FileText, Search, Filter, UserCheck, Clock, Briefcase,
   Phone, Mail, MapPin, ChevronDown, ChevronUp, X, Save,
-  IndianRupee, Palmtree, HeartPulse, Receipt, BarChart3, BookOpen
+  Palmtree, HeartPulse, Receipt, BarChart3, BookOpen
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import {

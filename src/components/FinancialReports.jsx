@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
-  DollarSign, TrendingUp, TrendingDown, PieChart, BarChart3, Download,
+  IndianRupee, TrendingUp, TrendingDown, PieChart, BarChart3, Download,
   Calendar, Package, Users, Home, Briefcase, Award, CreditCard,
   ArrowUpRight, ArrowDownRight, Activity, Target, Zap, Shield
 } from 'lucide-react';
@@ -139,7 +139,7 @@ const FinancialReports = ({ dateRange = '30' }) => {
       <div className="grid grid-cols-4 gap-6 mb-8">
         <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-2xl p-6 shadow-xl text-white">
           <div className="flex items-center justify-between mb-4">
-            <DollarSign className="w-10 h-10" />
+            <IndianRupee className="w-10 h-10" />
             <ArrowUpRight className="w-6 h-6 text-emerald-200" />
           </div>
           <p className="text-emerald-100 text-sm font-medium mb-1">Total Revenue</p>

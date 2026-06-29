@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   FileText, Plus, Search, Printer, Eye, X, Save, CheckCircle,
   AlertCircle, RefreshCw, User, Phone, MapPin, Calendar,
-  Stethoscope, Activity, Pill, DollarSign, Percent, Hash,
+  Stethoscope, Activity, Pill, IndianRupee, Percent, Hash,
   ArrowLeft
 } from 'lucide-react';
 

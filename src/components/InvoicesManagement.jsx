@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Receipt, Search, Download, Printer, Eye, Filter, Calendar, DollarSign, TrendingUp, Plus } from 'lucide-react';
+import { Receipt, Search, Download, Printer, Eye, Filter, Calendar, IndianRupee, TrendingUp, Plus } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import * as XLSX from 'xlsx';
@@ -403,7 +403,7 @@ const InvoicesManagement = () => {
         <StatCard
           title="Total Revenue"
           value={`₹${stats.totalRevenue.toLocaleString()}`}
-          icon={DollarSign}
+          icon={IndianRupee}
           color="#10b981"
           subtitle={`${stats.totalInvoices} total invoices`}
         />

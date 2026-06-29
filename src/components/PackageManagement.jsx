@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Plus, Edit, Trash2, Search, DollarSign, Clock, CheckCircle, X } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Search, IndianRupee, Clock, CheckCircle, X } from 'lucide-react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -259,7 +259,7 @@ const PackageManagement = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-gray-400" />
+                    <IndianRupee className="w-4 h-4 text-gray-400" />
                     <div>
                       <p className="text-xs text-gray-500">Cost</p>
                       <p className="font-semibold text-green-600">₹{pkg.cost.toLocaleString()}</p>

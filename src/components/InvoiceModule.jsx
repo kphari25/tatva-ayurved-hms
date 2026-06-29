@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText, Plus, Search, Printer, Eye, X, Save, CheckCircle,
   AlertCircle, RefreshCw, User, Phone, MapPin, Calendar,
-  Stethoscope, Activity, Pill, DollarSign, Percent, Hash
+  Stethoscope, Activity, Pill, IndianRupee, Percent, Hash
 } from 'lucide-react';
 
 const InvoiceModule = ({ supabase, currentUser, userRole }) => {

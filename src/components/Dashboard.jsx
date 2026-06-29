@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Bed, LogOut, DollarSign, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X } from 'lucide-react';
+import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -320,7 +320,7 @@ const Dashboard = () => {
         <StatCard
           title="Outstanding Payments"
           value={`₹${dashboardData.stats.outstandingAmount.toLocaleString()}`}
-          icon={DollarSign}
+          icon={IndianRupee}
           color="#ef4444"
           subtitle="To be collected"
         />
@@ -568,7 +568,7 @@ const Dashboard = () => {
                 onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
                 className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm flex items-center justify-center gap-2"
               >
-                <DollarSign className="w-4 h-4" />
+                <IndianRupee className="w-4 h-4" />
                 Create Invoice
               </button>
             </div>

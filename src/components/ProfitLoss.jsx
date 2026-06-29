@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, Calendar, Download, RefreshCw, Plus, Filter, Camera, Upload, CheckCircle } from 'lucide-react';
+import { IndianRupee, TrendingUp, TrendingDown, Calendar, Download, RefreshCw, Plus, Filter, Camera, Upload, CheckCircle } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -338,7 +338,7 @@ const ProfitLoss = () => {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <DollarSign className="w-8 h-8 text-green-600" />
+            <IndianRupee className="w-8 h-8 text-green-600" />
             <div>
               <h1 className="text-3xl font-bold text-gray-800">Profit & Loss Statement</h1>
               <p className="text-gray-600 text-sm">Real-time financial performance overview</p>
@@ -414,7 +414,7 @@ const ProfitLoss = () => {
         <StatCard
           title="Total Revenue"
           value={`₹${plData.totalRevenue.toLocaleString()}`}
-          icon={DollarSign}
+          icon={IndianRupee}
           color="#10b981"
           subtitle="All income sources"
         />
@@ -435,7 +435,7 @@ const ProfitLoss = () => {
         <StatCard
           title="Net Profit"
           value={`₹${plData.netProfit.toLocaleString()}`}
-          icon={DollarSign}
+          icon={IndianRupee}
           color={plData.netProfit >= 0 ? '#10b981' : '#ef4444'}
           subtitle={`${plData.netProfitMargin.toFixed(1)}% margin`}
         />

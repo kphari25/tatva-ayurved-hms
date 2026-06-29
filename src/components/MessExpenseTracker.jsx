@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Download, Calendar, DollarSign, TrendingUp } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Download, Calendar, IndianRupee, TrendingUp } from 'lucide-react';
 import { collection, getDocs, addDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import * as XLSX from 'xlsx';
@@ -256,7 +256,7 @@ const MessExpenseTracker = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <StatCard title="Today's Expenses" value={stats.todayTotal} icon={Calendar} color="#f97316" />
         <StatCard title="This Week" value={stats.weekTotal} icon={TrendingUp} color="#3b82f6" />
-        <StatCard title="This Month" value={stats.monthTotal} icon={DollarSign} color="#10b981" />
+        <StatCard title="This Month" value={stats.monthTotal} icon={IndianRupee} color="#10b981" />
         <StatCard title="Total Expenses" value={stats.totalExpenses} icon={ShoppingCart} color="#8b5cf6" />
       </div>
 
