@@ -4,8 +4,9 @@ import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
 
-const InvoiceModal = ({ patient, onClose, onSave }) => {
-  const [invoiceType, setInvoiceType] = useState('OP'); // OP or IP
+const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
+  const isRegistrationInvoice = registrationFee > 0;
+  const [invoiceType, setInvoiceType] = useState(patient?.patient_type === 'IP' ? 'IP' : 'OP');
   const [saving, setSaving] = useState(false);
   const [sendingSMS, setSendingSMS] = useState(false);
   const [smsStatus, setSmsStatus] = useState(null); // null | 'sent' | 'failed'
@@ -15,10 +16,12 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
   const [filteredMedicines, setFilteredMedicines] = useState([]);
   const [showMedicineSuggestions, setShowMedicineSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     invoice_date: new Date().toISOString().split('T')[0],
     treatment_charges: 0,
+    // Registration fee is stored as a locked line item, not in treatment_charges
+    registration_fee: isRegistrationInvoice ? registrationFee : 0,
     medicines: [],
     room_rent: 0,
     room_type: '',
@@ -30,7 +33,7 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
     gst_percentage: 18,
     discount: 0,
     payment_mode: 'Cash',
-    notes: ''
+    notes: isRegistrationInvoice ? 'Registration fee invoice — fee already collected at time of registration.' : ''
   });
 
   const [messTab, setMessTab] = useState('patient'); // 'patient' | 'bystander'
@@ -105,6 +108,9 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
   const calculateSubtotal = () => {
     let subtotal = parseFloat(formData.treatment_charges) || 0;
 
+    // Add registration fee if this is a registration invoice
+    subtotal += parseFloat(formData.registration_fee) || 0;
+
     // Add medicines
     formData.medicines.forEach(med => {
       subtotal += (parseFloat(med.quantity) || 0) * (parseFloat(med.rate) || 0);
@@ -169,6 +175,8 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
       const invoiceData = {
         patient_id: patient.firebaseId || patient.id,
         patient_number: patient.patient_number,
+        mrd_number: patient.mrd_number || '',
+        ip_number: patient.ip_number || '',
         patient_name: `${patient.first_name} ${patient.last_name}`,
         patient_phone: patient.phone,
         patient_address: patient.address,
@@ -186,6 +194,8 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
         mess_charges: invoiceType === 'IP' ? (calcMessTotal(formData.patient_meals) + calcMessTotal(formData.bystander_meals)) : 0,
         patient_meals: invoiceType === 'IP' ? formData.patient_meals : null,
         bystander_meals: invoiceType === 'IP' ? formData.bystander_meals : null,
+        registration_fee: parseFloat(formData.registration_fee) || 0,
+        is_registration_invoice: isRegistrationInvoice,
         subtotal: calculateSubtotal(),
         gst_percentage: parseFloat(formData.gst_percentage) || 0,
         gst_amount: calculateGST(),
@@ -320,7 +330,8 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
           <div class="info-box">
             <h3>Patient Details:</h3>
             <p><strong>Name:</strong> ${data.patient_name}</p>
-            <p><strong>Patient ID:</strong> ${data.patient_number}</p>
+            <p><strong>MRD No:</strong> ${data.mrd_number || data.patient_number}</p>
+            ${data.ip_number ? `<p><strong>IP No:</strong> ${data.ip_number}</p>` : ''}
             <p><strong>Phone:</strong> ${data.patient_phone || 'N/A'}</p>
             <p><strong>Address:</strong> ${data.patient_address || 'N/A'}</p>
           </div>
@@ -343,6 +354,14 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
             </tr>
           </thead>
           <tbody>
+            ${data.registration_fee > 0 ? `
+              <tr style="background:#f0fdfa;">
+                <td><strong>Registration Fee</strong> <span style="font-size:10px;color:#0d9488;">(collected at registration)</span></td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${data.registration_fee.toFixed(2)}</td>
+              </tr>
+            ` : ''}
             ${data.treatment_charges > 0 ? `
               <tr>
                 <td>Treatment Charges</td>
@@ -494,6 +513,22 @@ const InvoiceModal = ({ patient, onClose, onSave }) => {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg"
             />
           </div>
+
+          {/* Registration Fee — locked, read-only when coming from registration */}
+          {isRegistrationInvoice && (
+            <div className="mb-6 p-4 bg-teal-50 border border-teal-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-teal-800">Registration Fee</p>
+                  <p className="text-xs text-teal-600 mt-0.5">Collected at time of registration — included in this invoice for records only.</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-bold text-teal-700">₹{(parseFloat(formData.registration_fee) || 0).toFixed(2)}</p>
+                  <span className="text-xs bg-teal-600 text-white px-2 py-0.5 rounded-full">Already collected</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Treatment Charges */}
           <div className="mb-6">

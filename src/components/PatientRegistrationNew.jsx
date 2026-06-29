@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { UserPlus, Save, X } from 'lucide-react';
+import { UserPlus, Save, X, Receipt } from 'lucide-react';
 import { collection, addDoc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
+import InvoiceModal from './InvoiceModal';
 
 const PatientRegistrationNew = ({ onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [sendWelcomeSMS, setSendWelcomeSMS] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [savedPatient, setSavedPatient] = useState(null);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -26,7 +29,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
     chronic_conditions: '',
     current_medications: '',
     medical_history: '',
-    notes: ''
+    notes: '',
+    registration_fee: ''
   });
 
   // Generate next MRD number (MRD-1001, MRD-1002, …)
@@ -144,34 +148,25 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
         }
       }
 
-      alert(`Patient registered successfully!\nMRD Number: ${mrdNumber}${ipNumber ? `\nIP Number: ${ipNumber}` : ''}\nPatient Number: ${patientNumber}${smsSent ? '\n✅ Welcome SMS sent!' : sendWelcomeSMS && formData.phone ? '\n⚠️ SMS failed - check MSG91 config' : ''}`);
-
-
-      // Reset form
-      setFormData({
-        first_name: '',
-        last_name: '',
-        age: '',
-        gender: '',
-        patient_type: 'OP',
-        phone: '',
-        email: '',
-        address: '',
-        city: '',
-        state: '',
-        pincode: '',
-        emergency_contact_name: '',
-        emergency_contact_phone: '',
-        blood_group: '',
-        allergies: '',
-        chronic_conditions: '',
-        current_medications: '',
-        medical_history: '',
-        notes: ''
+      // Store saved patient for invoice generation
+      setSavedPatient({
+        id: docRef.id,
+        firebaseId: docRef.id,
+        ...patientData,
       });
 
       if (onSuccess) onSuccess();
-      if (onClose) onClose();
+
+      // Ask user if they want to generate a registration invoice
+      const generateInv = window.confirm(
+        `✅ Patient registered!\n\nMRD Number: ${mrdNumber}${ipNumber ? `\nIP Number: ${ipNumber}` : ''}${smsSent ? '\n✅ Welcome SMS sent!' : ''}\n\nGenerate a registration fee invoice now?`
+      );
+
+      if (generateInv) {
+        setShowInvoice(true);
+      } else {
+        if (onClose) onClose();
+      }
 
     } catch (error) {
       console.error('❌ Error registering patient:', error);
@@ -182,6 +177,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
   };
 
   return (
+    <>
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
@@ -287,6 +283,22 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   <option value="OP">OP (Out-Patient)</option>
                   <option value="IP">IP (In-Patient)</option>
                 </select>
+              </div>
+
+              {/* Registration Fee */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Registration Fee (₹) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  name="registration_fee"
+                  value={formData.registration_fee}
+                  onChange={handleChange}
+                  min="0"
+                  placeholder="e.g. 500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                />
               </div>
 
               {/* MRD Number - auto-generated, read-only */}
@@ -550,6 +562,23 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
         </form>
       </div>
     </div>
+
+    {/* Registration Invoice Modal */}
+    {showInvoice && savedPatient && (
+      <InvoiceModal
+        patient={savedPatient}
+        registrationFee={parseFloat(savedPatient.registration_fee) || 0}
+        onClose={() => {
+          setShowInvoice(false);
+          if (onClose) onClose();
+        }}
+        onSave={() => {
+          setShowInvoice(false);
+          if (onClose) onClose();
+        }}
+      />
+    )}
+    </>
   );
 };
 
