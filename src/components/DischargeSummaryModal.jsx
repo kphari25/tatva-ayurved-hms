@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { addDoc, updateDoc, doc, collection } from 'firebase/firestore';
+import { addDoc, updateDoc, doc, collection, getDocs } from 'firebase/firestore';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -121,6 +121,91 @@ const ListEditor = ({ label, items, onChange, placeholder = 'Add item...' }) => 
       </div>
       <button onClick={add} className="mt-2 text-teal-600 text-sm flex items-center gap-1 hover:text-teal-800">
         <Plus className="w-3 h-3" /> Add
+      </button>
+    </div>
+  );
+};
+
+// ── Medicine autocomplete row ───────────────────────────────────────────
+const MedicineRow = ({ value, onChange, onRemove, inventory }) => {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const suggestions = query.length >= 2
+    ? inventory.filter(m =>
+        (m.item_name || '').toLowerCase().includes(query.toLowerCase()) ||
+        (m.item_code || '').toLowerCase().includes(query.toLowerCase())
+      ).slice(0, 8)
+    : [];
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const select = (med) => {
+    const label = med.item_name || med.item_code;
+    setQuery(label);
+    onChange(label);
+    setOpen(false);
+  };
+
+  return (
+    <div className="flex gap-2 relative" ref={ref}>
+      <div className="flex-1 relative">
+        <input
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+          value={query}
+          onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
+          onFocus={() => query.length >= 2 && setOpen(true)}
+          placeholder="Type medicine name from inventory..."
+        />
+        {open && suggestions.length > 0 && (
+          <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto text-sm">
+            {suggestions.map(med => (
+              <li
+                key={med.id}
+                onMouseDown={() => select(med)}
+                className="px-3 py-2 hover:bg-teal-50 cursor-pointer flex items-center justify-between gap-2"
+              >
+                <span className="font-medium text-gray-800">{med.item_name}</span>
+                {med.item_code && <span className="text-xs text-gray-400 shrink-0">{med.item_code}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <button onClick={onRemove} className="text-red-400 hover:text-red-600 px-1 shrink-0">
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
+const MedicineListEditor = ({ label, items, onChange, inventory }) => {
+  const update = (i, val) => { const n = [...items]; n[i] = val; onChange(n); };
+  const add = () => onChange([...items, '']);
+  const remove = (i) => { if (items.length === 1) return; const n = [...items]; n.splice(i, 1); onChange(n); };
+  return (
+    <div>
+      {label && <label className="block text-sm font-semibold text-gray-700 mb-2">{label}</label>}
+      <div className="space-y-2">
+        {items.map((item, i) => (
+          <MedicineRow
+            key={i}
+            value={item}
+            inventory={inventory}
+            onChange={val => update(i, val)}
+            onRemove={() => remove(i)}
+          />
+        ))}
+      </div>
+      <button onClick={add} className="mt-2 text-teal-600 text-sm flex items-center gap-1 hover:text-teal-800">
+        <Plus className="w-3 h-3" /> Add Medicine
       </button>
     </div>
   );
@@ -389,6 +474,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
   });
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState('patient');
+  const [inventory, setInventory] = useState([]);
+
+  useEffect(() => {
+    getDocs(collection(db, 'inventory')).then(snap => {
+      setInventory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }).catch(() => {});
+  }, []);
 
   const set = (path, val) => {
     setForm(prev => {
@@ -634,9 +726,12 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
           {/* ── TREATMENT ── */}
           {activeSection === 'treatment' && (
             <div className="space-y-6">
-              <ListEditor label="Internal Medicines" items={form.internal_medicines}
+              <MedicineListEditor
+                label="Internal Medicines"
+                items={form.internal_medicines}
                 onChange={v => set('internal_medicines', v)}
-                placeholder="e.g. GANDHARVA HASTHADI KASHAYAM 10ML+60ML LWW 4TIMES/DAY" />
+                inventory={inventory}
+              />
 
               {/* External Treatments */}
               <div>
@@ -741,9 +836,12 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
           {/* ── DISCHARGE ADVICE ── */}
           {activeSection === 'discharge' && (
             <div className="space-y-6">
-              <ListEditor label="Advise on Discharge — Internal Medicines" items={form.discharge_internal_medicines}
+              <MedicineListEditor
+                label="Advise on Discharge — Internal Medicines"
+                items={form.discharge_internal_medicines}
                 onChange={v => set('discharge_internal_medicines', v)}
-                placeholder="e.g. KALYANAKAM KASHAYAM 10ML +60ML LWW TID B/F" />
+                inventory={inventory}
+              />
 
               <ListEditor label="Advise on Discharge — External Treatments" items={form.discharge_external_treatments}
                 onChange={v => set('discharge_external_treatments', v)}
