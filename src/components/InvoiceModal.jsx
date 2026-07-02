@@ -522,6 +522,45 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         </div>
 
         <div className="p-6">
+          {/* Patient Info Card */}
+          <div className="mb-6 bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Patient Details</h3>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+              <div className="flex gap-2">
+                <span className="text-gray-500 w-24 shrink-0">Name:</span>
+                <span className="font-semibold text-gray-900">{patient.first_name} {patient.last_name}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-gray-500 w-24 shrink-0">MRD No:</span>
+                <span className="font-semibold text-teal-700">{patient.mrd_number || patient.patient_number || '—'}</span>
+              </div>
+              {patient.ip_number && (
+                <div className="flex gap-2">
+                  <span className="text-gray-500 w-24 shrink-0">IP No:</span>
+                  <span className="font-semibold text-blue-700">{patient.ip_number}</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <span className="text-gray-500 w-24 shrink-0">Phone:</span>
+                <span className="font-medium text-gray-800">{patient.phone || '—'}</span>
+              </div>
+              {patient.address && (
+                <div className="flex gap-2 col-span-2">
+                  <span className="text-gray-500 w-24 shrink-0">Address:</span>
+                  <span className="text-gray-800">{patient.address}</span>
+                </div>
+              )}
+              {patient.patient_type && (
+                <div className="flex gap-2">
+                  <span className="text-gray-500 w-24 shrink-0">Type:</span>
+                  <span className={`font-semibold ${patient.patient_type === 'IP' ? 'text-blue-700' : 'text-green-700'}`}>
+                    {patient.patient_type === 'IP' ? 'In-Patient' : 'Out-Patient'}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Invoice Type Selection */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-3">Invoice Type</label>
