@@ -3,9 +3,18 @@ import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, T
 import { collection, getDocs, query, where, orderBy, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-const AddAppointmentModal = ({ onClose, onSave, saving }) => {
-  const [formData, setFormData] = useState({ patient: '', time: '', type: '' });
+const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
+  const [formData, setFormData] = useState({ patient: '', time: '', type: '', doctorId: '', doctorName: '' });
   const [error, setError] = useState('');
+
+  const handleDoctorChange = (e) => {
+    const selected = doctors.find(d => d.id === e.target.value);
+    setFormData({
+      ...formData,
+      doctorId: selected ? selected.id : '',
+      doctorName: selected ? selected.name : '',
+    });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -20,7 +29,7 @@ const AddAppointmentModal = ({ onClose, onSave, saving }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-bold text-gray-900">Add Appointment</h3>
+          <h3 className="text-lg font-bold text-gray-900">Add Today's Appointment</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
@@ -60,6 +69,19 @@ const AddAppointmentModal = ({ onClose, onSave, saving }) => {
               placeholder="e.g. Consultation, Panchakarma Session"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">🩺 Doctor</label>
+            <select
+              value={formData.doctorId}
+              onChange={handleDoctorChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="">— No Doctor Assigned —</option>
+              {doctors.map(d => (
+                <option key={d.id} value={d.id}>{d.name}{d.designation ? ` (${d.designation})` : ''}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -86,6 +108,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showAddAppointment, setShowAddAppointment] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
+  const [doctors, setDoctors] = useState([]);
   const [dashboardData, setDashboardData] = useState({
     todayAppointments: [],
     ipPatients: [],
@@ -105,6 +128,21 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardData();
+    // Load doctors from HR employees
+    const DOCTOR_KEYWORDS = ['doctor', 'physician', 'consultant', 'vaidya', 'surgeon', 'rmo', 'medical'];
+    getDocs(collection(db, 'hr_employees')).then(snap => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(e => {
+          const h = `${e.department || ''} ${e.designation || ''} ${e.role || ''}`.toLowerCase();
+          return DOCTOR_KEYWORDS.some(k => h.includes(k));
+        })
+        .map(e => ({
+          id: e.id,
+          name: `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.name || '',
+          designation: e.designation || e.department || '',
+        }));
+      setDoctors(docs);
+    }).catch(() => {});
 
     // Real-time listener for today's appointments
     const today = new Date().toISOString().split('T')[0];
@@ -238,6 +276,8 @@ const Dashboard = () => {
         type: formData.type,
         status: 'scheduled',
         date: today,
+        doctorId: formData.doctorId || '',
+        doctorName: formData.doctorName || '',
         createdAt: new Date().toISOString()
       });
       setShowAddAppointment(false);
@@ -369,6 +409,11 @@ const Dashboard = () => {
                         <div>
                           <p className="font-semibold text-gray-900">{apt.patient}</p>
                           <p className="text-sm text-gray-600">{apt.type}</p>
+                          {apt.doctorName && (
+                            <p className="text-xs text-teal-700 flex items-center gap-1 mt-0.5">
+                              🩺 Dr. {apt.doctorName}
+                            </p>
+                          )}
                           {apt.therapistName && (
                             <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
                               👤 {apt.therapistName}
@@ -596,6 +641,7 @@ const Dashboard = () => {
           onClose={() => setShowAddAppointment(false)}
           onSave={saveAppointment}
           saving={savingAppointment}
+          doctors={doctors}
         />
       )}
     </div>

@@ -15,9 +15,9 @@ const STATUS_STYLES = {
 const todayISO = () => new Date().toISOString().split('T')[0];
 
 // ─── Appointment Modal ────────────────────────────────────────────────────────
-const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists }) => {
+const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, doctors }) => {
   const [formData, setFormData] = useState(
-    initialData || { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled', therapistId: '', therapistName: '' }
+    initialData || { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled', therapistId: '', therapistName: '', doctorId: '', doctorName: '' }
   );
   const [error, setError] = useState('');
 
@@ -27,6 +27,15 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists }) 
       ...formData,
       therapistId: selected ? selected.id : '',
       therapistName: selected ? selected.name : '',
+    });
+  };
+
+  const handleDoctorChange = (e) => {
+    const selected = doctors.find(d => d.id === e.target.value);
+    setFormData({
+      ...formData,
+      doctorId: selected ? selected.id : '',
+      doctorName: selected ? selected.name : '',
     });
   };
 
@@ -96,8 +105,25 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists }) 
               placeholder="e.g. Consultation, Panchakarma Session"
             />
           </div>
+
+          {/* Doctor */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Assign Therapist</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">🩺 Doctor</label>
+            <select
+              value={formData.doctorId}
+              onChange={handleDoctorChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="">— No Doctor Assigned —</option>
+              {doctors.map(d => (
+                <option key={d.id} value={d.id}>{d.name}{d.designation ? ` (${d.designation})` : ''}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Therapist */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">👤 Assign Therapist</label>
             <select
               value={formData.therapistId}
               onChange={handleTherapistChange}
@@ -109,6 +135,7 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists }) 
               ))}
             </select>
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
@@ -543,12 +570,13 @@ const AppointmentScheduling = () => {
   const [appointments, setAppointments] = useState([]);
   const [allAppointments, setAllAppointments] = useState([]);
   const [therapists, setTherapists] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
 
-  useEffect(() => { loadTherapists(); loadAllAppointments(); }, []);
+  useEffect(() => { loadTherapists(); loadDoctors(); loadAllAppointments(); }, []);
   useEffect(() => { loadAppointments(); }, [selectedDate]);
 
   const loadTherapists = async () => {
@@ -557,6 +585,24 @@ const AppointmentScheduling = () => {
       setTherapists(snap.docs.map(d => ({ id: d.id, name: d.data().name || d.data().email, ...d.data() })));
     } catch (error) {
       console.error('Error loading therapists:', error);
+    }
+  };
+
+  const loadDoctors = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'hr_employees'));
+      const DOCTOR_KEYWORDS = ['doctor', 'physician', 'consultant', 'vaidya', 'surgeon', 'rmo', 'medical'];
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => {
+        const haystack = `${e.department || ''} ${e.designation || ''} ${e.role || ''}`.toLowerCase();
+        return DOCTOR_KEYWORDS.some(k => haystack.includes(k));
+      }).map(e => ({
+        id: e.id,
+        name: `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.name || '',
+        designation: e.designation || e.department || '',
+      }));
+      setDoctors(docs);
+    } catch (error) {
+      console.error('Error loading doctors:', error);
     }
   };
 
@@ -602,6 +648,8 @@ const AppointmentScheduling = () => {
         status: formData.status,
         therapistId: formData.therapistId || '',
         therapistName: formData.therapistName || '',
+        doctorId: formData.doctorId || '',
+        doctorName: formData.doctorName || '',
       };
       if (editingAppointment) {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), payload);
@@ -757,6 +805,11 @@ const AppointmentScheduling = () => {
                           <div>
                             <p className="font-semibold text-gray-900">{apt.patient}</p>
                             <p className="text-sm text-gray-600">{apt.type}</p>
+                            {apt.doctorName && (
+                              <p className="text-xs text-teal-700 flex items-center gap-1 mt-0.5">
+                                🩺 Dr. {apt.doctorName}
+                              </p>
+                            )}
                             {apt.therapistName && (
                               <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
                                 <User className="w-3 h-3" />
@@ -841,6 +894,7 @@ const AppointmentScheduling = () => {
           onSave={saveAppointment}
           saving={saving}
           therapists={therapists}
+          doctors={doctors}
         />
       )}
     </div>
