@@ -20,8 +20,12 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
   const [formData, setFormData] = useState({
     invoice_date: new Date().toISOString().split('T')[0],
     treatment_charges: 0,
-    // Registration fee is stored as a locked line item, not in treatment_charges
+    nursing_fees: 0,
+    doctor_fees: 0,
+    lab_test_charges: 0,
+    // Registration fee shown for records but deducted from balance due
     registration_fee: isRegistrationInvoice ? registrationFee : 0,
+    reg_fee_already_paid: isRegistrationInvoice,
     medicines: [],
     room_rent: 0,
     room_type: '',
@@ -30,10 +34,10 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     mess_days: 0,
     patient_meals: { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 },
     bystander_meals: { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 },
-    gst_percentage: 18,
+    gst_percentage: 0,
     discount: 0,
     payment_mode: 'Cash',
-    notes: isRegistrationInvoice ? 'Registration fee invoice — fee already collected at time of registration.' : ''
+    notes: isRegistrationInvoice ? 'Registration fee invoice — fee collected at time of registration.' : ''
   });
 
   const [messTab, setMessTab] = useState('patient'); // 'patient' | 'bystander'
@@ -105,38 +109,38 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     setFilteredMedicines([]);
   };
 
-  const calculateSubtotal = () => {
-    let subtotal = parseFloat(formData.treatment_charges) || 0;
-
-    // Add registration fee if this is a registration invoice
-    subtotal += parseFloat(formData.registration_fee) || 0;
-
-    // Add medicines
+  // Gross = every line item including registration fee
+  const calculateGross = () => {
+    let gross = 0;
+    gross += parseFloat(formData.treatment_charges) || 0;
+    gross += parseFloat(formData.nursing_fees) || 0;
+    gross += parseFloat(formData.doctor_fees) || 0;
+    gross += parseFloat(formData.lab_test_charges) || 0;
+    gross += parseFloat(formData.registration_fee) || 0;
     formData.medicines.forEach(med => {
-      subtotal += (parseFloat(med.quantity) || 0) * (parseFloat(med.rate) || 0);
+      gross += (parseFloat(med.quantity) || 0) * (parseFloat(med.rate) || 0);
     });
-
-    // IP specific charges
     if (invoiceType === 'IP') {
-      subtotal += (parseFloat(formData.room_rent) || 0) * (parseFloat(formData.days) || 0);
-      const patientMess = calcMessTotal(formData.patient_meals) * (parseFloat(formData.mess_days) || 0);
-      const bystanderMess = calcMessTotal(formData.bystander_meals) * (parseFloat(formData.mess_days) || 0);
-      subtotal += patientMess + bystanderMess;
+      gross += (parseFloat(formData.room_rent) || 0) * (parseFloat(formData.days) || 0);
+      gross += calcMessTotal(formData.patient_meals) * (parseFloat(formData.mess_days) || 0);
+      gross += calcMessTotal(formData.bystander_meals) * (parseFloat(formData.mess_days) || 0);
     }
+    return gross;
+  };
 
-    return subtotal;
+  // Subtotal = gross minus registration fee already paid
+  const calculateSubtotal = () => {
+    const gross = calculateGross();
+    const regPaid = formData.reg_fee_already_paid ? (parseFloat(formData.registration_fee) || 0) : 0;
+    return gross - regPaid;
   };
 
   const calculateGST = () => {
-    const subtotal = calculateSubtotal();
-    return (subtotal * (parseFloat(formData.gst_percentage) || 0)) / 100;
+    return (calculateSubtotal() * (parseFloat(formData.gst_percentage) || 0)) / 100;
   };
 
   const calculateTotal = () => {
-    const subtotal = calculateSubtotal();
-    const gst = calculateGST();
-    const discount = parseFloat(formData.discount) || 0;
-    return subtotal + gst - discount;
+    return calculateSubtotal() + calculateGST() - (parseFloat(formData.discount) || 0);
   };
 
   const handleAddMedicine = () => {
@@ -183,6 +187,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         invoice_type: invoiceType,
         invoice_date: formData.invoice_date,
         treatment_charges: parseFloat(formData.treatment_charges) || 0,
+        nursing_fees: parseFloat(formData.nursing_fees) || 0,
+        doctor_fees: parseFloat(formData.doctor_fees) || 0,
+        lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
         medicines: formData.medicines,
         room_rent: invoiceType === 'IP' ? parseFloat(formData.room_rent) || 0 : 0,
         room_type: invoiceType === 'IP' ? formData.room_type : '',
@@ -195,7 +202,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         patient_meals: invoiceType === 'IP' ? formData.patient_meals : null,
         bystander_meals: invoiceType === 'IP' ? formData.bystander_meals : null,
         registration_fee: parseFloat(formData.registration_fee) || 0,
+        reg_fee_already_paid: formData.reg_fee_already_paid,
         is_registration_invoice: isRegistrationInvoice,
+        gross_total: calculateGross(),
         subtotal: calculateSubtotal(),
         gst_percentage: parseFloat(formData.gst_percentage) || 0,
         gst_amount: calculateGST(),
@@ -267,6 +276,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       invoice_type: invoiceType,
       invoice_date: formData.invoice_date,
       treatment_charges: parseFloat(formData.treatment_charges) || 0,
+      nursing_fees: parseFloat(formData.nursing_fees) || 0,
+      doctor_fees: parseFloat(formData.doctor_fees) || 0,
+      lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
+      registration_fee: parseFloat(formData.registration_fee) || 0,
+      reg_fee_already_paid: formData.reg_fee_already_paid,
       medicines: formData.medicines,
       room_rent: parseFloat(formData.room_rent) || 0,
       room_type: formData.room_type,
@@ -275,7 +289,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       mess_days: parseFloat(formData.mess_days) || 0,
       patient_mess_per_day: calcMessTotal(formData.patient_meals),
       bystander_mess_per_day: calcMessTotal(formData.bystander_meals),
-      mess_charges: calcMessTotal(formData.patient_meals) + calcMessTotal(formData.bystander_meals),
+      gross_total: calculateGross(),
       subtotal: calculateSubtotal(),
       gst_percentage: parseFloat(formData.gst_percentage) || 0,
       gst_amount: calculateGST(),
@@ -356,7 +370,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           <tbody>
             ${data.registration_fee > 0 ? `
               <tr style="background:#f0fdfa;">
-                <td><strong>Registration Fee</strong> <span style="font-size:10px;color:#0d9488;">(collected at registration)</span></td>
+                <td><strong>Registration Fee</strong>${data.reg_fee_already_paid ? ' <span style="font-size:10px;color:#0d9488;font-style:italic;">(already paid at registration)</span>' : ''}</td>
                 <td>-</td>
                 <td>-</td>
                 <td>₹${data.registration_fee.toFixed(2)}</td>
@@ -368,6 +382,30 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 <td>-</td>
                 <td>-</td>
                 <td>₹${data.treatment_charges.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${(data.nursing_fees || 0) > 0 ? `
+              <tr>
+                <td>Nursing Fees</td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${data.nursing_fees.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${(data.doctor_fees || 0) > 0 ? `
+              <tr>
+                <td>Doctor's Fees</td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${data.doctor_fees.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${(data.lab_test_charges || 0) > 0 ? `
+              <tr>
+                <td>Lab Test Charges</td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${data.lab_test_charges.toFixed(2)}</td>
               </tr>
             ` : ''}
             
@@ -411,13 +449,21 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         <div class="totals">
           <table>
             <tr>
-              <td>Subtotal:</td>
-              <td style="text-align: right;">₹${data.subtotal.toFixed(2)}</td>
+              <td>Gross Total:</td>
+              <td style="text-align: right;">₹${(data.gross_total || data.subtotal).toFixed(2)}</td>
             </tr>
+            ${data.reg_fee_already_paid && data.registration_fee > 0 ? `
+            <tr style="color:#0d9488;">
+              <td>Less: Registration Fee (paid):</td>
+              <td style="text-align: right;">-₹${data.registration_fee.toFixed(2)}</td>
+            </tr>
+            ` : ''}
+            ${data.gst_percentage > 0 ? `
             <tr>
               <td>GST (${data.gst_percentage}%):</td>
               <td style="text-align: right;">₹${data.gst_amount.toFixed(2)}</td>
             </tr>
+            ` : ''}
             ${data.discount > 0 ? `
               <tr>
                 <td>Discount:</td>
@@ -425,7 +471,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
               </tr>
             ` : ''}
             <tr class="grand-total">
-              <td>TOTAL:</td>
+              <td>BALANCE DUE:</td>
               <td style="text-align: right;">₹${data.total_amount.toFixed(2)}</td>
             </tr>
           </table>
@@ -514,32 +560,86 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
             />
           </div>
 
-          {/* Registration Fee — locked, read-only when coming from registration */}
-          {isRegistrationInvoice && (
-            <div className="mb-6 p-4 bg-teal-50 border border-teal-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold text-teal-800">Registration Fee</p>
-                  <p className="text-xs text-teal-600 mt-0.5">Collected at time of registration — included in this invoice for records only.</p>
+          {/* ── Charges Section ── */}
+          <div className="mb-6 border border-gray-200 rounded-xl overflow-hidden">
+            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+              <h3 className="font-bold text-gray-800">Charges Breakdown</h3>
+            </div>
+            <div className="p-4 space-y-4">
+
+              {/* Registration Fee row — always shown when present */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-teal-50 border border-teal-200">
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-teal-800 mb-1">Registration Fee (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.registration_fee}
+                    onChange={(e) => setFormData({ ...formData, registration_fee: e.target.value })}
+                    className="w-full px-3 py-2 border border-teal-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="0.00"
+                    readOnly={isRegistrationInvoice}
+                  />
                 </div>
-                <div className="text-right">
-                  <p className="text-xl font-bold text-teal-700">₹{(parseFloat(formData.registration_fee) || 0).toFixed(2)}</p>
-                  <span className="text-xs bg-teal-600 text-white px-2 py-0.5 rounded-full">Already collected</span>
+                <div className="flex flex-col items-center gap-1 pt-5">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-teal-700 font-medium">
+                    <input
+                      type="checkbox"
+                      checked={formData.reg_fee_already_paid}
+                      onChange={(e) => setFormData({ ...formData, reg_fee_already_paid: e.target.checked })}
+                      className="w-4 h-4 accent-teal-600"
+                    />
+                    Already Paid
+                  </label>
+                  {formData.reg_fee_already_paid && (
+                    <span className="text-xs bg-teal-600 text-white px-2 py-0.5 rounded-full">Deducted from total</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Other charges grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Treatment Charges (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.treatment_charges}
+                    onChange={(e) => setFormData({ ...formData, treatment_charges: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Doctor's Fees (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.doctor_fees}
+                    onChange={(e) => setFormData({ ...formData, doctor_fees: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nursing Fees (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.nursing_fees}
+                    onChange={(e) => setFormData({ ...formData, nursing_fees: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lab Test Charges (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.lab_test_charges}
+                    onChange={(e) => setFormData({ ...formData, lab_test_charges: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="0.00"
+                  />
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Treatment Charges */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Treatment Charges (₹)</label>
-            <input
-              type="number"
-              value={formData.treatment_charges}
-              onChange={(e) => setFormData({ ...formData, treatment_charges: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              placeholder="0.00"
-            />
           </div>
 
           {/* IP Specific Fields */}
@@ -842,21 +942,29 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           <div className="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-6 rounded-lg mb-6">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>Subtotal:</span>
-                <span>₹{calculateSubtotal().toFixed(2)}</span>
+                <span>Gross Total:</span>
+                <span>₹{calculateGross().toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span>GST ({formData.gst_percentage}%):</span>
-                <span>₹{calculateGST().toFixed(2)}</span>
-              </div>
-              {formData.discount > 0 && (
+              {formData.reg_fee_already_paid && parseFloat(formData.registration_fee) > 0 && (
+                <div className="flex justify-between text-sm text-teal-200">
+                  <span>Less: Registration Fee (already paid):</span>
+                  <span>-₹{parseFloat(formData.registration_fee).toFixed(2)}</span>
+                </div>
+              )}
+              {parseFloat(formData.gst_percentage) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>GST ({formData.gst_percentage}%):</span>
+                  <span>₹{calculateGST().toFixed(2)}</span>
+                </div>
+              )}
+              {parseFloat(formData.discount) > 0 && (
                 <div className="flex justify-between text-sm">
                   <span>Discount:</span>
                   <span>-₹{parseFloat(formData.discount).toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-2xl font-bold pt-2 border-t border-teal-500">
-                <span>TOTAL:</span>
+                <span>BALANCE DUE:</span>
                 <span>₹{calculateTotal().toFixed(2)}</span>
               </div>
             </div>
