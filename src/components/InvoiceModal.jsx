@@ -561,9 +561,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           </div>
 
           {/* ── Charges Section ── */}
-          <div className="mb-6 border border-gray-200 rounded-xl overflow-hidden">
-            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-              <h3 className="font-bold text-gray-800">Charges Breakdown</h3>
+          <div className="mb-6 border border-teal-300 rounded-xl overflow-hidden">
+            <div className="bg-teal-50 px-4 py-3 border-b border-teal-200">
+              <h3 className="font-bold text-teal-800">💊 Charges Breakdown</h3>
             </div>
             <div className="p-4 space-y-4">
 
