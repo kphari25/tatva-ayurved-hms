@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserPlus, Save, X, Receipt } from 'lucide-react';
+import { UserPlus, Save, X, Receipt, CheckCircle, FileText, UserCheck } from 'lucide-react';
 import { collection, addDoc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
@@ -10,6 +10,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
   const [sendWelcomeSMS, setSendWelcomeSMS] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [savedPatient, setSavedPatient] = useState(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -155,18 +156,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
         ...patientData,
       });
 
-      if (onSuccess) onSuccess();
-
-      // Ask user if they want to generate a registration invoice
-      const generateInv = window.confirm(
-        `✅ Patient registered!\n\nMRD Number: ${mrdNumber}${ipNumber ? `\nIP Number: ${ipNumber}` : ''}${smsSent ? '\n✅ Welcome SMS sent!' : ''}\n\nGenerate a registration fee invoice now?`
-      );
-
-      if (generateInv) {
-        setShowInvoice(true);
-      } else {
-        if (onClose) onClose();
-      }
+      // Show success screen with invoice option
+      setRegistrationSuccess(true);
 
     } catch (error) {
       console.error('❌ Error registering patient:', error);
@@ -175,6 +166,85 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
       setLoading(false);
     }
   };
+
+  // Success screen shown after registration
+  if (registrationSuccess && savedPatient) {
+    return (
+      <>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-8 text-center">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-10 h-10 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Patient Registered!</h2>
+            <p className="text-gray-500 mb-6">The patient has been successfully registered in the system.</p>
+
+            <div className="bg-gray-50 rounded-xl p-4 text-left mb-6 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Name</span>
+                <span className="font-semibold text-gray-800">{savedPatient.first_name} {savedPatient.last_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">MRD Number</span>
+                <span className="font-semibold text-teal-700">{savedPatient.mrd_number}</span>
+              </div>
+              {savedPatient.ip_number && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">IP Number</span>
+                  <span className="font-semibold text-blue-700">{savedPatient.ip_number}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-gray-500">Phone</span>
+                <span className="font-medium text-gray-700">{savedPatient.phone || '—'}</span>
+              </div>
+              {savedPatient.registration_fee > 0 && (
+                <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+                  <span className="text-gray-500">Registration Fee</span>
+                  <span className="font-bold text-gray-800">₹{parseFloat(savedPatient.registration_fee).toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => setShowInvoice(true)}
+                className="w-full py-3 px-6 bg-teal-600 text-white rounded-xl font-semibold hover:bg-teal-700 flex items-center justify-center gap-2 transition-colors"
+              >
+                <Receipt className="w-5 h-5" />
+                Generate Registration Invoice
+              </button>
+              <button
+                onClick={() => {
+                  setRegistrationSuccess(false);
+                  setSavedPatient(null);
+                  if (onClose) onClose();
+                }}
+                className="w-full py-3 px-6 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 flex items-center justify-center gap-2 transition-colors"
+              >
+                <UserCheck className="w-5 h-5" />
+                Done — Back to Patient Portal
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {showInvoice && (
+          <InvoiceModal
+            patient={savedPatient}
+            registrationFee={parseFloat(savedPatient.registration_fee) || 0}
+            onClose={() => {
+              setShowInvoice(false);
+            }}
+            onSave={() => {
+              setShowInvoice(false);
+              if (onClose) onClose();
+            }}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <>
