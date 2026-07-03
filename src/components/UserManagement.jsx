@@ -4,7 +4,7 @@ import {
   UserCheck, UserCog, Search, Phone, Mail, Lock,
   CheckCircle, AlertCircle, Stethoscope, Calendar,
   Package, ShoppingCart, ClipboardList, BarChart3,
-  Receipt, Utensils, FileText, Home, TrendingUp
+  Receipt, Utensils, FileText, Home, TrendingUp, Wallet
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -81,6 +81,7 @@ const MODULES = {
   'mess-expense': { label: 'Mess Expense', icon: Utensils, description: 'Kitchen expense tracking' },
   'diet-module': { label: 'Diet Plans', icon: Utensils, description: 'Patient diet plan management' },
   'profit-loss': { label: 'P&L Statement', icon: Receipt, description: 'Profit and loss reporting' },
+  financials: { label: 'Financials', icon: Wallet, description: 'Consolidated financial ledger: revenue, medicine sales, and expenses' },
   'user-management': { label: 'User Management', icon: UserCog, description: 'Manage users and roles' },
   'hr-payroll': { label: 'HR & Payroll', icon: UserCog, description: 'HR and payroll management' }
 };
@@ -93,7 +94,7 @@ const DEFAULT_PERMISSIONS = {
   front_office: ['dashboard', 'patients', 'scheduling', 'leads', 'invoices', 'packages', 'discharge'],
   store_admin: ['dashboard', 'inventory', 'purchase'],
   kitchen_staff: ['dashboard', 'mess-expense', 'diet-module'],
-  accountant: ['dashboard', 'invoices', 'profit-loss', 'analytics', 'purchase']
+  accountant: ['dashboard', 'invoices', 'profit-loss', 'financials', 'analytics', 'purchase']
 };
 
 const UserManagement = () => {

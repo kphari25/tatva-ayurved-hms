@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Home, Users, Package, FileText, Receipt, TrendingUp, 
+import {
+  Home, Users, Package, FileText, Receipt, TrendingUp,
   Calendar, IndianRupee, UserCog, Database, LogOut,
-  ShoppingCart, Utensils, BarChart3
+  ShoppingCart, Utensils, BarChart3, Wallet
 } from 'lucide-react';
 
 // Import components
@@ -21,6 +21,7 @@ import LeadManagement from './components/LeadManagement';
 import PackageManagement from './components/PackageManagement';
 import Dashboard from './components/Dashboard';
 import ProfitLoss from './components/ProfitLoss';
+import Financials from './components/Financials';
 import AIAssist from './components/AIAssist';
 import PurchaseManagement from './components/PurchaseManagement';
 import AppointmentScheduling from './components/AppointmentScheduling';
@@ -126,6 +127,7 @@ function App() {
     // Admin Only Section
     { id: 'admin-section', label: 'Administration', icon: null, isSectionHeader: true, adminOnly: true },
     { id: 'profit-loss', label: 'P&L Statement', icon: IndianRupee, moduleId: 'profit-loss' },
+    { id: 'financials', label: 'Financials', icon: Wallet, moduleId: 'financials' },
     { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, moduleId: 'hr-payroll', badge: 'Admin' },
     { id: 'user-management', label: 'User Management', icon: UserCog, moduleId: 'user-management', badge: 'Admin' },
     { id: 'database-backup', label: 'Database Backup', icon: Database, moduleId: 'user-management', badge: 'Admin' },
@@ -272,7 +274,9 @@ function App() {
         {currentView === 'scheduling' && <AppointmentScheduling />}
         
         {currentView === 'profit-loss' && <ProfitLoss />}
-        
+
+        {currentView === 'financials' && <Financials />}
+
         {currentView === 'hr-payroll' && <HRPayrollModule userRole={currentUser?.role} currentUser={currentUser} />}
         
         {currentView === 'user-management' && <UserManagement />}
