@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Receipt, Search, Download, Printer, Eye, Filter, Calendar, IndianRupee, TrendingUp, Plus } from 'lucide-react';
+import { Receipt, Search, Download, Printer, Eye, Filter, Calendar, IndianRupee, TrendingUp, Plus, UserRound, ShoppingBag, X } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import InvoiceModal from './InvoiceModal';
+import MedicineSaleModal from './MedicineSaleModal';
 
 const InvoicesManagement = () => {
   const [invoices, setInvoices] = useState([]);
@@ -16,6 +17,8 @@ const InvoicesManagement = () => {
   const [filterDate, setFilterDate] = useState('all'); // all, today, week, month
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [showNewInvoiceChooser, setShowNewInvoiceChooser] = useState(false);
+  const [showMedicineSale, setShowMedicineSale] = useState(false);
   const [stats, setStats] = useState({
     totalRevenue: 0,
     opRevenue: 0,
@@ -375,7 +378,7 @@ const InvoicesManagement = () => {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => setShowInvoiceModal(true)}
+              onClick={() => setShowNewInvoiceChooser(true)}
               className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />
@@ -684,7 +687,65 @@ const InvoicesManagement = () => {
           onSave={() => {
             setShowInvoiceModal(false);
             setSelectedPatient(null);
-            loadInvoices(); // Refresh invoice list
+            loadInvoices();
+          }}
+        />
+      )}
+
+      {/* New Invoice Type Chooser */}
+      {showNewInvoiceChooser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-800">New Invoice</h2>
+              <button onClick={() => setShowNewInvoiceChooser(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">Choose the type of invoice to generate:</p>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => {
+                  setShowNewInvoiceChooser(false);
+                  setShowInvoiceModal(true);
+                }}
+                className="flex flex-col items-center gap-3 p-6 border-2 border-gray-200 rounded-xl hover:border-teal-500 hover:bg-teal-50 transition-all group"
+              >
+                <div className="w-14 h-14 bg-teal-100 group-hover:bg-teal-200 rounded-full flex items-center justify-center transition-colors">
+                  <UserRound className="w-7 h-7 text-teal-600" />
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-gray-800">Patient Invoice</div>
+                  <div className="text-xs text-gray-500 mt-1">Treatment, nursing, room & medicine charges for a registered patient</div>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setShowNewInvoiceChooser(false);
+                  setShowMedicineSale(true);
+                }}
+                className="flex flex-col items-center gap-3 p-6 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all group"
+              >
+                <div className="w-14 h-14 bg-green-100 group-hover:bg-green-200 rounded-full flex items-center justify-center transition-colors">
+                  <ShoppingBag className="w-7 h-7 text-green-600" />
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-gray-800">Medicine Sale</div>
+                  <div className="text-xs text-gray-500 mt-1">Direct medicine billing for walk-in customers or patients</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Medicine Sale Modal */}
+      {showMedicineSale && (
+        <MedicineSaleModal
+          onClose={() => setShowMedicineSale(false)}
+          onSave={() => {
+            setShowMedicineSale(false);
+            loadInvoices();
           }}
         />
       )}
