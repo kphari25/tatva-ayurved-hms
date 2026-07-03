@@ -89,6 +89,7 @@ const emptyForm = () => ({
 
   // Follow-Up Plan
   next_review: '',
+  next_review_date: '',
   review_procedure: 'Tele-consultation / In-person review',
 
   // Daily treatment log: [{ date, treatment, medicines, notes }]
@@ -385,9 +386,28 @@ ${form.internal_medicines.filter(Boolean).length ? `
 <p style="font-style:italic;font-weight:bold;margin-bottom:4px;">Internal Medicines:</p>
 <ul>${bullet(form.internal_medicines)}</ul>
 ` : ''}
-${form.external_treatments.filter(t => t.treatment).length ? `
-<p style="font-style:italic;font-weight:bold;margin:6px 0 4px;">External Treatment</p>
-<ul>${form.external_treatments.filter(t => t.treatment).map(t => `<li>${t.treatment}${t.days ? ` *${t.days} days` : ''}</li>`).join('')}</ul>
+
+${(form.daily_treatments || []).filter(t => t.treatment || t.medicines).length ? `
+<p style="font-style:italic;font-weight:bold;margin:8px 0 4px;">Daily Treatment Log:</p>
+<table class="grid" style="font-size:11px;">
+  <thead>
+    <tr>
+      <th style="width:90px;">Date</th>
+      <th>Treatment / Procedure</th>
+      <th>Medicines Given</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${(form.daily_treatments || []).filter(t => t.treatment || t.medicines).map(t => `
+      <tr>
+        <td>${t.date ? new Date(t.date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : ''}</td>
+        <td>${t.treatment || ''}</td>
+        <td>${t.medicines || ''}</td>
+        <td>${t.notes || ''}</td>
+      </tr>`).join('')}
+  </tbody>
+</table>
 ` : ''}
 
 <!-- DIET AND LIFESTYLE -->
@@ -439,7 +459,8 @@ ${form.lifestyle_modification ? `
 
 <!-- FOLLOW-UP -->
 <div class="section-title">Follow-Up Plan</div>
-<p>Next Review Date: ${form.next_review ? `After ${form.next_review}` : '—'}</p>
+<p>Next Review: ${form.next_review ? `After ${form.next_review}` : '—'}${form.next_review_date ? ` &nbsp;|&nbsp; <strong>Date: ${new Date(form.next_review_date).toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })}</strong>` : ''}</p>
+${form.doctor_in_charge ? `<p>Doctor: ${form.doctor_in_charge}</p>` : ''}
 <p>Review Procedure: ${form.review_procedure}</p>
 
 <!-- PROGNOSIS -->
@@ -602,9 +623,10 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
   const handleSave = async () => {
     setSaving(true);
     try {
+      const patientName = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim();
       const data = {
         patient_id: patient?.id || patient?.firebaseId,
-        patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
+        patient_name: patientName,
         patient_number: patient?.patient_number || '',
         mrd_number: form.mrd_no,
         ip_number: form.ip_no,
@@ -616,7 +638,28 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
       } else {
         await addDoc(collection(db, 'discharge_summaries'), data);
       }
-      alert('✅ Discharge summary saved!');
+
+      // Auto-create follow-up appointment in Scheduling if a date is set
+      if (form.next_review_date) {
+        const apptPayload = {
+          patient: `${patientName}${form.mrd_no ? ` (${form.mrd_no})` : ''}`,
+          patient_id: patient?.id || patient?.firebaseId,
+          date: form.next_review_date,
+          time: '10:00',
+          type: 'Follow-up Review',
+          status: 'scheduled',
+          doctorId: '',
+          doctorName: form.doctor_in_charge || '',
+          therapistId: '',
+          therapistName: '',
+          notes: `Follow-up after discharge. ${form.review_procedure || ''}`.trim(),
+          source: 'discharge_summary',
+          createdAt: new Date().toISOString(),
+        };
+        await addDoc(collection(db, 'appointments'), apptPayload);
+      }
+
+      alert('✅ Discharge summary saved!' + (form.next_review_date ? '\n📅 Follow-up appointment created in Scheduling.' : ''));
       if (onSave) onSave();
     } catch (e) {
       alert('Error saving: ' + e.message);
@@ -1068,12 +1111,98 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
           {/* ── FOLLOW-UP ── */}
           {activeSection === 'followup' && (
             <div className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
+
+              {/* Next Review smart selector */}
+              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-4">
+                <h3 className="font-bold text-teal-800 text-sm">📅 Next Review / Follow-Up</h3>
+
+                {/* Quick-select buttons */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Next Review (e.g. 2 WEEKS)</label>
-                  <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-                    value={form.next_review} onChange={e => set('next_review', e.target.value)} placeholder="e.g. 2 WEEKS" />
+                  <label className="block text-xs font-medium text-gray-600 mb-2">Quick select days after discharge</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: '1 Week', days: 7 },
+                      { label: '2 Weeks', days: 14 },
+                      { label: '1 Month', days: 30 },
+                      { label: '6 Weeks', days: 42 },
+                      { label: '2 Months', days: 60 },
+                      { label: '3 Months', days: 90 },
+                    ].map(({ label, days }) => {
+                      const base = form.discharge_date ? new Date(form.discharge_date) : new Date();
+                      const calcDate = new Date(base);
+                      calcDate.setDate(calcDate.getDate() + days);
+                      const iso = calcDate.toISOString().split('T')[0];
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => { set('next_review', label); set('next_review_date', iso); }}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.next_review === label ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+
+                {/* Custom days input */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Custom (type number of days)</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="e.g. 21"
+                        className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                        onChange={e => {
+                          const days = parseInt(e.target.value);
+                          if (!days) return;
+                          const base = form.discharge_date ? new Date(form.discharge_date) : new Date();
+                          const d = new Date(base);
+                          d.setDate(d.getDate() + days);
+                          set('next_review', `${days} days`);
+                          set('next_review_date', d.toISOString().split('T')[0]);
+                        }}
+                      />
+                      <span className="text-sm text-gray-500">days after discharge</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Or pick a specific date</label>
+                    <input
+                      type="date"
+                      value={form.next_review_date}
+                      onChange={e => set('next_review_date', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Resolved date display */}
+                {form.next_review_date && (
+                  <div className="bg-white border border-teal-300 rounded-lg px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-500">Follow-up appointment will be scheduled for</p>
+                      <p className="font-bold text-teal-700 text-base">
+                        {new Date(form.next_review_date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                      {form.doctor_in_charge && form.doctor_in_charge !== '__manual__' && (
+                        <p className="text-xs text-gray-500 mt-0.5">with Dr. {form.doctor_in_charge}</p>
+                      )}
+                    </div>
+                    <div className="text-3xl">📅</div>
+                  </div>
+                )}
+                {form.next_review_date && (
+                  <p className="text-xs text-teal-700 bg-teal-100 rounded-lg px-3 py-2">
+                    ✅ When you save this discharge summary, a follow-up appointment will automatically appear in the <strong>Scheduling</strong> section.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Review Procedure</label>
                   <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
