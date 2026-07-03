@@ -91,6 +91,9 @@ const emptyForm = () => ({
   next_review: '',
   review_procedure: 'Tele-consultation / In-person review',
 
+  // Daily treatment log: [{ date, treatment, medicines, notes }]
+  daily_treatments: [],
+
   // Prognosis & Remarks
   prognosis: '',
   remarks: '',
@@ -467,20 +470,38 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
   const [form, setForm] = useState(() => {
     if (existingSummary) return { ...emptyForm(), ...existingSummary };
     const f = emptyForm();
+    f.patient_name = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim();
     f.ip_no = patient?.ip_number || '';
     f.mrd_no = patient?.mrd_number || patient?.patient_number || '';
     f.admission_date = patient?.admission_date || '';
+    f.doctor_in_charge = patient?.assigned_doctor || '';
     return f;
   });
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState('patient');
   const [inventory, setInventory] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [dailyProgress, setDailyProgress] = useState([]);
   const [loadingProgress, setLoadingProgress] = useState(false);
+  // Per-medicine autocomplete in daily treatments
+  const [medSuggestions, setMedSuggestions] = useState({});
+  const [openMedDrop, setOpenMedDrop] = useState(null);
 
   useEffect(() => {
     getDocs(collection(db, 'inventory')).then(snap => {
       setInventory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }).catch(() => {});
+
+    // Load doctors from HR employees
+    const DOCTOR_KW = ['doctor', 'physician', 'consultant', 'vaidya', 'surgeon', 'rmo', 'medical'];
+    getDocs(collection(db, 'hr_employees')).then(snap => {
+      const docs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(e => {
+          const h = `${e.department || ''} ${e.designation || ''} ${e.role || ''}`.toLowerCase();
+          return DOCTOR_KW.some(k => h.includes(k));
+        });
+      setDoctors(docs);
     }).catch(() => {});
 
     // Load daily progress for IP patients to auto-populate summary
@@ -547,6 +568,27 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
       return next;
     });
   };
+
+  // Daily treatment helpers
+  const addDailyTreatment = () => {
+    set('daily_treatments', [...(form.daily_treatments || []), { date: new Date().toISOString().split('T')[0], treatment: '', medicines: '', notes: '' }]);
+  };
+  const updateDailyTreatment = (idx, field, val) => {
+    const arr = [...(form.daily_treatments || [])];
+    arr[idx] = { ...arr[idx], [field]: val };
+    set('daily_treatments', arr);
+  };
+  const removeDailyTreatment = (idx) => {
+    const arr = [...(form.daily_treatments || [])];
+    arr.splice(idx, 1);
+    set('daily_treatments', arr);
+  };
+  const getMedSug = (q) =>
+    q.length < 2 ? [] :
+    inventory.filter(m =>
+      (m.item_name || '').toLowerCase().includes(q.toLowerCase()) ||
+      (m.item_code || '').toLowerCase().includes(q.toLowerCase())
+    ).slice(0, 6);
 
   const handlePrint = () => {
     const html = buildPrintHTML(patient, form);
@@ -645,14 +687,38 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
           {/* ── PATIENT INFO ── */}
           {activeSection === 'patient' && (
             <div className="space-y-5">
+              {/* Auto-filled patient banner */}
+              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 grid grid-cols-3 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-teal-600 font-semibold uppercase mb-0.5">Patient Name</p>
+                  <p className="font-bold text-gray-900">{form.patient_name || `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim() || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-teal-600 font-semibold uppercase mb-0.5">MRD Number</p>
+                  <p className="font-bold text-gray-900 font-mono">{form.mrd_no || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-teal-600 font-semibold uppercase mb-0.5">{patient?.ip_number ? 'IP Number' : 'Patient Type'}</p>
+                  <p className="font-bold text-gray-900 font-mono">{form.ip_no || patient?.patient_type || '—'}</p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-3 gap-4">
-                {[['Ward No', 'ward_no'], ['IP No', 'ip_no'], ['MRD No', 'mrd_no']].map(([lbl, key]) => (
-                  <div key={key}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{lbl}</label>
-                    <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-                      value={form[key]} onChange={e => set(key, e.target.value)} />
-                  </div>
-                ))}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ward No</label>
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.ward_no} onChange={e => set('ward_no', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IP No <span className="text-teal-600 text-xs">(auto-filled)</span></label>
+                  <input className="w-full px-3 py-2 border border-teal-300 bg-teal-50 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.ip_no} onChange={e => set('ip_no', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">MRD No <span className="text-teal-600 text-xs">(auto-filled)</span></label>
+                  <input className="w-full px-3 py-2 border border-teal-300 bg-teal-50 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.mrd_no} onChange={e => set('mrd_no', e.target.value)} />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -682,9 +748,26 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
                     value={form.duration_days} onChange={e => set('duration_days', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Doctor in Charge</label>
-                  <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-                    value={form.doctor_in_charge} onChange={e => set('doctor_in_charge', e.target.value)} />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Doctor in Charge <span className="text-teal-600 text-xs">(auto-filled if assigned)</span>
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    value={form.doctor_in_charge}
+                    onChange={e => set('doctor_in_charge', e.target.value)}
+                  >
+                    <option value="">— Select Doctor —</option>
+                    {doctors.map(d => {
+                      const name = `${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name || '';
+                      return <option key={d.id} value={name}>{name}{d.designation ? ` (${d.designation})` : ''}</option>;
+                    })}
+                    <option value="__manual__">Other / Type manually…</option>
+                  </select>
+                  {form.doctor_in_charge === '__manual__' && (
+                    <input className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                      placeholder="Type doctor name…"
+                      onChange={e => set('doctor_in_charge', e.target.value)} />
+                  )}
                 </div>
               </div>
 
@@ -788,41 +871,105 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
                 inventory={inventory}
               />
 
-              {/* External Treatments */}
+              {/* Daily Treatment Log */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">External Treatments</label>
-                <div className="space-y-2">
-                  {form.external_treatments.map((t, i) => (
-                    <div key={i} className="flex gap-2">
-                      <input
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-                        value={t.treatment} placeholder="Treatment name (e.g. KADI KIZHI)"
-                        onChange={e => {
-                          const n = [...form.external_treatments];
-                          n[i] = { ...n[i], treatment: e.target.value };
-                          set('external_treatments', n);
-                        }}
-                      />
-                      <input
-                        className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-                        value={t.days} placeholder="Days"
-                        onChange={e => {
-                          const n = [...form.external_treatments];
-                          n[i] = { ...n[i], days: e.target.value };
-                          set('external_treatments', n);
-                        }}
-                      />
-                      <button onClick={() => {
-                        if (form.external_treatments.length === 1) return;
-                        const n = [...form.external_treatments]; n.splice(i, 1); set('external_treatments', n);
-                      }} className="text-red-400 hover:text-red-600 px-1"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-semibold text-gray-700">Daily Treatment Log</label>
+                  <button onClick={addDailyTreatment}
+                    className="flex items-center gap-1 text-sm text-teal-600 hover:text-teal-800 font-medium">
+                    <Plus className="w-4 h-4" /> Add Day
+                  </button>
                 </div>
-                <button onClick={() => set('external_treatments', [...form.external_treatments, { treatment: '', days: '' }])}
-                  className="mt-2 text-teal-600 text-sm flex items-center gap-1 hover:text-teal-800">
-                  <Plus className="w-3 h-3" /> Add External Treatment
-                </button>
+                {(!form.daily_treatments || form.daily_treatments.length === 0) ? (
+                  <div className="text-center py-6 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-sm">
+                    No daily treatment entries yet. Click "Add Day" to log treatment for each day.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {form.daily_treatments.map((entry, idx) => (
+                      <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                        {/* Day header */}
+                        <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 border-b border-gray-200">
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Day {idx + 1}</span>
+                          <input
+                            type="date"
+                            value={entry.date}
+                            onChange={e => updateDailyTreatment(idx, 'date', e.target.value)}
+                            className="px-2 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                          />
+                          <button onClick={() => removeDailyTreatment(idx)} className="ml-auto text-red-400 hover:text-red-600 p-1">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          {/* Treatment */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Treatment / Procedure</label>
+                            <input
+                              value={entry.treatment}
+                              onChange={e => updateDailyTreatment(idx, 'treatment', e.target.value)}
+                              placeholder="e.g. Abhyanga, Shirodhara, Kadi Kizhi…"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                            />
+                          </div>
+                          {/* Medicines with inventory autocomplete */}
+                          <div className="relative">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Medicines Given</label>
+                            <input
+                              value={entry.medicines}
+                              onChange={e => {
+                                updateDailyTreatment(idx, 'medicines', e.target.value);
+                                const q = e.target.value.split(',').pop().trim();
+                                setMedSuggestions(p => ({ ...p, [idx]: getMedSug(q) }));
+                                setOpenMedDrop(idx);
+                              }}
+                              onFocus={() => {
+                                const q = (entry.medicines || '').split(',').pop().trim();
+                                if (q.length >= 2) { setMedSuggestions(p => ({ ...p, [idx]: getMedSug(q) })); setOpenMedDrop(idx); }
+                              }}
+                              onBlur={() => setTimeout(() => setOpenMedDrop(null), 200)}
+                              placeholder="Type medicine name to search inventory, separate with commas…"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                            />
+                            {openMedDrop === idx && medSuggestions[idx]?.length > 0 && (
+                              <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-44 overflow-y-auto">
+                                {medSuggestions[idx].map(med => (
+                                  <div
+                                    key={med.id}
+                                    onMouseDown={() => {
+                                      const parts = entry.medicines.split(',');
+                                      parts[parts.length - 1] = ` ${med.item_name || med.item_code}`;
+                                      updateDailyTreatment(idx, 'medicines', parts.join(',').trimStart() + ', ');
+                                      setOpenMedDrop(null);
+                                    }}
+                                    className="px-3 py-2 hover:bg-teal-50 cursor-pointer border-b border-gray-50 last:border-0"
+                                  >
+                                    <span className="font-medium text-sm text-gray-900">{med.item_code}</span>
+                                    <span className="text-xs text-gray-500 ml-2">{med.item_name}</span>
+                                    <span className={`float-right text-xs px-1.5 py-0.5 rounded-full ${parseFloat(med.stock_quantity) > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                      Stock: {med.stock_quantity}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Notes */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Doctor's Notes / Observations</label>
+                            <textarea
+                              value={entry.notes}
+                              onChange={e => updateDailyTreatment(idx, 'notes', e.target.value)}
+                              placeholder="Patient response, observations, plan changes…"
+                              rows={2}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Diet & Lifestyle */}
