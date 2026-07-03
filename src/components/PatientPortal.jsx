@@ -3,11 +3,14 @@ import {
   Users, Search, Plus, Edit, Eye, Trash2,
   Phone, Mail, Calendar, MapPin, Activity,
   X, FileText, Download, Filter, CalendarPlus,
-  Stethoscope, Clock, MessageSquare, CheckCircle, AlertCircle, Send
+  Stethoscope, Clock, MessageSquare, CheckCircle, AlertCircle, Send,
+  ClipboardList, UserRound
 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc } from 'firebase/firestore';
 import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
+import DischargeSummaryModal from './DischargeSummaryModal';
+import IPDailyProgressModal from './IPDailyProgressModal';
 
 const PatientPortal = ({ onAddPatient }) => {
   console.log('🔵 PatientPortal rendered, onAddPatient prop:', typeof onAddPatient);
@@ -19,6 +22,12 @@ const PatientPortal = ({ onAddPatient }) => {
   const [filterPatientType, setFilterPatientType] = useState('all');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
+
+  // Discharge summary & daily progress state
+  const [showDischargeSummary, setShowDischargeSummary] = useState(false);
+  const [dischargeSummaryPatient, setDischargeSummaryPatient] = useState(null);
+  const [showDailyProgress, setShowDailyProgress] = useState(false);
+  const [dailyProgressPatient, setDailyProgressPatient] = useState(null);
 
   // Appointment scheduling state
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
@@ -176,6 +185,24 @@ const PatientPortal = ({ onAddPatient }) => {
       alert('Error loading patients: ' + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAssignDoctor = async (patient) => {
+    const doctorName = window.prompt(
+      `Assign doctor to ${patient.first_name} ${patient.last_name}:`,
+      patient.assigned_doctor || ''
+    );
+    if (doctorName === null) return;
+    try {
+      await updateDoc(doc(db, 'patients', patient.id || patient.firebaseId), { assigned_doctor: doctorName });
+      setPatients(prev => prev.map(p =>
+        (p.id || p.firebaseId) === (patient.id || patient.firebaseId)
+          ? { ...p, assigned_doctor: doctorName }
+          : p
+      ));
+    } catch (e) {
+      alert('Failed to assign doctor: ' + e.message);
     }
   };
 
@@ -448,6 +475,11 @@ const PatientPortal = ({ onAddPatient }) => {
                           <p className="font-semibold text-gray-900">
                             {patient.first_name} {patient.middle_name} {patient.last_name}
                           </p>
+                          {patient.assigned_doctor && (
+                            <p className="text-xs text-teal-600 flex items-center gap-1 mt-0.5">
+                              <Stethoscope className="w-3 h-3" /> {patient.assigned_doctor}
+                            </p>
+                          )}
                           {patient.email && (
                             <p className="text-xs text-gray-500">{patient.email}</p>
                           )}
@@ -498,7 +530,8 @@ const PatientPortal = ({ onAddPatient }) => {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center justify-center space-x-2">
+                      <div className="flex items-center justify-center flex-wrap gap-1">
+                        {/* View */}
                         <button
                           onClick={() => viewPatientDetails(patient)}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -506,6 +539,7 @@ const PatientPortal = ({ onAddPatient }) => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+                        {/* Schedule Appointment */}
                         <button
                           onClick={() => openAppointmentModal(patient)}
                           className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
@@ -513,6 +547,33 @@ const PatientPortal = ({ onAddPatient }) => {
                         >
                           <CalendarPlus className="w-4 h-4" />
                         </button>
+                        {/* Assign Doctor */}
+                        <button
+                          onClick={() => handleAssignDoctor(patient)}
+                          className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          title={patient.assigned_doctor ? `Doctor: ${patient.assigned_doctor}` : 'Assign Doctor'}
+                        >
+                          <UserRound className="w-4 h-4" />
+                        </button>
+                        {/* Daily Progress — IP patients only */}
+                        {(patient.patient_type === 'IP' || patient.ip_number) && (
+                          <button
+                            onClick={() => { setDailyProgressPatient(patient); setShowDailyProgress(true); }}
+                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="IP Daily Progress"
+                          >
+                            <Activity className="w-4 h-4" />
+                          </button>
+                        )}
+                        {/* Discharge Summary */}
+                        <button
+                          onClick={() => { setDischargeSummaryPatient(patient); setShowDischargeSummary(true); }}
+                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                          title="Discharge Summary"
+                        >
+                          <ClipboardList className="w-4 h-4" />
+                        </button>
+                        {/* Delete */}
                         <button
                           onClick={() => handleDelete(patient.id)}
                           className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -949,6 +1010,23 @@ const PatientPortal = ({ onAddPatient }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Discharge Summary Modal ── */}
+      {showDischargeSummary && dischargeSummaryPatient && (
+        <DischargeSummaryModal
+          patient={dischargeSummaryPatient}
+          onClose={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); }}
+          onSave={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); }}
+        />
+      )}
+
+      {/* ── IP Daily Progress Modal ── */}
+      {showDailyProgress && dailyProgressPatient && (
+        <IPDailyProgressModal
+          patient={dailyProgressPatient}
+          onClose={() => { setShowDailyProgress(false); setDailyProgressPatient(null); }}
+        />
       )}
     </div>
   );

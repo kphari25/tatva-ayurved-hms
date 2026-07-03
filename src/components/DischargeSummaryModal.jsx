@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { addDoc, updateDoc, doc, collection, getDocs } from 'firebase/firestore';
+import { addDoc, updateDoc, doc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -475,12 +475,64 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState('patient');
   const [inventory, setInventory] = useState([]);
+  const [dailyProgress, setDailyProgress] = useState([]);
+  const [loadingProgress, setLoadingProgress] = useState(false);
 
   useEffect(() => {
     getDocs(collection(db, 'inventory')).then(snap => {
       setInventory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }).catch(() => {});
+
+    // Load daily progress for IP patients to auto-populate summary
+    const patientId = patient?.id || patient?.firebaseId;
+    if (patientId && (patient?.patient_type === 'IP' || patient?.ip_number)) {
+      setLoadingProgress(true);
+      const q = query(
+        collection(db, 'daily_progress'),
+        where('patient_id', '==', patientId),
+        orderBy('date', 'asc')
+      );
+      getDocs(q).then(snap => {
+        const records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setDailyProgress(records);
+        if (records.length > 0 && !existingSummary) {
+          autoPopulateFromProgress(records);
+        }
+      }).catch(() => {}).finally(() => setLoadingProgress(false));
+    }
   }, []);
+
+  const autoPopulateFromProgress = (records) => {
+    // Build treatment summary from daily records
+    const treatmentLines = records
+      .filter(r => r.treatment_performed)
+      .map(r => `${new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ${r.treatment_performed}`);
+
+    const medicineLines = records
+      .filter(r => r.medicines_given)
+      .map(r => `${new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ${r.medicines_given}`);
+
+    // Use last known vitals
+    const lastWithVitals = [...records].reverse().find(r => r.bp_morning || r.temperature);
+
+    setForm(prev => ({
+      ...prev,
+      vitals: {
+        ...prev.vitals,
+        bp: lastWithVitals?.bp_morning || prev.vitals.bp,
+        temperature: lastWithVitals?.temperature || prev.vitals.temperature,
+        pulse: lastWithVitals?.pulse || prev.vitals.pulse,
+        spo2: lastWithVitals?.spo2 || prev.vitals.spo2,
+        weight: lastWithVitals?.weight || prev.vitals.weight,
+      },
+      treatment_given: prev.treatment_given.length > 0
+        ? prev.treatment_given
+        : treatmentLines.length > 0 ? treatmentLines : prev.treatment_given,
+      internal_medicines: prev.internal_medicines.length > 0
+        ? prev.internal_medicines
+        : medicineLines.length > 0 ? medicineLines : prev.internal_medicines,
+    }));
+  };
 
   const set = (path, val) => {
     setForm(prev => {
@@ -531,12 +583,15 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
     }
   };
 
+  const isIPPatient = patient?.patient_type === 'IP' || !!patient?.ip_number;
+
   const sections = [
     { id: 'patient', label: 'Patient Info' },
     { id: 'clinical', label: 'Clinical' },
     { id: 'treatment', label: 'Treatment' },
     { id: 'discharge', label: 'Discharge Advice' },
     { id: 'followup', label: 'Follow-Up' },
+    ...(isIPPatient ? [{ id: 'progress', label: `Daily Progress ${dailyProgress.length > 0 ? `(${dailyProgress.length})` : ''}` }] : []),
   ];
 
   return (
@@ -890,6 +945,68 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
                   value={form.remarks} onChange={e => set('remarks', e.target.value)}
                   placeholder="e.g. The integrated Ayurvedic management — KASHAYAVASTHI demonstrated excellent results in controlling pain." />
               </div>
+            </div>
+          )}
+
+          {/* ── Daily Progress Tab (IP only) ── */}
+          {activeSection === 'progress' && (
+            <div className="space-y-4">
+              {loadingProgress ? (
+                <div className="text-center py-8 text-gray-400">Loading daily records…</div>
+              ) : dailyProgress.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  <p className="font-medium">No daily progress records found.</p>
+                  <p className="text-sm mt-1">Add them from Patient Portal → Daily Progress button.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-sm text-teal-800">
+                    ✅ {dailyProgress.length} daily records found. Treatment and medicines have been auto-populated into the Summary tabs.
+                  </div>
+                  <div className="space-y-3">
+                    {dailyProgress.map((entry, i) => (
+                      <div key={entry.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
+                          <span className="font-semibold text-gray-800 text-sm">
+                            Day {i + 1} — {new Date(entry.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                          <div className="flex gap-2 text-xs">
+                            {entry.bp_morning && <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded-full">BP: {entry.bp_morning}</span>}
+                            {entry.temperature && <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full">🌡 {entry.temperature}</span>}
+                            {entry.pulse && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Pulse: {entry.pulse}</span>}
+                          </div>
+                        </div>
+                        <div className="px-4 py-3 grid grid-cols-2 gap-3 text-sm">
+                          {entry.treatment_performed && (
+                            <div className="col-span-2">
+                              <p className="text-xs font-semibold text-gray-500 mb-0.5">Treatment</p>
+                              <p className="text-gray-800">{entry.treatment_performed}</p>
+                            </div>
+                          )}
+                          {entry.medicines_given && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-0.5">Medicines</p>
+                              <p className="text-gray-800">{entry.medicines_given}</p>
+                            </div>
+                          )}
+                          {entry.diet && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-0.5">Diet</p>
+                              <p className="text-gray-800">{entry.diet}</p>
+                            </div>
+                          )}
+                          {entry.doctors_notes && (
+                            <div className="col-span-2">
+                              <p className="text-xs font-semibold text-gray-500 mb-0.5">Doctor's Notes</p>
+                              <p className="text-gray-800">{entry.doctors_notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
