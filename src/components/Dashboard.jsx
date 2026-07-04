@@ -3,6 +3,63 @@ import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, T
 import { collection, getDocs, query, where, orderBy, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
+const pad = (n) => String(n).padStart(2, '0');
+const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+const getIndiaHour = () =>
+  parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }).format(new Date()), 10);
+
+const getGreeting = () => {
+  const hour = getIndiaHour();
+  if (hour >= 5 && hour < 12) return 'Good Morning';
+  if (hour >= 12 && hour < 17) return 'Good Afternoon';
+  if (hour >= 17 && hour < 21) return 'Good Evening';
+  return 'Good Night';
+};
+
+const getWeekRange = (d) => {
+  const day = d.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return [monday, sunday];
+};
+
+const getMonthRange = (d) => [
+  new Date(d.getFullYear(), d.getMonth(), 1),
+  new Date(d.getFullYear(), d.getMonth() + 1, 0)
+];
+
+const CARD_PALETTE = [
+  { border: 'border-blue-400', bg: 'bg-blue-50', time: 'text-blue-700', badge: 'bg-blue-100 text-blue-800' },
+  { border: 'border-purple-400', bg: 'bg-purple-50', time: 'text-purple-700', badge: 'bg-purple-100 text-purple-800' },
+  { border: 'border-pink-400', bg: 'bg-pink-50', time: 'text-pink-700', badge: 'bg-pink-100 text-pink-800' },
+  { border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
+  { border: 'border-amber-400', bg: 'bg-amber-50', time: 'text-amber-700', badge: 'bg-amber-100 text-amber-800' },
+  { border: 'border-cyan-400', bg: 'bg-cyan-50', time: 'text-cyan-700', badge: 'bg-cyan-100 text-cyan-800' },
+  { border: 'border-rose-400', bg: 'bg-rose-50', time: 'text-rose-700', badge: 'bg-rose-100 text-rose-800' },
+  { border: 'border-indigo-400', bg: 'bg-indigo-50', time: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-800' }
+];
+
+const colorForAppointment = (apt) => {
+  const key = apt.type || apt.patient || 'default';
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return CARD_PALETTE[hash % CARD_PALETTE.length];
+};
+
+const formatGroupDate = (dateStr) => {
+  const today = toDateStr(new Date());
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (dateStr === today) return 'Today';
+  if (dateStr === toDateStr(tomorrow)) return 'Tomorrow';
+  const [y, m, day] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+};
+
 const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
   const [formData, setFormData] = useState({ patient: '', time: '', type: '', doctorId: '', doctorName: '' });
   const [error, setError] = useState('');
@@ -109,6 +166,9 @@ const Dashboard = () => {
   const [showAddAppointment, setShowAddAppointment] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [doctors, setDoctors] = useState([]);
+  const [greeting, setGreeting] = useState(getGreeting());
+  const [appointmentView, setAppointmentView] = useState('daily'); // daily | weekly | monthly
+  const [panelAppointments, setPanelAppointments] = useState([]);
   const [dashboardData, setDashboardData] = useState({
     todayAppointments: [],
     ipPatients: [],
@@ -179,6 +239,37 @@ const Dashboard = () => {
 
     return () => unsubscribe();
   }, []);
+
+  // Keep the greeting in sync with the current time in India
+  useEffect(() => {
+    const interval = setInterval(() => setGreeting(getGreeting()), 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Appointments panel: refetch whenever the daily/weekly/monthly tab changes
+  useEffect(() => {
+    const now = new Date();
+    let start = now, end = now;
+    if (appointmentView === 'weekly') {
+      [start, end] = getWeekRange(now);
+    } else if (appointmentView === 'monthly') {
+      [start, end] = getMonthRange(now);
+    }
+    const startStr = toDateStr(start);
+    const endStr = toDateStr(end);
+
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'appointments'), where('date', '>=', startStr), where('date', '<=', endStr)),
+      (snap) => {
+        const appts = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+        setPanelAppointments(appts);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [appointmentView]);
 
   const loadDashboardData = async () => {
     try {
@@ -317,7 +408,7 @@ const Dashboard = () => {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Good Morning, {currentUser.name || 'User'}!</h1>
+            <h1 className="text-3xl font-bold text-gray-800">{greeting}, {currentUser.name || 'User'}!</h1>
             <p className="text-gray-600">Here's what's happening at Tatva Ayurved today</p>
           </div>
           <div className="flex items-center gap-4">
@@ -370,13 +461,13 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - 2/3 width */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Today's Appointments */}
+          {/* Appointments */}
           <div className="bg-white rounded-xl shadow-md overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
                   <Calendar className="w-6 h-6 text-white" />
-                  <h2 className="text-xl font-bold text-white">Today's Appointments</h2>
+                  <h2 className="text-xl font-bold text-white">Appointments</h2>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -387,61 +478,100 @@ const Dashboard = () => {
                     Add
                   </button>
                   <span className="bg-blue-800 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                    {dashboardData.stats.totalAppointments} Total
+                    {panelAppointments.length} Total
                   </span>
                 </div>
               </div>
+              <div className="flex items-center gap-1 mt-3">
+                {[
+                  { id: 'daily', label: 'Daily' },
+                  { id: 'weekly', label: 'Weekly' },
+                  { id: 'monthly', label: 'Monthly' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setAppointmentView(tab.id)}
+                    className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                      appointmentView === tab.id
+                        ? 'bg-white text-blue-700'
+                        : 'bg-blue-800/40 text-blue-100 hover:bg-blue-800/60'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="divide-y divide-gray-100">
-              {dashboardData.todayAppointments.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                  <p>No appointments scheduled for today</p>
-                </div>
-              ) : (
-                dashboardData.todayAppointments.map(apt => (
-                  <div key={apt.id} className="p-4 hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="text-center">
-                          <p className="text-lg font-bold text-blue-600">{apt.time}</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900">{apt.patient}</p>
-                          <p className="text-sm text-gray-600">{apt.type}</p>
-                          {apt.doctorName && (
-                            <p className="text-xs text-teal-700 flex items-center gap-1 mt-0.5">
-                              🩺 Dr. {apt.doctorName}
-                            </p>
-                          )}
-                          {apt.therapistName && (
-                            <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
-                              👤 {apt.therapistName}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          apt.status === 'in-progress' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
-                        </span>
-                        <button
-                          onClick={() => deleteAppointment(apt.id)}
-                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Remove appointment"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+
+            {panelAppointments.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">
+                <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                <p>No appointments scheduled for this {appointmentView === 'daily' ? 'day' : appointmentView === 'weekly' ? 'week' : 'month'}</p>
+              </div>
+            ) : (
+              <div className="p-4 space-y-5 max-h-[32rem] overflow-y-auto">
+                {Object.entries(
+                  panelAppointments.reduce((groups, apt) => {
+                    const key = apt.date || 'unknown';
+                    (groups[key] = groups[key] || []).push(apt);
+                    return groups;
+                  }, {})
+                ).map(([dateKey, appts]) => (
+                  <div key={dateKey}>
+                    {appointmentView !== 'daily' && (
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                        {formatGroupDate(dateKey)}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                      {appts.map(apt => {
+                        const color = colorForAppointment(apt);
+                        return (
+                          <div
+                            key={apt.id}
+                            className={`rounded-xl border-l-4 ${color.border} ${color.bg} p-3 shadow-sm hover:shadow-md transition-shadow`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className={`text-base font-bold ${color.time}`}>{apt.time}</p>
+                              <button
+                                onClick={() => deleteAppointment(apt.id)}
+                                className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Remove appointment"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <p className="font-semibold text-gray-900 mt-1">{apt.patient}</p>
+                            {apt.type && (
+                              <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold ${color.badge}`}>
+                                {apt.type}
+                              </span>
+                            )}
+                            {apt.doctorName && (
+                              <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
+                                🩺 Dr. {apt.doctorName}
+                              </p>
+                            )}
+                            {apt.therapistName && (
+                              <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
+                                👤 {apt.therapistName}
+                              </p>
+                            )}
+                            <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              apt.status === 'in-progress'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Current IP Patients */}
