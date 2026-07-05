@@ -30,6 +30,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     room_rent: 0,
     room_type: '',
     room_number: '',
+    admission_date: patient?.admission_date || '',
+    discharge_date: '',
     days: 0,
     mess_days: 0,
     patient_meals: { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 },
@@ -44,6 +46,24 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
 
   const calcMessTotal = (meals) =>
     Object.values(meals).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
+
+  const calcStayDays = (admissionDate, dischargeDate) => {
+    if (!admissionDate || !dischargeDate) return null;
+    const admission = new Date(admissionDate);
+    const discharge = new Date(dischargeDate);
+    if (isNaN(admission) || isNaN(discharge) || discharge < admission) return null;
+    return Math.max(1, Math.round((discharge - admission) / (1000 * 60 * 60 * 24)));
+  };
+
+  const handleStayDateChange = (field, value) => {
+    const updated = { ...formData, [field]: value };
+    const stayDays = calcStayDays(updated.admission_date, updated.discharge_date);
+    if (stayDays !== null) {
+      updated.days = stayDays;
+      updated.mess_days = stayDays;
+    }
+    setFormData(updated);
+  };
 
   const [newMedicine, setNewMedicine] = useState({
     name: '',
@@ -194,6 +214,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         room_rent: invoiceType === 'IP' ? parseFloat(formData.room_rent) || 0 : 0,
         room_type: invoiceType === 'IP' ? formData.room_type : '',
         room_number: invoiceType === 'IP' ? formData.room_number : '',
+        admission_date: invoiceType === 'IP' ? formData.admission_date : '',
+        discharge_date: invoiceType === 'IP' ? formData.discharge_date : '',
         days: invoiceType === 'IP' ? parseFloat(formData.days) || 0 : 0,
         mess_days: invoiceType === 'IP' ? parseFloat(formData.mess_days) || 0 : 0,
         patient_mess_per_day: invoiceType === 'IP' ? calcMessTotal(formData.patient_meals) : 0,
@@ -285,6 +307,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       room_rent: parseFloat(formData.room_rent) || 0,
       room_type: formData.room_type,
       room_number: formData.room_number,
+      admission_date: formData.admission_date,
+      discharge_date: formData.discharge_date,
       days: parseFloat(formData.days) || 0,
       mess_days: parseFloat(formData.mess_days) || 0,
       patient_mess_per_day: calcMessTotal(formData.patient_meals),
@@ -353,6 +377,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
             <h3>Invoice Details:</h3>
             <p><strong>Date:</strong> ${new Date(data.invoice_date).toLocaleDateString()}</p>
             <p><strong>Invoice Type:</strong> ${data.invoice_type}</p>
+            ${data.invoice_type === 'IP' && data.admission_date ? `<p><strong>Admission Date:</strong> ${new Date(data.admission_date).toLocaleDateString()}</p>` : ''}
+            ${data.invoice_type === 'IP' && data.discharge_date ? `<p><strong>Discharge Date:</strong> ${new Date(data.discharge_date).toLocaleDateString()}</p>` : ''}
             <p><strong>Payment Mode:</strong> ${data.payment_mode}</p>
           </div>
         </div>
@@ -689,6 +715,25 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 
                 <div className="grid grid-cols-4 gap-4 mb-4">
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Admission Date</label>
+                    <input
+                      type="date"
+                      value={formData.admission_date}
+                      onChange={(e) => handleStayDateChange('admission_date', e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Discharge Date</label>
+                    <input
+                      type="date"
+                      value={formData.discharge_date}
+                      min={formData.admission_date || undefined}
+                      onChange={(e) => handleStayDateChange('discharge_date', e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Room Type</label>
                     <select
                       value={formData.room_type}
@@ -730,7 +775,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Days</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Days {calcStayDays(formData.admission_date, formData.discharge_date) !== null && (
+                        <span className="text-xs font-normal text-teal-600">(auto)</span>
+                      )}
+                    </label>
                     <input
                       type="number"
                       value={formData.days}
