@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { addDoc, updateDoc, doc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { addDoc, updateDoc, doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -541,8 +541,43 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
           autoPopulateFromProgress(records);
         }
       }).catch(() => {}).finally(() => setLoadingProgress(false));
+
+      // Load IP Case Sheet (admission-time Ayurvedic assessment & history) to prefill
+      if (!existingSummary) {
+        getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
+          if (snap.exists()) autoPopulateFromCaseSheet(snap.data());
+        }).catch(() => {});
+      }
     }
   }, []);
+
+  const autoPopulateFromCaseSheet = (cs) => {
+    setForm(prev => ({
+      ...prev,
+      ashtasthana: {
+        nadi: prev.ashtasthana.nadi || cs.nadi || '',
+        mutra: prev.ashtasthana.mutra || cs.mutra || '',
+        malam: prev.ashtasthana.malam || cs.malam || '',
+        jihva: prev.ashtasthana.jihva || cs.jihwa || '',
+        sabda: prev.ashtasthana.sabda || cs.sabda || '',
+        sparsha: prev.ashtasthana.sparsha || cs.sparsa || '',
+        drik: prev.ashtasthana.drik || cs.drik || '',
+        akrithi: prev.ashtasthana.akrithi || cs.akriti || '',
+      },
+      samprapthi: {
+        ...prev.samprapthi,
+        dushya: prev.samprapthi.dushya || cs.dooshya || '',
+        srothas: prev.samprapthi.srothas || cs.srotas_involved || '',
+      },
+      provisional_diagnosis: prev.provisional_diagnosis || cs.admin_diagnosis || '',
+      chief_complaints: prev.chief_complaints.filter(Boolean).length > 0
+        ? prev.chief_complaints
+        : cs.roopam ? [cs.roopam] : prev.chief_complaints,
+      medical_history: prev.medical_history.filter(Boolean).length > 0
+        ? prev.medical_history
+        : cs.history_past_illness ? [cs.history_past_illness] : prev.medical_history,
+    }));
+  };
 
   const autoPopulateFromProgress = (records) => {
     // Build treatment summary from daily records

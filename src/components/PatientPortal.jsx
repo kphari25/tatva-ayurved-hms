@@ -11,6 +11,7 @@ import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc 
 import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
 import DischargeSummaryModal from './DischargeSummaryModal';
 import IPDailyProgressModal from './IPDailyProgressModal';
+import IPCaseSheetModal from './IPCaseSheetModal';
 
 const PatientPortal = ({ onAddPatient }) => {
   console.log('🔵 PatientPortal rendered, onAddPatient prop:', typeof onAddPatient);
@@ -28,6 +29,8 @@ const PatientPortal = ({ onAddPatient }) => {
   const [dischargeSummaryPatient, setDischargeSummaryPatient] = useState(null);
   const [showDailyProgress, setShowDailyProgress] = useState(false);
   const [dailyProgressPatient, setDailyProgressPatient] = useState(null);
+  const [showCaseSheet, setShowCaseSheet] = useState(false);
+  const [caseSheetPatient, setCaseSheetPatient] = useState(null);
 
   // Appointment scheduling state
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
@@ -472,9 +475,19 @@ const PatientPortal = ({ onAddPatient }) => {
                           </span>
                         </div>
                         <div>
-                          <p className="font-semibold text-gray-900">
-                            {patient.first_name} {patient.middle_name} {patient.last_name}
-                          </p>
+                          {(patient.patient_type === 'IP' || patient.ip_number) ? (
+                            <button
+                              onClick={() => { setCaseSheetPatient(patient); setShowCaseSheet(true); }}
+                              className="font-semibold text-teal-700 hover:text-teal-900 hover:underline text-left"
+                              title="Open IP Case Sheet"
+                            >
+                              {patient.first_name} {patient.middle_name} {patient.last_name}
+                            </button>
+                          ) : (
+                            <p className="font-semibold text-gray-900">
+                              {patient.first_name} {patient.middle_name} {patient.last_name}
+                            </p>
+                          )}
                           {patient.assigned_doctor && (
                             <p className="text-xs text-teal-600 flex items-center gap-1 mt-0.5">
                               <Stethoscope className="w-3 h-3" /> {patient.assigned_doctor}
@@ -555,6 +568,16 @@ const PatientPortal = ({ onAddPatient }) => {
                         >
                           <UserRound className="w-4 h-4" />
                         </button>
+                        {/* IP Case Sheet — IP patients only */}
+                        {(patient.patient_type === 'IP' || patient.ip_number) && (
+                          <button
+                            onClick={() => { setCaseSheetPatient(patient); setShowCaseSheet(true); }}
+                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="IP Case Sheet"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+                        )}
                         {/* Daily Progress — IP patients only */}
                         {(patient.patient_type === 'IP' || patient.ip_number) && (
                           <button
@@ -1026,6 +1049,14 @@ const PatientPortal = ({ onAddPatient }) => {
         <IPDailyProgressModal
           patient={dailyProgressPatient}
           onClose={() => { setShowDailyProgress(false); setDailyProgressPatient(null); }}
+        />
+      )}
+
+      {/* ── IP Case Sheet Modal ── */}
+      {showCaseSheet && caseSheetPatient && (
+        <IPCaseSheetModal
+          patient={caseSheetPatient}
+          onClose={() => { setShowCaseSheet(false); setCaseSheetPatient(null); }}
         />
       )}
     </div>
