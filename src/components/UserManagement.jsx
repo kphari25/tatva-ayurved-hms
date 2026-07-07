@@ -4,7 +4,7 @@ import {
   UserCheck, UserCog, Search, Phone, Mail, Lock,
   CheckCircle, AlertCircle, Stethoscope, Calendar,
   Package, ShoppingCart, ClipboardList, BarChart3,
-  Receipt, Utensils, FileText, Home, TrendingUp, Wallet
+  Receipt, Utensils, FileText, Home, TrendingUp, Wallet, History
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -83,7 +83,8 @@ const MODULES = {
   'profit-loss': { label: 'P&L Statement', icon: Receipt, description: 'Profit and loss reporting' },
   financials: { label: 'Financials', icon: Wallet, description: 'Consolidated financial ledger: revenue, medicine sales, and expenses' },
   'user-management': { label: 'User Management', icon: UserCog, description: 'Manage users and roles' },
-  'hr-payroll': { label: 'HR & Payroll', icon: UserCog, description: 'HR and payroll management' }
+  'hr-payroll': { label: 'HR & Payroll', icon: UserCog, description: 'HR and payroll management' },
+  'user-activity': { label: 'User Activity', icon: History, description: 'Login/logout history and time spent in the system' }
 };
 
 // Default permissions per role

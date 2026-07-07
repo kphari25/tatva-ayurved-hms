@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Home, Users, Package, FileText, Receipt, TrendingUp,
   Calendar, IndianRupee, UserCog, Database, LogOut,
-  ShoppingCart, Utensils, BarChart3, Wallet
+  ShoppingCart, Utensils, BarChart3, Wallet, History
 } from 'lucide-react';
+import { db } from './lib/firebase';
+import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 
 // Import components
 import Login from './components/Login';
@@ -27,19 +29,26 @@ import PurchaseManagement from './components/PurchaseManagement';
 import AppointmentScheduling from './components/AppointmentScheduling';
 import UserManagement, { getUserPermissions, hasModuleAccess } from './components/UserManagement';
 import HRPayrollModule from './components/HRPayrollModule';
+import UserActivityReport from './components/UserActivityReport';
 
 function App() {
   // DEBUG VERSION - Updated 2026-05-22 - New Patient Button Fix
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard');
   const [showRegistration, setShowRegistration] = useState(false);
+  const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
   useEffect(() => {
     // Check for existing session
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
       try {
-        setCurrentUser(JSON.parse(savedUser));
+        const user = JSON.parse(savedUser);
+        setCurrentUser(user);
+        // Resume tracking the existing login session rather than starting a new one on refresh
+        if (!sessionIdRef.current) {
+          startSession(user);
+        }
       } catch (error) {
         console.error('Error parsing saved user:', error);
         localStorage.removeItem('currentUser');
@@ -66,13 +75,64 @@ function App() {
     };
   }, []);
 
+  // Heartbeat: keep the current login session's last_seen fresh while the app is open,
+  // so "time in system" can be approximated even if the user closes the tab without logging out.
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => {
+      if (sessionIdRef.current) {
+        updateDoc(doc(db, 'user_sessions', sessionIdRef.current), {
+          last_seen: new Date().toISOString(),
+        }).catch(() => {});
+      }
+    }, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
+  const startSession = async (user) => {
+    try {
+      const now = new Date().toISOString();
+      const docRef = await addDoc(collection(db, 'user_sessions'), {
+        user_email: user.email || '',
+        user_name: user.name || '',
+        role: user.role || '',
+        date: now.split('T')[0],
+        login_at: now,
+        last_seen: now,
+        logged_out_at: null,
+      });
+      sessionIdRef.current = docRef.id;
+      localStorage.setItem('currentSessionId', docRef.id);
+    } catch (error) {
+      console.error('Error starting session:', error);
+    }
+  };
+
+  const endSession = async () => {
+    if (!sessionIdRef.current) return;
+    try {
+      const now = new Date().toISOString();
+      await updateDoc(doc(db, 'user_sessions', sessionIdRef.current), {
+        logged_out_at: now,
+        last_seen: now,
+      });
+    } catch (error) {
+      console.error('Error ending session:', error);
+    } finally {
+      sessionIdRef.current = null;
+      localStorage.removeItem('currentSessionId');
+    }
+  };
+
   const handleLogin = (user) => {
     setCurrentUser(user);
     setCurrentView('dashboard');
+    startSession(user);
   };
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
+      endSession();
       localStorage.removeItem('currentUser');
       setCurrentUser(null);
       setCurrentView('dashboard');
@@ -129,6 +189,7 @@ function App() {
     { id: 'profit-loss', label: 'P&L Statement', icon: IndianRupee, moduleId: 'profit-loss' },
     { id: 'financials', label: 'Financials', icon: Wallet, moduleId: 'financials' },
     { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, moduleId: 'hr-payroll', badge: 'Admin' },
+    { id: 'user-activity', label: 'User Activity', icon: History, moduleId: 'user-activity', badge: 'Admin' },
     { id: 'user-management', label: 'User Management', icon: UserCog, moduleId: 'user-management', badge: 'Admin' },
     { id: 'database-backup', label: 'Database Backup', icon: Database, moduleId: 'user-management', badge: 'Admin' },
   ];
@@ -278,7 +339,9 @@ function App() {
         {currentView === 'financials' && <Financials />}
 
         {currentView === 'hr-payroll' && <HRPayrollModule userRole={currentUser?.role} currentUser={currentUser} />}
-        
+
+        {currentView === 'user-activity' && <UserActivityReport />}
+
         {currentView === 'user-management' && <UserManagement />}
         
         {currentView === 'database-backup' && (
