@@ -3,10 +3,16 @@ import { History, Printer, RefreshCw, Calendar, Users } from 'lucide-react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-const pad = (n) => String(n).padStart(2, '0');
-const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// All dates/times in this report are pinned to IST (Asia/Kolkata), regardless of the
+// viewer's or server's local timezone, so login/logout times are unambiguous.
+const toISTDateStr = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+const todayIST = () => toISTDateStr(new Date());
+const istDateStrDaysAgo = (baseDateStr, n) => {
+  const [y, m, d] = baseDateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - n)).toISOString().split('T')[0];
+};
 
-const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—';
 const fmtDate = (dateStr) => {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -34,17 +40,12 @@ const isRecentlyActive = (session) => {
   return (Date.now() - lastSeen.getTime()) < 5 * 60 * 1000;
 };
 
-const lastNDays = (n) => {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - (n - 1));
-  return [start, end];
-};
+const lastNDaysIST = (n) => [istDateStrDaysAgo(todayIST(), n - 1), todayIST()];
 
 const quickRanges = {
-  '7': () => lastNDays(7),
-  '10': () => lastNDays(10),
-  '30': () => lastNDays(30),
+  '7': () => lastNDaysIST(7),
+  '10': () => lastNDaysIST(10),
+  '30': () => lastNDaysIST(30),
 };
 
 const UserActivityReport = () => {
@@ -56,10 +57,7 @@ const UserActivityReport = () => {
 
   const selectedRange = useMemo(() => {
     if (rangeMode === 'custom') {
-      const now = new Date();
-      const start = customStart ? new Date(customStart + 'T00:00:00') : lastNDays(10)[0];
-      const end = customEnd ? new Date(customEnd + 'T00:00:00') : now;
-      return [start, end];
+      return [customStart || lastNDaysIST(10)[0], customEnd || todayIST()];
     }
     return quickRanges[rangeMode]();
   }, [rangeMode, customStart, customEnd]);
@@ -71,8 +69,7 @@ const UserActivityReport = () => {
   const loadSessions = async () => {
     try {
       setLoading(true);
-      const startStr = toDateStr(selectedRange[0]);
-      const endStr = toDateStr(selectedRange[1]);
+      const [startStr, endStr] = selectedRange;
       const q = query(
         collection(db, 'user_sessions'),
         where('date', '>=', startStr),
@@ -92,7 +89,7 @@ const UserActivityReport = () => {
   const groupedByDate = useMemo(() => {
     const groups = {};
     sessions.forEach((s) => {
-      const key = s.date || toDateStr(new Date(s.login_at));
+      const key = s.date || toISTDateStr(new Date(s.login_at));
       (groups[key] = groups[key] || []).push(s);
     });
     return Object.entries(groups).sort((a, b) => (a[0] < b[0] ? 1 : -1));
@@ -109,7 +106,7 @@ const UserActivityReport = () => {
   }, [sessions]);
 
   const handlePrint = () => {
-    const rangeLabel = `${selectedRange[0].toLocaleDateString('en-IN')} - ${selectedRange[1].toLocaleDateString('en-IN')}`;
+    const rangeLabel = `${fmtDate(selectedRange[0])} - ${fmtDate(selectedRange[1])} (IST)`;
 
     const rows = groupedByDate.map(([dateKey, entries]) => `
       <tr style="background:#f0f0f0;"><td colspan="5"><strong>${fmtDate(dateKey)}</strong></td></tr>
@@ -151,12 +148,12 @@ const UserActivityReport = () => {
         </div>
 
         <p><strong>Period:</strong> ${rangeLabel}</p>
-        <p><strong>Generated on:</strong> ${new Date().toLocaleString('en-IN')}</p>
+        <p><strong>Generated on:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST</p>
         <p><strong>Total Sessions:</strong> ${summary.totalSessions} &nbsp; | &nbsp; <strong>Unique Users:</strong> ${summary.uniqueUsers} &nbsp; | &nbsp; <strong>Total Time Logged:</strong> ${summary.totalTime}</p>
 
         <table>
           <thead>
-            <tr><th>User</th><th>Role</th><th>Login Time</th><th>Logout Time</th><th>Duration</th></tr>
+            <tr><th>User</th><th>Role</th><th>Login Time (IST)</th><th>Logout Time (IST)</th><th>Duration</th></tr>
           </thead>
           <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#888;">No sessions found</td></tr>'}</tbody>
         </table>
@@ -237,7 +234,7 @@ const UserActivityReport = () => {
       </div>
 
       <p className="text-sm text-gray-500 mb-4">
-        {selectedRange[0].toLocaleDateString('en-IN')} - {selectedRange[1].toLocaleDateString('en-IN')}
+        {fmtDate(selectedRange[0])} - {fmtDate(selectedRange[1])} <span className="text-gray-400">(IST)</span>
       </p>
 
       <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
@@ -272,8 +269,8 @@ const UserActivityReport = () => {
               <tr className="text-left text-gray-500">
                 <th className="px-4 py-3 font-medium">User</th>
                 <th className="px-4 py-3 font-medium">Role</th>
-                <th className="px-4 py-3 font-medium">Login Time</th>
-                <th className="px-4 py-3 font-medium">Logout Time</th>
+                <th className="px-4 py-3 font-medium">Login Time (IST)</th>
+                <th className="px-4 py-3 font-medium">Logout Time (IST)</th>
                 <th className="px-4 py-3 font-medium text-right">Duration</th>
               </tr>
             </thead>

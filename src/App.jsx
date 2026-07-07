@@ -7,6 +7,10 @@ import {
 import { db } from './lib/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 
+// Session dates are bucketed by IST calendar day (not UTC), so a login just after
+// midnight IST doesn't get mis-filed under the previous day in the User Activity report.
+const toISTDateStr = (date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date);
+
 // Import components
 import Login from './components/Login';
 import AdminUserPortal from './components/AdminUserPortal';
@@ -91,12 +95,13 @@ function App() {
 
   const startSession = async (user) => {
     try {
-      const now = new Date().toISOString();
+      const nowDate = new Date();
+      const now = nowDate.toISOString();
       const docRef = await addDoc(collection(db, 'user_sessions'), {
         user_email: user.email || '',
         user_name: user.name || '',
         role: user.role || '',
-        date: now.split('T')[0],
+        date: toISTDateStr(nowDate),
         login_at: now,
         last_seen: now,
         logged_out_at: null,
