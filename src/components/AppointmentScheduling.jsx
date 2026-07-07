@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User, LayoutGrid, List } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User, LayoutGrid, List, BarChart3 } from 'lucide-react';
 import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -13,6 +13,43 @@ const STATUS_STYLES = {
 };
 
 const todayISO = () => new Date().toISOString().split('T')[0];
+
+// ─── Consultation Outcome tracking ─────────────────────────────────────────
+const OUTCOME_OPTIONS = [
+  { id: 'consultation-only', label: 'Consultation Only' },
+  { id: 'converted-ip', label: '→ IP' },
+  { id: 'converted-op', label: '→ One-Day OP' },
+];
+
+const OUTCOME_STYLES = {
+  'consultation-only': 'bg-gray-100 text-gray-800',
+  'converted-ip': 'bg-purple-100 text-purple-800',
+  'converted-op': 'bg-teal-100 text-teal-800',
+};
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const toDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+const outcomeQuickRanges = {
+  week: () => {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    return [toDateStr(monday), toDateStr(now)];
+  },
+  month: () => {
+    const now = new Date();
+    return [toDateStr(new Date(now.getFullYear(), now.getMonth(), 1)), toDateStr(now)];
+  },
+  last30: () => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(start.getDate() - 29);
+    return [toDateStr(start), toDateStr(now)];
+  },
+};
 
 // ─── Appointment Modal ────────────────────────────────────────────────────────
 const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, doctors }) => {
@@ -563,7 +600,7 @@ const MonthlyCalendarView = ({ therapists, allAppointments, calendarMonth, setCa
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const AppointmentScheduling = () => {
-  const [view, setView] = useState('daily'); // 'daily' | 'weekly' | 'monthly'
+  const [view, setView] = useState('daily'); // 'daily' | 'weekly' | 'monthly' | 'outcomes'
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [weekBase, setWeekBase] = useState(todayISO());
@@ -575,6 +612,9 @@ const AppointmentScheduling = () => {
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
+  const [outcomeRangeMode, setOutcomeRangeMode] = useState('month');
+  const [outcomeCustomStart, setOutcomeCustomStart] = useState('');
+  const [outcomeCustomEnd, setOutcomeCustomEnd] = useState('');
 
   useEffect(() => { loadTherapists(); loadDoctors(); loadAllAppointments(); }, []);
   useEffect(() => { loadAppointments(); }, [selectedDate]);
@@ -684,6 +724,49 @@ const AppointmentScheduling = () => {
     }
   };
 
+  const updateOutcome = async (aptId, outcome) => {
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      const payload = {
+        consultation_outcome: outcome,
+        outcome_updated_at: new Date().toISOString(),
+        outcome_updated_by: currentUser.email || '',
+      };
+      await updateDoc(doc(db, 'appointments', aptId), payload);
+      setAllAppointments(prev => prev.map(a => (a.id === aptId ? { ...a, ...payload } : a)));
+      setAppointments(prev => prev.map(a => (a.id === aptId ? { ...a, ...payload } : a)));
+    } catch (error) {
+      console.error('Error updating outcome:', error);
+      alert('Failed to update outcome. Please try again.');
+    }
+  };
+
+  const outcomeRange = useMemo(() => {
+    if (outcomeRangeMode === 'custom') {
+      const now = new Date();
+      return [outcomeCustomStart || outcomeQuickRanges.month()[0], outcomeCustomEnd || toDateStr(now)];
+    }
+    return outcomeQuickRanges[outcomeRangeMode]();
+  }, [outcomeRangeMode, outcomeCustomStart, outcomeCustomEnd]);
+
+  const outcomeAppointments = useMemo(() => {
+    const [start, end] = outcomeRange;
+    return allAppointments
+      .filter(a => a.date >= start && a.date <= end)
+      .sort((a, b) => (b.date + (a.time || '')).localeCompare(a.date + (b.time || '')));
+  }, [allAppointments, outcomeRange]);
+
+  const outcomeSummary = useMemo(() => {
+    const total = outcomeAppointments.length;
+    const cancelled = outcomeAppointments.filter(a => a.status === 'cancelled').length;
+    const consultationOnly = outcomeAppointments.filter(a => a.consultation_outcome === 'consultation-only').length;
+    const convertedIp = outcomeAppointments.filter(a => a.consultation_outcome === 'converted-ip').length;
+    const convertedOp = outcomeAppointments.filter(a => a.consultation_outcome === 'converted-op').length;
+    const conversions = convertedIp + convertedOp;
+    const conversionRate = total > 0 ? ((conversions / total) * 100).toFixed(1) : '0.0';
+    return { total, cancelled, consultationOnly, convertedIp, convertedOp, conversionRate };
+  }, [outcomeAppointments]);
+
   const formattedDate = new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -722,6 +805,12 @@ const AppointmentScheduling = () => {
             >
               <LayoutGrid className="w-4 h-4" /> Monthly
             </button>
+            <button
+              onClick={() => setView('outcomes')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${view === 'outcomes' ? 'bg-teal-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              <BarChart3 className="w-4 h-4" /> Outcomes
+            </button>
           </div>
           <button
             onClick={openAddModal}
@@ -752,6 +841,131 @@ const AppointmentScheduling = () => {
           setCalendarMonth={setCalendarMonth}
           onAddAppointment={openAddModal}
         />
+      )}
+
+      {/* ── Outcomes View ── */}
+      {view === 'outcomes' && (
+        <div>
+          {/* Range control */}
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            {[
+              { id: 'week', label: 'This Week' },
+              { id: 'month', label: 'This Month' },
+              { id: 'last30', label: 'Last 30 Days' },
+              { id: 'custom', label: 'Custom' },
+            ].map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setOutcomeRangeMode(opt.id)}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  outcomeRangeMode === opt.id ? 'bg-teal-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+            {outcomeRangeMode === 'custom' && (
+              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-3 py-1.5">
+                <Calendar className="w-4 h-4 text-gray-400" />
+                <input
+                  type="date"
+                  value={outcomeCustomStart}
+                  onChange={(e) => setOutcomeCustomStart(e.target.value)}
+                  className="text-sm outline-none"
+                />
+                <span className="text-gray-400">to</span>
+                <input
+                  type="date"
+                  value={outcomeCustomEnd}
+                  onChange={(e) => setOutcomeCustomEnd(e.target.value)}
+                  className="text-sm outline-none"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            {[
+              { label: 'Total Appointments (Calls)', value: outcomeSummary.total, color: 'text-gray-800' },
+              { label: 'Cancelled', value: outcomeSummary.cancelled, color: 'text-red-600' },
+              { label: 'Consultation Only', value: outcomeSummary.consultationOnly, color: 'text-gray-600' },
+              { label: 'Converted → IP', value: outcomeSummary.convertedIp, color: 'text-purple-600' },
+              { label: 'Converted → OP', value: outcomeSummary.convertedOp, color: 'text-teal-600' },
+              { label: 'Conversion Rate', value: `${outcomeSummary.conversionRate}%`, color: 'text-green-600' },
+            ].map(card => (
+              <div key={card.label} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                <p className="text-xs text-gray-500">{card.label}</p>
+                <p className={`text-2xl font-bold mt-1 ${card.color}`}>{card.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr className="text-left text-gray-500">
+                    <th className="px-4 py-3 font-medium">Date</th>
+                    <th className="px-4 py-3 font-medium">Time</th>
+                    <th className="px-4 py-3 font-medium">Patient</th>
+                    <th className="px-4 py-3 font-medium">Type</th>
+                    <th className="px-4 py-3 font-medium">Doctor</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outcomeAppointments.map(apt => (
+                    <tr key={apt.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-3">{apt.date}</td>
+                      <td className="px-4 py-3">{apt.time}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{apt.patient}</td>
+                      <td className="px-4 py-3 text-gray-600">{apt.type}</td>
+                      <td className="px-4 py-3 text-gray-600">{apt.doctorName || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[apt.status] || STATUS_STYLES.scheduled}`}>
+                          {apt.status ? apt.status.charAt(0).toUpperCase() + apt.status.slice(1) : 'Scheduled'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {apt.status === 'completed' ? (
+                          <div className="flex flex-wrap gap-1">
+                            {OUTCOME_OPTIONS.map(opt => (
+                              <button
+                                key={opt.id}
+                                onClick={() => updateOutcome(apt.id, opt.id)}
+                                className={`px-2 py-1 rounded-full text-xs font-semibold transition-colors ${
+                                  apt.consultation_outcome === opt.id
+                                    ? OUTCOME_STYLES[opt.id]
+                                    : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : apt.status === 'cancelled' ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Pending</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {outcomeAppointments.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                        No appointments found for this period
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Daily View ── */}
