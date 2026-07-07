@@ -4,7 +4,7 @@ import {
   Phone, Mail, Calendar, MapPin, Activity,
   X, FileText, Download, Filter, CalendarPlus,
   Stethoscope, Clock, MessageSquare, CheckCircle, AlertCircle, Send,
-  ClipboardList, UserRound
+  ClipboardList, UserRound, BookOpen
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc } from 'firebase/firestore';
@@ -12,6 +12,7 @@ import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/
 import DischargeSummaryModal from './DischargeSummaryModal';
 import IPDailyProgressModal from './IPDailyProgressModal';
 import IPCaseSheetModal from './IPCaseSheetModal';
+import OPCaseSheetModal from './OPCaseSheetModal';
 
 const PatientPortal = ({ onAddPatient }) => {
   console.log('🔵 PatientPortal rendered, onAddPatient prop:', typeof onAddPatient);
@@ -31,6 +32,8 @@ const PatientPortal = ({ onAddPatient }) => {
   const [dailyProgressPatient, setDailyProgressPatient] = useState(null);
   const [showCaseSheet, setShowCaseSheet] = useState(false);
   const [caseSheetPatient, setCaseSheetPatient] = useState(null);
+  const [showOPCaseSheet, setShowOPCaseSheet] = useState(false);
+  const [opCaseSheetPatient, setOpCaseSheetPatient] = useState(null);
 
   // Appointment scheduling state
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
@@ -484,9 +487,13 @@ const PatientPortal = ({ onAddPatient }) => {
                               {patient.first_name} {patient.middle_name} {patient.last_name}
                             </button>
                           ) : (
-                            <p className="font-semibold text-gray-900">
+                            <button
+                              onClick={() => { setOpCaseSheetPatient(patient); setShowOPCaseSheet(true); }}
+                              className="font-semibold text-teal-700 hover:text-teal-900 hover:underline text-left"
+                              title="Open OP Case Sheet"
+                            >
                               {patient.first_name} {patient.middle_name} {patient.last_name}
-                            </p>
+                            </button>
                           )}
                           {patient.assigned_doctor && (
                             <p className="text-xs text-teal-600 flex items-center gap-1 mt-0.5">
@@ -586,6 +593,16 @@ const PatientPortal = ({ onAddPatient }) => {
                             title="IP Daily Progress"
                           >
                             <Activity className="w-4 h-4" />
+                          </button>
+                        )}
+                        {/* OP Case Sheet — OP patients only */}
+                        {!(patient.patient_type === 'IP' || patient.ip_number) && (
+                          <button
+                            onClick={() => { setOpCaseSheetPatient(patient); setShowOPCaseSheet(true); }}
+                            className="p-2 text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
+                            title="OP Case Sheet"
+                          >
+                            <BookOpen className="w-4 h-4" />
                           </button>
                         )}
                         {/* Discharge Summary */}
@@ -1057,6 +1074,14 @@ const PatientPortal = ({ onAddPatient }) => {
         <IPCaseSheetModal
           patient={caseSheetPatient}
           onClose={() => { setShowCaseSheet(false); setCaseSheetPatient(null); }}
+        />
+      )}
+
+      {/* ── OP Case Sheet Modal ── */}
+      {showOPCaseSheet && opCaseSheetPatient && (
+        <OPCaseSheetModal
+          patient={opCaseSheetPatient}
+          onClose={() => { setShowOPCaseSheet(false); setOpCaseSheetPatient(null); }}
         />
       )}
     </div>
