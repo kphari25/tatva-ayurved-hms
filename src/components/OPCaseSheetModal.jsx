@@ -467,7 +467,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-3">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-teal-700 rounded-t-xl">
+        <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-teal-700 rounded-t-xl">
           <div>
             <h2 className="text-xl font-bold text-white">OP Case Sheet</h2>
             <p className="text-teal-200 text-sm mt-0.5">
@@ -496,7 +496,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
+        <div className="flex-shrink-0 flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
           {tabs.map(t => (
             <button
               key={t.id}
@@ -509,7 +509,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
           {loading ? (
             <div className="text-center py-8 text-gray-400">Loading case sheet…</div>
           ) : (
@@ -764,7 +764,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
         </div>
 
         {/* Bottom bar */}
-        <div className="border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
+        <div className="flex-shrink-0 border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
           <span>Fill in the sections then Save or Print directly.</span>
           <button onClick={handlePrint} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
             <Printer className="w-4 h-4" /> Print Case Sheet
