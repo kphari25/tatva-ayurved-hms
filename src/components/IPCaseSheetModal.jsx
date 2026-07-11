@@ -3,6 +3,13 @@ import { X, Printer, Save, Plus } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import IPDailyProgressModal from './IPDailyProgressModal';
+import TreatmentPickerButton from './TreatmentPickerButton';
+import TreatmentItemsList from './TreatmentItemsList';
+
+const appendTreatment = (currentText, treatment) => {
+  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
+  return currentText ? `${currentText}, ${entry}` : entry;
+};
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -40,6 +47,8 @@ const emptyForm = () => ({
   history_past_illness: '',
   family_history: '',
   current_medicines: '',
+  treatment_medication_details: '',
+  treatment_items: [],
 
   diet: '', appetite: '', bowel: '', micturition: '', sleep: '',
   habits_addiction: '', hypersensitivity: '', hereditary: '', menstrual_history: '',
@@ -71,9 +80,12 @@ const Field = ({ label, value, onChange, placeholder, type = 'text' }) => (
   </div>
 );
 
-const TextArea = ({ label, value, onChange, rows = 3, placeholder }) => (
+const TextArea = ({ label, value, onChange, rows = 3, placeholder, actions }) => (
   <div>
-    <label className="block text-sm font-semibold text-gray-700 mb-1">{label}</label>
+    <div className="flex items-center justify-between mb-1">
+      <label className="block text-sm font-semibold text-gray-700">{label}</label>
+      {actions}
+    </div>
     <textarea
       rows={rows}
       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
@@ -204,6 +216,9 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress) => {
 
 <div class="section-title">Presently Taking the Following Medicines</div>
 <p style="white-space:pre-line;">${form.current_medicines}</p>
+
+<div class="section-title">Treatment / Medication Details</div>
+<p style="white-space:pre-line;">${form.treatment_medication_details}</p>
 
 <div class="section-title">Personal History</div>
 <table class="grid">
@@ -483,6 +498,25 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
                   <TextArea label="History of Past Illness" rows={3} value={form.history_past_illness} onChange={v => set('history_past_illness', v)} />
                   <TextArea label="Family History" rows={2} value={form.family_history} onChange={v => set('family_history', v)} />
                   <TextArea label="Presently Taking the Following Medicines" rows={2} value={form.current_medicines} onChange={v => set('current_medicines', v)} />
+                  <TextArea
+                    label="Treatment / Medication Details"
+                    rows={2}
+                    value={form.treatment_medication_details}
+                    onChange={v => set('treatment_medication_details', v)}
+                    actions={
+                      <TreatmentPickerButton
+                        onSelect={(t) => setForm(prev => ({
+                          ...prev,
+                          treatment_medication_details: appendTreatment(prev.treatment_medication_details, t),
+                          treatment_items: [...(prev.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
+                        }))}
+                      />
+                    }
+                  />
+                  <TreatmentItemsList
+                    items={form.treatment_items}
+                    onRemove={(idx) => setForm(prev => ({ ...prev, treatment_items: prev.treatment_items.filter((_, i) => i !== idx) }))}
+                  />
 
                   <SectionTitle>Personal History</SectionTitle>
                   <div className="grid grid-cols-3 gap-4">

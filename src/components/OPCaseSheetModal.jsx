@@ -3,6 +3,7 @@ import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, getDocs, query, where, orderBy } from 'firebase/firestore';
 import TreatmentPickerButton from './TreatmentPickerButton';
+import TreatmentItemsList from './TreatmentItemsList';
 
 const appendTreatment = (currentText, treatment) => {
   const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
@@ -41,7 +42,7 @@ const emptyForm = () => ({
 
   known_allergies: '', presenting_complaints: '', pain_assessment: '',
 
-  history_present_illness: '', history_previous_illness: '', treatment_medication_details: '',
+  history_present_illness: '', history_previous_illness: '', treatment_medication_details: '', treatment_items: [],
 
   dm: '', htn: '', hyperlipidemia: '', ihd: '', thyroid_dysfunction: '',
   comorbidity_other_label: '', comorbidity_other_value: '',
@@ -74,6 +75,7 @@ const emptyVisitEntry = () => ({
   date: new Date().toISOString().split('T')[0],
   clinical_findings: '',
   medicines_procedures: '',
+  treatment_items: [],
   pain_intensity_score: '',
   next_followup_date: '',
   signed_by: '',
@@ -606,9 +608,17 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                     onChange={v => set('treatment_medication_details', v)}
                     actions={
                       <TreatmentPickerButton
-                        onSelect={(t) => set('treatment_medication_details', appendTreatment(form.treatment_medication_details, t))}
+                        onSelect={(t) => setForm(prev => ({
+                          ...prev,
+                          treatment_medication_details: appendTreatment(prev.treatment_medication_details, t),
+                          treatment_items: [...(prev.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
+                        }))}
                       />
                     }
+                  />
+                  <TreatmentItemsList
+                    items={form.treatment_items}
+                    onRemove={(idx) => setForm(prev => ({ ...prev, treatment_items: prev.treatment_items.filter((_, i) => i !== idx) }))}
                   />
 
                   <SectionTitle>Comorbidities</SectionTitle>
@@ -720,9 +730,17 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                         onChange={v => setVisitForm(p => ({ ...p, medicines_procedures: v }))}
                         actions={
                           <TreatmentPickerButton
-                            onSelect={(t) => setVisitForm(p => ({ ...p, medicines_procedures: appendTreatment(p.medicines_procedures, t) }))}
+                            onSelect={(t) => setVisitForm(p => ({
+                              ...p,
+                              medicines_procedures: appendTreatment(p.medicines_procedures, t),
+                              treatment_items: [...(p.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
+                            }))}
                           />
                         }
+                      />
+                      <TreatmentItemsList
+                        items={visitForm.treatment_items}
+                        onRemove={(idx) => setVisitForm(p => ({ ...p, treatment_items: p.treatment_items.filter((_, i) => i !== idx) }))}
                       />
                       <Field label="Signed By (Doctor)" value={visitForm.signed_by} onChange={v => setVisitForm(p => ({ ...p, signed_by: v }))} />
                     </div>

@@ -6,6 +6,7 @@ import {
 import { collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import TreatmentPickerButton from './TreatmentPickerButton';
+import TreatmentItemsList from './TreatmentItemsList';
 
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -24,6 +25,7 @@ const emptyEntry = () => ({
   weight: '',
   diet: '',
   treatment_performed: '',
+  treatment_items: [],
   medicines_given: '',
   doctors_notes: '',
 });
@@ -182,18 +184,28 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
 
             {/* Clinical */}
             <div className="grid grid-cols-1 gap-3">
-              <TextArea
-                label="Treatment Performed Today"
-                value={form.treatment_performed}
-                onChange={v => setForm(f => ({ ...f, treatment_performed: v }))}
-                placeholder="e.g. Abhyanga, Shirodhara, Panchakarma…"
-                icon={Stethoscope}
-                actions={
-                  <TreatmentPickerButton
-                    onSelect={(t) => setForm(f => ({ ...f, treatment_performed: appendTreatment(f.treatment_performed, t) }))}
-                  />
-                }
-              />
+              <div>
+                <TextArea
+                  label="Treatment Performed Today"
+                  value={form.treatment_performed}
+                  onChange={v => setForm(f => ({ ...f, treatment_performed: v }))}
+                  placeholder="e.g. Abhyanga, Shirodhara, Panchakarma…"
+                  icon={Stethoscope}
+                  actions={
+                    <TreatmentPickerButton
+                      onSelect={(t) => setForm(f => ({
+                        ...f,
+                        treatment_performed: appendTreatment(f.treatment_performed, t),
+                        treatment_items: [...(f.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
+                      }))}
+                    />
+                  }
+                />
+                <TreatmentItemsList
+                  items={form.treatment_items}
+                  onRemove={(idx) => setForm(f => ({ ...f, treatment_items: f.treatment_items.filter((_, i) => i !== idx) }))}
+                />
+              </div>
               <TextArea label="Medicines Given" value={form.medicines_given} onChange={v => setForm(f => ({ ...f, medicines_given: v }))} placeholder="e.g. Ashwagandha 2 tabs BD, Triphala 1 tab HS…" icon={Pill} />
               <TextArea label="Diet / Food" value={form.diet} onChange={v => setForm(f => ({ ...f, diet: v }))} placeholder="e.g. Light Ayurvedic diet — khichdi, warm water…" icon={Utensils} />
               <TextArea label="Doctor's Notes / Observations" value={form.doctors_notes} onChange={v => setForm(f => ({ ...f, doctors_notes: v }))} placeholder="Patient response, observations, plan changes…" icon={Stethoscope} />

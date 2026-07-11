@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { X, Printer, Save, FileText, MessageSquare } from 'lucide-react';
-import { collection, addDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { X, Printer, Save, FileText, MessageSquare, Plus } from 'lucide-react';
+import { collection, addDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
 
@@ -12,9 +12,51 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
   const [smsStatus, setSmsStatus] = useState(null); // null | 'sent' | 'failed'
   const [savedInvoiceData, setSavedInvoiceData] = useState(null);
 
+  // Treatments picked from the price list on the patient's case sheet (OP or IP) — read-only, auto-synced.
+  const [priceListItems, setPriceListItems] = useState([]);
+  // Ad-hoc charges added directly on the invoice, on top of the price-list treatments.
+  const [additionalCharges, setAdditionalCharges] = useState([]);
+
+  useEffect(() => {
+    const patientId = patient?.firebaseId || patient?.id;
+    if (!patientId) return;
+    const loadTreatmentItems = async () => {
+      try {
+        const items = [];
+        const caseSheetCollection = invoiceType === 'IP' ? 'ip_case_sheets' : 'op_case_sheets';
+        const caseSheetSnap = await getDoc(doc(db, caseSheetCollection, patientId));
+        if (caseSheetSnap.exists()) {
+          (caseSheetSnap.data().treatment_items || []).forEach(it => items.push({ ...it, source: 'Case Sheet' }));
+        }
+
+        // IP treatments are mostly logged day-to-day; OP follow-ups are logged per visit — both should bill too.
+        const logCollection = invoiceType === 'IP' ? 'daily_progress' : 'op_visit_notes';
+        const logSnap = await getDocs(query(collection(db, logCollection), where('patient_id', '==', patientId)));
+        const sourceLabel = invoiceType === 'IP' ? 'Daily Progress' : 'Visit';
+        logSnap.docs.forEach(d => {
+          const data = d.data();
+          (data.treatment_items || []).forEach(it => items.push({ ...it, source: data.date ? `${sourceLabel} · ${data.date}` : sourceLabel }));
+        });
+
+        setPriceListItems(items);
+      } catch (e) {
+        console.error('Error loading treatment items:', e);
+      }
+    };
+    loadTreatmentItems();
+  }, [invoiceType, patient]);
+
+  const addAdditionalCharge = () => setAdditionalCharges(prev => [...prev, { label: '', amount: 0 }]);
+  const updateAdditionalCharge = (idx, field, value) =>
+    setAdditionalCharges(prev => prev.map((c, i) => (i === idx ? { ...c, [field]: value } : c)));
+  const removeAdditionalCharge = (idx) => setAdditionalCharges(prev => prev.filter((_, i) => i !== idx));
+
+  const calculateTreatmentCharges = () =>
+    priceListItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0) +
+    additionalCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+
   const [formData, setFormData] = useState({
     invoice_date: new Date().toISOString().split('T')[0],
-    treatment_charges: 0,
     nursing_fees: 0,
     doctor_fees: 0,
     lab_test_charges: 0,
@@ -62,7 +104,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
   // Gross = every line item including registration fee
   const calculateGross = () => {
     let gross = 0;
-    gross += parseFloat(formData.treatment_charges) || 0;
+    gross += calculateTreatmentCharges();
     gross += parseFloat(formData.nursing_fees) || 0;
     gross += parseFloat(formData.doctor_fees) || 0;
     gross += parseFloat(formData.lab_test_charges) || 0;
@@ -104,7 +146,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         patient_address: patient.address,
         invoice_type: invoiceType,
         invoice_date: formData.invoice_date,
-        treatment_charges: parseFloat(formData.treatment_charges) || 0,
+        treatment_charges: calculateTreatmentCharges(),
+        treatment_items: priceListItems,
+        additional_charges: additionalCharges,
         nursing_fees: parseFloat(formData.nursing_fees) || 0,
         doctor_fees: parseFloat(formData.doctor_fees) || 0,
         lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
@@ -194,7 +238,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       patient_address: patient.address,
       invoice_type: invoiceType,
       invoice_date: formData.invoice_date,
-      treatment_charges: parseFloat(formData.treatment_charges) || 0,
+      treatment_charges: calculateTreatmentCharges(),
+      treatment_items: priceListItems,
+      additional_charges: additionalCharges,
       nursing_fees: parseFloat(formData.nursing_fees) || 0,
       doctor_fees: parseFloat(formData.doctor_fees) || 0,
       lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
@@ -298,7 +344,23 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 <td>₹${data.registration_fee.toFixed(2)}</td>
               </tr>
             ` : ''}
-            ${data.treatment_charges > 0 ? `
+            ${(data.treatment_items && data.treatment_items.length > 0) ? data.treatment_items.map(item => `
+              <tr>
+                <td>${item.name}</td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${Number(item.price || 0).toFixed(2)}</td>
+              </tr>
+            `).join('') : ''}
+            ${(data.additional_charges && data.additional_charges.length > 0) ? data.additional_charges.map(charge => `
+              <tr>
+                <td>${charge.label || 'Additional Charge'}</td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${Number(charge.amount || 0).toFixed(2)}</td>
+              </tr>
+            `).join('') : ''}
+            ${(!data.treatment_items?.length && !data.additional_charges?.length && data.treatment_charges > 0) ? `
               <tr>
                 <td>Treatment Charges</td>
                 <td>-</td>
@@ -548,18 +610,75 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 </div>
               </div>
 
+              {/* Treatment Charges — auto-synced from the price-list picks on the case sheet, plus any additional charges */}
+              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">Treatment Charges (₹)</label>
+                  <span className="text-xs text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+                    Auto-synced from {invoiceType} case sheet & {invoiceType === 'IP' ? 'daily progress' : 'visit log'}
+                  </span>
+                </div>
+
+                {priceListItems.length === 0 && additionalCharges.length === 0 && (
+                  <p className="text-xs text-gray-400 mb-2">
+                    No treatments picked from the price list yet. Add treatments via "Add from Price List" in the {invoiceType} case sheet{invoiceType === 'IP' ? ' or Daily Progress' : "'s Visit Log"}, or add a charge manually below.
+                  </p>
+                )}
+
+                <div className="space-y-1.5 mb-2">
+                  {priceListItems.map((item, idx) => (
+                    <div key={`pl-${idx}`} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">{item.name} <span className="text-xs text-teal-600">({item.source || 'price list'})</span></span>
+                      <span className="font-medium text-gray-800">₹{Number(item.price || 0).toLocaleString('en-IN')}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2 mb-2">
+                  {additionalCharges.map((charge, idx) => (
+                    <div key={`ac-${idx}`} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={charge.label}
+                        placeholder="Description"
+                        onChange={(e) => updateAdditionalCharge(idx, 'label', e.target.value)}
+                        className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                      />
+                      <input
+                        type="number"
+                        value={charge.amount}
+                        placeholder="0.00"
+                        onChange={(e) => updateAdditionalCharge(idx, 'amount', e.target.value)}
+                        className="w-28 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeAdditionalCharge(idx)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Remove charge"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addAdditionalCharge}
+                  className="flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-900 hover:bg-teal-50 px-2 py-1 rounded"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Charge
+                </button>
+
+                <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-200 text-sm font-bold text-gray-800">
+                  <span>Total Treatment Charges</span>
+                  <span>₹{calculateTreatmentCharges().toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
               {/* Other charges grid */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Treatment Charges (₹)</label>
-                  <input
-                    type="number"
-                    value={formData.treatment_charges}
-                    onChange={(e) => setFormData({ ...formData, treatment_charges: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-                    placeholder="0.00"
-                  />
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Doctor's Fees (₹)</label>
                   <input
