@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, getDocs, query, where, orderBy } from 'firebase/firestore';
+import TreatmentPickerButton from './TreatmentPickerButton';
+
+const appendTreatment = (currentText, treatment) => {
+  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
+  return currentText ? `${currentText}, ${entry}` : entry;
+};
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -100,9 +106,12 @@ const SelectField = ({ label, value, onChange, options }) => (
   </div>
 );
 
-const TextArea = ({ label, value, onChange, rows = 3, placeholder }) => (
+const TextArea = ({ label, value, onChange, rows = 3, placeholder, actions }) => (
   <div>
-    <label className="block text-sm font-semibold text-gray-700 mb-1">{label}</label>
+    <div className="flex items-center justify-between mb-1">
+      <label className="block text-sm font-semibold text-gray-700">{label}</label>
+      {actions}
+    </div>
     <textarea
       rows={rows}
       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
@@ -590,7 +599,17 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                 <div className="space-y-5">
                   <TextArea label="History of Present Illness" rows={3} value={form.history_present_illness} onChange={v => set('history_present_illness', v)} />
                   <TextArea label="History of Previous Illness" rows={3} value={form.history_previous_illness} onChange={v => set('history_previous_illness', v)} />
-                  <TextArea label="Treatment / Medication Details" rows={2} value={form.treatment_medication_details} onChange={v => set('treatment_medication_details', v)} />
+                  <TextArea
+                    label="Treatment / Medication Details"
+                    rows={2}
+                    value={form.treatment_medication_details}
+                    onChange={v => set('treatment_medication_details', v)}
+                    actions={
+                      <TreatmentPickerButton
+                        onSelect={(t) => set('treatment_medication_details', appendTreatment(form.treatment_medication_details, t))}
+                      />
+                    }
+                  />
 
                   <SectionTitle>Comorbidities</SectionTitle>
                   <div className="grid grid-cols-3 gap-4">
@@ -694,7 +713,17 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                     </div>
                     <div className="space-y-3 mb-3">
                       <TextArea label="Clinical Findings" rows={2} value={visitForm.clinical_findings} onChange={v => setVisitForm(p => ({ ...p, clinical_findings: v }))} />
-                      <TextArea label="Medicines, Procedures & Other Interventions" rows={2} value={visitForm.medicines_procedures} onChange={v => setVisitForm(p => ({ ...p, medicines_procedures: v }))} />
+                      <TextArea
+                        label="Medicines, Procedures & Other Interventions"
+                        rows={2}
+                        value={visitForm.medicines_procedures}
+                        onChange={v => setVisitForm(p => ({ ...p, medicines_procedures: v }))}
+                        actions={
+                          <TreatmentPickerButton
+                            onSelect={(t) => setVisitForm(p => ({ ...p, medicines_procedures: appendTreatment(p.medicines_procedures, t) }))}
+                          />
+                        }
+                      />
                       <Field label="Signed By (Doctor)" value={visitForm.signed_by} onChange={v => setVisitForm(p => ({ ...p, signed_by: v }))} />
                     </div>
                     <button

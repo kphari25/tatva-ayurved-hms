@@ -5,8 +5,14 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import TreatmentPickerButton from './TreatmentPickerButton';
 
 const today = () => new Date().toISOString().split('T')[0];
+
+const appendTreatment = (currentText, treatment) => {
+  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
+  return currentText ? `${currentText}, ${entry}` : entry;
+};
 
 const emptyEntry = () => ({
   date: today(),
@@ -102,11 +108,14 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
     </div>
   );
 
-  const TextArea = ({ label, value, onChange, placeholder, icon: Icon }) => (
+  const TextArea = ({ label, value, onChange, placeholder, icon: Icon, actions }) => (
     <div>
-      <label className="flex items-center gap-1 text-xs font-medium text-gray-600 mb-1">
-        {Icon && <Icon className="w-3.5 h-3.5" />} {label}
-      </label>
+      <div className="flex items-center justify-between mb-1">
+        <label className="flex items-center gap-1 text-xs font-medium text-gray-600">
+          {Icon && <Icon className="w-3.5 h-3.5" />} {label}
+        </label>
+        {actions}
+      </div>
       <textarea
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -173,7 +182,18 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
 
             {/* Clinical */}
             <div className="grid grid-cols-1 gap-3">
-              <TextArea label="Treatment Performed Today" value={form.treatment_performed} onChange={v => setForm(f => ({ ...f, treatment_performed: v }))} placeholder="e.g. Abhyanga, Shirodhara, Panchakarma…" icon={Stethoscope} />
+              <TextArea
+                label="Treatment Performed Today"
+                value={form.treatment_performed}
+                onChange={v => setForm(f => ({ ...f, treatment_performed: v }))}
+                placeholder="e.g. Abhyanga, Shirodhara, Panchakarma…"
+                icon={Stethoscope}
+                actions={
+                  <TreatmentPickerButton
+                    onSelect={(t) => setForm(f => ({ ...f, treatment_performed: appendTreatment(f.treatment_performed, t) }))}
+                  />
+                }
+              />
               <TextArea label="Medicines Given" value={form.medicines_given} onChange={v => setForm(f => ({ ...f, medicines_given: v }))} placeholder="e.g. Ashwagandha 2 tabs BD, Triphala 1 tab HS…" icon={Pill} />
               <TextArea label="Diet / Food" value={form.diet} onChange={v => setForm(f => ({ ...f, diet: v }))} placeholder="e.g. Light Ayurvedic diet — khichdi, warm water…" icon={Utensils} />
               <TextArea label="Doctor's Notes / Observations" value={form.doctors_notes} onChange={v => setForm(f => ({ ...f, doctors_notes: v }))} placeholder="Patient response, observations, plan changes…" icon={Stethoscope} />

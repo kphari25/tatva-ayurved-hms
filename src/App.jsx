@@ -25,6 +25,7 @@ import InvoicesManagement from './components/InvoicesManagement';
 import DischargeManagement from './components/DischargeManagement';
 import LeadManagement from './components/LeadManagement';
 import PackageManagement from './components/PackageManagement';
+import TreatmentCharges from './components/TreatmentCharges';
 import Dashboard from './components/Dashboard';
 import ProfitLoss from './components/ProfitLoss';
 import Financials from './components/Financials';
@@ -176,6 +177,7 @@ function App() {
     { id: 'leads', label: 'Lead Management', icon: TrendingUp, moduleId: 'leads' },
     { id: 'inventory', label: 'Inventory', icon: Package, moduleId: 'inventory' },
     { id: 'packages', label: 'Treatment Packages', icon: Package, moduleId: 'packages' },
+    { id: 'treatment-charges', label: 'Treatment Charges', icon: IndianRupee, moduleId: 'treatment-charges' },
     { id: 'purchase', label: 'Purchase Management', icon: ShoppingCart, moduleId: 'purchase' },
     { id: 'ai-assist', label: 'AI Assist', icon: TrendingUp, moduleId: 'ai-assist' },
     { id: 'prescriptions', label: 'Prescriptions', icon: FileText, moduleId: 'prescriptions' },
@@ -313,6 +315,7 @@ function App() {
         {currentView === 'leads' && <LeadManagement />}
         {currentView === 'inventory' && <InventoryManagement />}
         {currentView === 'packages' && <PackageManagement />}
+        {currentView === 'treatment-charges' && <TreatmentCharges />}
         {currentView === 'purchase' && <PurchaseManagement />}
         {currentView === 'ai-assist' && <AIAssist />}
         {currentView === 'mess-expense' && <MessExpenseTracker />}
