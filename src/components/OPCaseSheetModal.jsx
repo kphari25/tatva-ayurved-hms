@@ -42,7 +42,7 @@ const emptyForm = () => ({
 
   known_allergies: '', presenting_complaints: '', pain_assessment: '',
 
-  history_present_illness: '', history_previous_illness: '', treatment_medication_details: '', treatment_items: [],
+  history_present_illness: '', history_previous_illness: '', medication_details: '', treatment_details: '', treatment_items: [],
 
   dm: '', htn: '', hyperlipidemia: '', ihd: '', thyroid_dysfunction: '',
   comorbidity_other_label: '', comorbidity_other_value: '',
@@ -74,7 +74,8 @@ const emptyForm = () => ({
 const emptyVisitEntry = () => ({
   date: new Date().toISOString().split('T')[0],
   clinical_findings: '',
-  medicines_procedures: '',
+  medication_notes: '',
+  treatment_notes: '',
   treatment_items: [],
   pain_intensity_score: '',
   next_followup_date: '',
@@ -142,7 +143,8 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes) => {
   const visitRows = visitNotes.map(v => `<tr>
       <td>${fmtDate(v.date)}</td>
       <td>${v.clinical_findings || ''}</td>
-      <td>${v.medicines_procedures || ''}</td>
+      <td>${v.medication_notes || ''}</td>
+      <td>${v.treatment_notes || v.medicines_procedures || ''}</td>
       <td>${v.pain_intensity_score || ''}</td>
       <td>${fmtDate(v.next_followup_date)}</td>
       <td>${v.signed_by || ''}</td>
@@ -257,8 +259,11 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes) => {
 <div class="section-title">History of Previous Illness</div>
 <p style="white-space:pre-line;">${form.history_previous_illness}</p>
 
-<div class="section-title">Treatment / Medication Details</div>
-<p style="white-space:pre-line;">${form.treatment_medication_details}</p>
+<div class="section-title">Medication Details</div>
+<p style="white-space:pre-line;">${form.medication_details}</p>
+
+<div class="section-title">Treatment Details</div>
+<p style="white-space:pre-line;">${form.treatment_details}</p>
 
 <div class="section-title">Comorbidities</div>
 <table class="grid">
@@ -333,10 +338,10 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes) => {
 
 <div class="page-break"></div>
 
-<div class="section-title">Medicines, Procedures &amp; Re-Assessment Log</div>
+<div class="section-title">Medication, Treatment &amp; Re-Assessment Log</div>
 <table class="grid">
-  <thead><tr><th style="width:80px;">Date</th><th>Clinical Findings</th><th>Medicines / Procedures / Interventions</th><th style="width:60px;">Pain Score</th><th style="width:90px;">Next Follow-up</th><th>Signed By</th></tr></thead>
-  <tbody>${visitRows || '<tr><td colspan="6" style="text-align:center;color:#888;">No records</td></tr>'}</tbody>
+  <thead><tr><th style="width:80px;">Date</th><th>Clinical Findings</th><th>Medication</th><th>Treatment</th><th style="width:60px;">Pain Score</th><th style="width:90px;">Next Follow-up</th><th>Signed By</th></tr></thead>
+  <tbody>${visitRows || '<tr><td colspan="7" style="text-align:center;color:#888;">No records</td></tr>'}</tbody>
 </table>
 
 <div class="footer">
@@ -374,7 +379,12 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
       setLoading(true);
       const snap = await getDoc(doc(db, 'op_case_sheets', patientId));
       if (snap.exists()) {
-        setForm(prev => ({ ...prev, ...snap.data() }));
+        const data = snap.data();
+        // Older case sheets stored a single combined "treatment_medication_details" field.
+        if (!data.treatment_details && data.treatment_medication_details) {
+          data.treatment_details = data.treatment_medication_details;
+        }
+        setForm(prev => ({ ...prev, ...data }));
       } else {
         setForm(prev => ({ ...prev, physician: patient?.assigned_doctor || '' }));
       }
@@ -602,15 +612,22 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                   <TextArea label="History of Present Illness" rows={3} value={form.history_present_illness} onChange={v => set('history_present_illness', v)} />
                   <TextArea label="History of Previous Illness" rows={3} value={form.history_previous_illness} onChange={v => set('history_previous_illness', v)} />
                   <TextArea
-                    label="Treatment / Medication Details"
+                    label="Medication Details"
                     rows={2}
-                    value={form.treatment_medication_details}
-                    onChange={v => set('treatment_medication_details', v)}
+                    value={form.medication_details}
+                    onChange={v => set('medication_details', v)}
+                    placeholder="Medicines prescribed…"
+                  />
+                  <TextArea
+                    label="Treatment Details"
+                    rows={2}
+                    value={form.treatment_details}
+                    onChange={v => set('treatment_details', v)}
                     actions={
                       <TreatmentPickerButton
                         onSelect={(t) => setForm(prev => ({
                           ...prev,
-                          treatment_medication_details: appendTreatment(prev.treatment_medication_details, t),
+                          treatment_details: appendTreatment(prev.treatment_details, t),
                           treatment_items: [...(prev.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
                         }))}
                       />
@@ -724,15 +741,22 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                     <div className="space-y-3 mb-3">
                       <TextArea label="Clinical Findings" rows={2} value={visitForm.clinical_findings} onChange={v => setVisitForm(p => ({ ...p, clinical_findings: v }))} />
                       <TextArea
-                        label="Medicines, Procedures & Other Interventions"
+                        label="Medication Details"
                         rows={2}
-                        value={visitForm.medicines_procedures}
-                        onChange={v => setVisitForm(p => ({ ...p, medicines_procedures: v }))}
+                        value={visitForm.medication_notes}
+                        onChange={v => setVisitForm(p => ({ ...p, medication_notes: v }))}
+                        placeholder="Medicines prescribed…"
+                      />
+                      <TextArea
+                        label="Treatment Details"
+                        rows={2}
+                        value={visitForm.treatment_notes}
+                        onChange={v => setVisitForm(p => ({ ...p, treatment_notes: v }))}
                         actions={
                           <TreatmentPickerButton
                             onSelect={(t) => setVisitForm(p => ({
                               ...p,
-                              medicines_procedures: appendTreatment(p.medicines_procedures, t),
+                              treatment_notes: appendTreatment(p.treatment_notes, t),
                               treatment_items: [...(p.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
                             }))}
                           />
@@ -781,10 +805,16 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                                 <p className="text-gray-800">{v.clinical_findings}</p>
                               </div>
                             )}
-                            {v.medicines_procedures && (
+                            {v.medication_notes && (
                               <div className="col-span-2">
-                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Medicines / Procedures / Interventions</p>
-                                <p className="text-gray-800">{v.medicines_procedures}</p>
+                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Medication Details</p>
+                                <p className="text-gray-800">{v.medication_notes}</p>
+                              </div>
+                            )}
+                            {(v.treatment_notes || v.medicines_procedures) && (
+                              <div className="col-span-2">
+                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Treatment Details</p>
+                                <p className="text-gray-800">{v.treatment_notes || v.medicines_procedures}</p>
                               </div>
                             )}
                             {v.pain_intensity_score && (

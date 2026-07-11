@@ -47,7 +47,8 @@ const emptyForm = () => ({
   history_past_illness: '',
   family_history: '',
   current_medicines: '',
-  treatment_medication_details: '',
+  medication_details: '',
+  treatment_details: '',
   treatment_items: [],
 
   diet: '', appetite: '', bowel: '', micturition: '', sleep: '',
@@ -217,8 +218,11 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress) => {
 <div class="section-title">Presently Taking the Following Medicines</div>
 <p style="white-space:pre-line;">${form.current_medicines}</p>
 
-<div class="section-title">Treatment / Medication Details</div>
-<p style="white-space:pre-line;">${form.treatment_medication_details}</p>
+<div class="section-title">Medication Details</div>
+<p style="white-space:pre-line;">${form.medication_details}</p>
+
+<div class="section-title">Treatment Details</div>
+<p style="white-space:pre-line;">${form.treatment_details}</p>
 
 <div class="section-title">Personal History</div>
 <table class="grid">
@@ -325,7 +329,12 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
       setLoading(true);
       const snap = await getDoc(doc(db, 'ip_case_sheets', patientId));
       if (snap.exists()) {
-        setForm(prev => ({ ...prev, ...snap.data() }));
+        const data = snap.data();
+        // Older case sheets stored a single combined "treatment_medication_details" field.
+        if (!data.treatment_details && data.treatment_medication_details) {
+          data.treatment_details = data.treatment_medication_details;
+        }
+        setForm(prev => ({ ...prev, ...data }));
       } else {
         setForm(prev => ({
           ...prev,
@@ -499,15 +508,22 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
                   <TextArea label="Family History" rows={2} value={form.family_history} onChange={v => set('family_history', v)} />
                   <TextArea label="Presently Taking the Following Medicines" rows={2} value={form.current_medicines} onChange={v => set('current_medicines', v)} />
                   <TextArea
-                    label="Treatment / Medication Details"
+                    label="Medication Details"
                     rows={2}
-                    value={form.treatment_medication_details}
-                    onChange={v => set('treatment_medication_details', v)}
+                    value={form.medication_details}
+                    onChange={v => set('medication_details', v)}
+                    placeholder="Medicines prescribed…"
+                  />
+                  <TextArea
+                    label="Treatment Details"
+                    rows={2}
+                    value={form.treatment_details}
+                    onChange={v => set('treatment_details', v)}
                     actions={
                       <TreatmentPickerButton
                         onSelect={(t) => setForm(prev => ({
                           ...prev,
-                          treatment_medication_details: appendTreatment(prev.treatment_medication_details, t),
+                          treatment_details: appendTreatment(prev.treatment_details, t),
                           treatment_items: [...(prev.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
                         }))}
                       />
