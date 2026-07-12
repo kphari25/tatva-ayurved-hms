@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, MessageSquare, Users, TrendingUp, Calendar, Plus, Search, Filter, CheckCircle, Clock, X, AlertCircle, Send } from 'lucide-react';
+import { Phone, MessageSquare, Users, TrendingUp, Calendar, Plus, Search, Filter, CheckCircle, Clock, X, AlertCircle, Send, XCircle } from 'lucide-react';
 import { collection, getDocs, addDoc, updateDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -12,6 +12,8 @@ const LeadManagement = () => {
   const [showAddLeadModal, setShowAddLeadModal] = useState(false);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [whatsAppLead, setWhatsAppLead] = useState(null);
 
   useEffect(() => {
     loadLeads();
@@ -48,6 +50,7 @@ const LeadManagement = () => {
       newToday: leads.filter(l => new Date(l.created_at).toDateString() === today).length,
       hot: leads.filter(l => l.priority === 'hot').length,
       converted: leads.filter(l => l.status === 'converted').length,
+      lost: leads.filter(l => l.status === 'lost').length,
       conversionRate: leads.length > 0 ? ((leads.filter(l => l.status === 'converted').length / leads.length) * 100).toFixed(1) : 0,
       pendingFollowup: leads.filter(l => l.next_followup && new Date(l.next_followup) <= new Date() && l.status !== 'converted').length
     };
@@ -102,8 +105,32 @@ const LeadManagement = () => {
     }
   };
 
-  const StatCard = ({ title, value, icon: Icon, color, subtitle }) => (
-    <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: color }}>
+  // A lead is "lost" when it made first contact but never went on to take any
+  // treatment — i.e. it won't be converted into a patient.
+  const handleMarkAsLost = async (lead) => {
+    if (!confirm(`Mark ${lead.name} as lost? This means they made contact but did not take any treatment.`)) return;
+    const reason = prompt('Reason (optional) — e.g. unreachable, chose another clinic, price…') || '';
+
+    try {
+      await updateDoc(doc(db, 'leads', lead.id), {
+        status: 'lost',
+        lost_at: new Date().toISOString(),
+        lost_reason: reason,
+        updated_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email
+      });
+      loadLeads();
+    } catch (error) {
+      console.error('Error marking lead as lost:', error);
+      alert('Failed to update: ' + error.message);
+    }
+  };
+
+  const StatCard = ({ title, value, icon: Icon, color, subtitle, onClick }) => (
+    <div
+      onClick={onClick}
+      className={`bg-white rounded-xl shadow-md p-6 border-l-4 ${onClick ? 'cursor-pointer hover:shadow-lg transition-shadow' : ''}`}
+      style={{ borderColor: color }}
+    >
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm font-medium text-gray-600">{title}</p>
         <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
@@ -140,7 +167,7 @@ const LeadManagement = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-6">
         <StatCard
           title="Total Leads"
           value={stats.totalLeads}
@@ -175,6 +202,14 @@ const LeadManagement = () => {
           icon={Clock}
           color="#ef4444"
           subtitle="Action needed"
+        />
+        <StatCard
+          title="Lost"
+          value={stats.lost}
+          icon={XCircle}
+          color="#6b7280"
+          subtitle="No treatment taken"
+          onClick={() => setFilterStatus('lost')}
         />
       </div>
 
@@ -332,6 +367,25 @@ const LeadManagement = () => {
                             <CheckCircle className="w-4 h-4" />
                           </button>
                         )}
+                        <button
+                          onClick={() => {
+                            setWhatsAppLead(lead);
+                            setShowWhatsAppModal(true);
+                          }}
+                          className="px-3 py-1 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700"
+                          title="WhatsApp Follow-up"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                        </button>
+                        {lead.status !== 'converted' && lead.status !== 'lost' && (
+                          <button
+                            onClick={() => handleMarkAsLost(lead)}
+                            className="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600"
+                            title="Mark as Lost"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -365,6 +419,17 @@ const LeadManagement = () => {
             setShowFollowUpModal(false);
             setSelectedLead(null);
             loadLeads();
+          }}
+        />
+      )}
+
+      {/* WhatsApp Follow-up Modal */}
+      {showWhatsAppModal && whatsAppLead && (
+        <LeadWhatsAppModal
+          lead={whatsAppLead}
+          onClose={() => {
+            setShowWhatsAppModal(false);
+            setWhatsAppLead(null);
           }}
         />
       )}
@@ -632,6 +697,69 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// WhatsApp Follow-up Modal
+const LeadWhatsAppModal = ({ lead, onClose }) => {
+  const defaultMessage = `Hi ${lead.name}, this is Tatva Ayurved following up on your inquiry${lead.interest ? ` about ${lead.interest}` : ''}. Would you like to schedule a visit?`;
+  const [message, setMessage] = useState(defaultMessage);
+
+  const hasPhone = !!(lead.phone || '').replace(/[^0-9]/g, '');
+
+  const handleSend = () => {
+    if (!message.trim()) { alert('Please enter a message'); return; }
+
+    let phone = (lead.phone || '').replace(/[^0-9]/g, '');
+    if (!phone.startsWith('91') && phone.length === 10) phone = '91' + phone;
+
+    const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+        <div className="bg-emerald-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+          <h2 className="text-xl font-bold">WhatsApp: {lead.name}</h2>
+          <button onClick={onClose} className="hover:bg-emerald-700 p-2 rounded">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="p-6">
+          {!hasPhone ? (
+            <p className="text-sm text-red-600">No phone number on file for this lead.</p>
+          ) : (
+            <>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Message</label>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                rows="5"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-2">Opens WhatsApp with this message pre-filled to {lead.phone} — you'll still need to hit send there.</p>
+            </>
+          )}
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            {hasPhone && (
+              <button
+                onClick={handleSend}
+                className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" /> Open WhatsApp
+              </button>
+            )}
           </div>
         </div>
       </div>
