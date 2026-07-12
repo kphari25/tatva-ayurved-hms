@@ -7,6 +7,7 @@ import { collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc } fr
 import { db } from '../lib/firebase';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
+import MedicinePickerButton from './MedicinePickerButton';
 
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -14,6 +15,9 @@ const appendTreatment = (currentText, treatment) => {
   const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
   return currentText ? `${currentText}, ${entry}` : entry;
 };
+
+const appendMedicine = (currentText, medicine) =>
+  currentText ? `${currentText}, ${medicine.item_name}` : medicine.item_name;
 
 const emptyEntry = () => ({
   date: today(),
@@ -206,7 +210,18 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
                   onRemove={(idx) => setForm(f => ({ ...f, treatment_items: f.treatment_items.filter((_, i) => i !== idx) }))}
                 />
               </div>
-              <TextArea label="Medicines Given" value={form.medicines_given} onChange={v => setForm(f => ({ ...f, medicines_given: v }))} placeholder="e.g. Ashwagandha 2 tabs BD, Triphala 1 tab HS…" icon={Pill} />
+              <TextArea
+                label="Medicines Given"
+                value={form.medicines_given}
+                onChange={v => setForm(f => ({ ...f, medicines_given: v }))}
+                placeholder="e.g. Ashwagandha 2 tabs BD, Triphala 1 tab HS…"
+                icon={Pill}
+                actions={
+                  <MedicinePickerButton
+                    onSelect={(m) => setForm(f => ({ ...f, medicines_given: appendMedicine(f.medicines_given, m) }))}
+                  />
+                }
+              />
               <TextArea label="Diet / Food" value={form.diet} onChange={v => setForm(f => ({ ...f, diet: v }))} placeholder="e.g. Light Ayurvedic diet — khichdi, warm water…" icon={Utensils} />
               <TextArea label="Doctor's Notes / Observations" value={form.doctors_notes} onChange={v => setForm(f => ({ ...f, doctors_notes: v }))} placeholder="Patient response, observations, plan changes…" icon={Stethoscope} />
             </div>

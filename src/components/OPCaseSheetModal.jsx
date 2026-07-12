@@ -4,11 +4,15 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, getDocs, query, where, orderBy } from 'firebase/firestore';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
+import MedicinePickerButton from './MedicinePickerButton';
 
 const appendTreatment = (currentText, treatment) => {
   const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
   return currentText ? `${currentText}, ${entry}` : entry;
 };
+
+const appendMedicine = (currentText, medicine) =>
+  currentText ? `${currentText}, ${medicine.item_name}` : medicine.item_name;
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -617,6 +621,11 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                     value={form.medication_details}
                     onChange={v => set('medication_details', v)}
                     placeholder="Medicines prescribed…"
+                    actions={
+                      <MedicinePickerButton
+                        onSelect={(m) => set('medication_details', appendMedicine(form.medication_details, m))}
+                      />
+                    }
                   />
                   <TextArea
                     label="Treatment Details"
@@ -746,6 +755,11 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                         value={visitForm.medication_notes}
                         onChange={v => setVisitForm(p => ({ ...p, medication_notes: v }))}
                         placeholder="Medicines prescribed…"
+                        actions={
+                          <MedicinePickerButton
+                            onSelect={(m) => setVisitForm(p => ({ ...p, medication_notes: appendMedicine(p.medication_notes, m) }))}
+                          />
+                        }
                       />
                       <TextArea
                         label="Treatment Details"

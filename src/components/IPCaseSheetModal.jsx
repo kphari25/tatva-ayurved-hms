@@ -5,11 +5,15 @@ import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from 
 import IPDailyProgressModal from './IPDailyProgressModal';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
+import MedicinePickerButton from './MedicinePickerButton';
 
 const appendTreatment = (currentText, treatment) => {
   const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
   return currentText ? `${currentText}, ${entry}` : entry;
 };
+
+const appendMedicine = (currentText, medicine) =>
+  currentText ? `${currentText}, ${medicine.item_name}` : medicine.item_name;
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -513,6 +517,11 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
                     value={form.medication_details}
                     onChange={v => set('medication_details', v)}
                     placeholder="Medicines prescribed…"
+                    actions={
+                      <MedicinePickerButton
+                        onSelect={(m) => set('medication_details', appendMedicine(form.medication_details, m))}
+                      />
+                    }
                   />
                   <TextArea
                     label="Treatment Details"

@@ -4,7 +4,7 @@ import {
   Phone, Mail, Calendar, MapPin, Activity,
   X, FileText, Download, Filter, CalendarPlus,
   Stethoscope, Clock, MessageSquare, CheckCircle, AlertCircle, Send,
-  ClipboardList, UserRound, BookOpen
+  ClipboardList, UserRound, BookOpen, Pill
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc } from 'firebase/firestore';
@@ -13,6 +13,7 @@ import DischargeSummaryModal from './DischargeSummaryModal';
 import IPDailyProgressModal from './IPDailyProgressModal';
 import IPCaseSheetModal from './IPCaseSheetModal';
 import OPCaseSheetModal from './OPCaseSheetModal';
+import PrescriptionModal from './PrescriptionModal';
 
 const PatientPortal = ({ onAddPatient }) => {
   console.log('🔵 PatientPortal rendered, onAddPatient prop:', typeof onAddPatient);
@@ -34,6 +35,8 @@ const PatientPortal = ({ onAddPatient }) => {
   const [caseSheetPatient, setCaseSheetPatient] = useState(null);
   const [showOPCaseSheet, setShowOPCaseSheet] = useState(false);
   const [opCaseSheetPatient, setOpCaseSheetPatient] = useState(null);
+  const [showPrescription, setShowPrescription] = useState(false);
+  const [prescriptionPatient, setPrescriptionPatient] = useState(null);
 
   // Appointment scheduling state
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
@@ -613,6 +616,14 @@ const PatientPortal = ({ onAddPatient }) => {
                         >
                           <ClipboardList className="w-4 h-4" />
                         </button>
+                        {/* Prescription */}
+                        <button
+                          onClick={() => { setPrescriptionPatient(patient); setShowPrescription(true); }}
+                          className="p-2 text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
+                          title="Prescription"
+                        >
+                          <Pill className="w-4 h-4" />
+                        </button>
                         {/* Delete */}
                         <button
                           onClick={() => handleDelete(patient.id)}
@@ -1082,6 +1093,14 @@ const PatientPortal = ({ onAddPatient }) => {
         <OPCaseSheetModal
           patient={opCaseSheetPatient}
           onClose={() => { setShowOPCaseSheet(false); setOpCaseSheetPatient(null); }}
+        />
+      )}
+
+      {/* ── Prescription Modal ── */}
+      {showPrescription && prescriptionPatient && (
+        <PrescriptionModal
+          patient={prescriptionPatient}
+          onClose={() => { setShowPrescription(false); setPrescriptionPatient(null); }}
         />
       )}
     </div>
