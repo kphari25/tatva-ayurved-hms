@@ -52,6 +52,7 @@ const emptyForm = () => ({
   family_history: '',
   current_medicines: '',
   medication_details: '',
+  medicine_items: [],
   treatment_details: '',
   treatment_items: [],
 
@@ -519,9 +520,18 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
                     placeholder="Medicines prescribed…"
                     actions={
                       <MedicinePickerButton
-                        onSelect={(m) => set('medication_details', appendMedicine(form.medication_details, m))}
+                        onSelect={(m) => setForm(prev => ({
+                          ...prev,
+                          medication_details: appendMedicine(prev.medication_details, m),
+                          medicine_items: [...(prev.medicine_items || []), { item_name: m.item_name, item_code: m.item_code || '', mrp: Number(m.mrp) || 0 }],
+                        }))}
                       />
                     }
+                  />
+                  <TreatmentItemsList
+                    items={(form.medicine_items || []).map(mi => ({ name: mi.item_name, price: mi.mrp }))}
+                    onRemove={(idx) => setForm(prev => ({ ...prev, medicine_items: prev.medicine_items.filter((_, i) => i !== idx) }))}
+                    note="this shows up in the Prescription and can be synced into a Medicine Sale invoice"
                   />
                   <TextArea
                     label="Treatment Details"

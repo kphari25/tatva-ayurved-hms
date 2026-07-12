@@ -31,6 +31,7 @@ const emptyEntry = () => ({
   treatment_performed: '',
   treatment_items: [],
   medicines_given: '',
+  medicine_items: [],
   doctors_notes: '',
 });
 
@@ -218,9 +219,18 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
                 icon={Pill}
                 actions={
                   <MedicinePickerButton
-                    onSelect={(m) => setForm(f => ({ ...f, medicines_given: appendMedicine(f.medicines_given, m) }))}
+                    onSelect={(m) => setForm(f => ({
+                      ...f,
+                      medicines_given: appendMedicine(f.medicines_given, m),
+                      medicine_items: [...(f.medicine_items || []), { item_name: m.item_name, item_code: m.item_code || '', mrp: Number(m.mrp) || 0 }],
+                    }))}
                   />
                 }
+              />
+              <TreatmentItemsList
+                items={(form.medicine_items || []).map(mi => ({ name: mi.item_name, price: mi.mrp }))}
+                onRemove={(idx) => setForm(f => ({ ...f, medicine_items: f.medicine_items.filter((_, i) => i !== idx) }))}
+                note="this shows up in the Prescription and can be synced into a Medicine Sale invoice"
               />
               <TextArea label="Diet / Food" value={form.diet} onChange={v => setForm(f => ({ ...f, diet: v }))} placeholder="e.g. Light Ayurvedic diet — khichdi, warm water…" icon={Utensils} />
               <TextArea label="Doctor's Notes / Observations" value={form.doctors_notes} onChange={v => setForm(f => ({ ...f, doctors_notes: v }))} placeholder="Patient response, observations, plan changes…" icon={Stethoscope} />

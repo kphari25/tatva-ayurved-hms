@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } from 'lucide-react';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const HOSPITAL = {
@@ -40,6 +40,10 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
   const [suggestions, setSuggestions] = useState({});
   const [openDropdown, setOpenDropdown] = useState(null);
   const medRef = useRef(null);
+
+  // Prescription sync
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [prescriptionSynced, setPrescriptionSynced] = useState(null); // null | number of items found
 
   useEffect(() => {
     loadInventory();
@@ -98,6 +102,62 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
     setPatientQuery(`${p.first_name || ''} ${p.last_name || ''}`.trim());
     setPatientSuggestions([]);
     setShowPatientDrop(false);
+
+    const patientId = p.firebaseId || p.id;
+    setSelectedPatientId(patientId);
+    // Only auto-fill if the bill is still blank — never clobber medicines already typed in.
+    if (rows.length === 1 && !rows[0].name) {
+      syncFromPrescription(patientId);
+    } else {
+      setPrescriptionSynced(null);
+    }
+  };
+
+  // ── Prescription sync ────────────────────────────────────────
+  // Pulls every medicine picked from inventory across the OP/IP case sheets,
+  // OP visit log, and IP daily progress so the bill doesn't need retyping.
+  const loadPrescriptionMedicines = async (patientId) => {
+    if (!patientId) return [];
+    try {
+      const items = [];
+
+      const opCaseSnap = await getDoc(doc(db, 'op_case_sheets', patientId));
+      if (opCaseSnap.exists()) (opCaseSnap.data().medicine_items || []).forEach(m => items.push(m));
+
+      const opVisitsSnap = await getDocs(query(collection(db, 'op_visit_notes'), where('patient_id', '==', patientId)));
+      opVisitsSnap.docs.forEach(d => (d.data().medicine_items || []).forEach(m => items.push(m)));
+
+      const ipCaseSnap = await getDoc(doc(db, 'ip_case_sheets', patientId));
+      if (ipCaseSnap.exists()) (ipCaseSnap.data().medicine_items || []).forEach(m => items.push(m));
+
+      const dailySnap = await getDocs(query(collection(db, 'daily_progress'), where('patient_id', '==', patientId)));
+      dailySnap.docs.forEach(d => (d.data().medicine_items || []).forEach(m => items.push(m)));
+
+      return items;
+    } catch (e) {
+      console.error('Error loading prescription medicines:', e);
+      return [];
+    }
+  };
+
+  const syncFromPrescription = async (patientId) => {
+    const prescribed = await loadPrescriptionMedicines(patientId || selectedPatientId);
+    setPrescriptionSynced(prescribed.length);
+    if (prescribed.length === 0) return;
+
+    const newRows = prescribed.map(m => {
+      const matched = inventory.find(inv => m.item_code && inv.item_code === m.item_code)
+        || inventory.find(inv => inv.item_name === m.item_name);
+      return {
+        name: m.item_name,
+        item_code: m.item_code || '',
+        quantity: 1,
+        rate: matched ? (parseFloat(matched.mrp) || 0) : (parseFloat(m.mrp) || 0),
+        stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
+        id: Date.now() + Math.random(),
+      };
+    });
+    setRows([...newRows, emptyRow()]);
   };
 
   // ── Medicine autocomplete ───────────────────────────────────
@@ -406,6 +466,25 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
                 </div>
               )}
             </div>
+
+            {selectedPatientId && (
+              <div className="flex items-center justify-between mb-4 px-3 py-2 bg-teal-50 border border-teal-200 rounded-lg">
+                <span className="text-xs text-teal-800">
+                  {prescriptionSynced === null
+                    ? 'Sync the bill items from this patient\'s prescription (OP/IP Medication Details).'
+                    : prescriptionSynced === 0
+                      ? 'No medicines found in this patient\'s prescription yet.'
+                      : `${prescriptionSynced} medicine${prescriptionSynced === 1 ? '' : 's'} loaded from prescription.`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => syncFromPrescription(selectedPatientId)}
+                  className="text-xs font-medium text-teal-700 hover:text-teal-900 hover:bg-teal-100 px-2 py-1 rounded"
+                >
+                  Sync from Prescription
+                </button>
+              </div>
+            )}
 
             {/* Manual / auto-filled fields */}
             <div className="grid grid-cols-3 gap-4">

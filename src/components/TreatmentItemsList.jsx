@@ -1,9 +1,9 @@
 import React from 'react';
 import { X } from 'lucide-react';
 
-// Displays treatments picked from the price list as removable chips, with a running subtotal.
-// This list is the structured data source that invoices read to auto-fill treatment charges.
-const TreatmentItemsList = ({ items = [], onRemove }) => {
+// Displays treatments or medicines picked from a price list / inventory as removable chips,
+// with a running subtotal. This list is the structured data source that invoices read from.
+const TreatmentItemsList = ({ items = [], onRemove, note = "this will be reflected automatically in the invoice's Treatment Charges" }) => {
   if (!items.length) return null;
 
   const subtotal = items.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
@@ -29,7 +29,7 @@ const TreatmentItemsList = ({ items = [], onRemove }) => {
         ))}
       </div>
       <p className="text-xs text-gray-500">
-        Price-list subtotal: <span className="font-semibold text-gray-700">₹{subtotal.toLocaleString('en-IN')}</span> — this will be reflected automatically in the invoice's Treatment Charges.
+        Subtotal: <span className="font-semibold text-gray-700">₹{subtotal.toLocaleString('en-IN')}</span> — {note}.
       </p>
     </div>
   );
