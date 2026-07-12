@@ -30,6 +30,39 @@ const emptyEntry = () => ({
   doctors_notes: '',
 });
 
+const Field = ({ label, value, onChange, placeholder, icon: Icon }) => (
+  <div>
+    <label className="flex items-center gap-1 text-xs font-medium text-gray-600 mb-1">
+      {Icon && <Icon className="w-3.5 h-3.5" />} {label}
+    </label>
+    <input
+      type="text"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+    />
+  </div>
+);
+
+const TextArea = ({ label, value, onChange, placeholder, icon: Icon, actions }) => (
+  <div>
+    <div className="flex items-center justify-between mb-1">
+      <label className="flex items-center gap-1 text-xs font-medium text-gray-600">
+        {Icon && <Icon className="w-3.5 h-3.5" />} {label}
+      </label>
+      {actions}
+    </div>
+    <textarea
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={2}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+    />
+  </div>
+);
+
 const IPDailyProgressModal = ({ patient, onClose }) => {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,39 +127,6 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
       alert('Failed to delete: ' + e.message);
     }
   };
-
-  const Field = ({ label, value, onChange, placeholder, icon: Icon }) => (
-    <div>
-      <label className="flex items-center gap-1 text-xs font-medium text-gray-600 mb-1">
-        {Icon && <Icon className="w-3.5 h-3.5" />} {label}
-      </label>
-      <input
-        type="text"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-      />
-    </div>
-  );
-
-  const TextArea = ({ label, value, onChange, placeholder, icon: Icon, actions }) => (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <label className="flex items-center gap-1 text-xs font-medium text-gray-600">
-          {Icon && <Icon className="w-3.5 h-3.5" />} {label}
-        </label>
-        {actions}
-      </div>
-      <textarea
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={2}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
-      />
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
