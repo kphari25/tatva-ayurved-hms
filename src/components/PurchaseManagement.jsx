@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, CheckCircle, XCircle, Clock, FileText, Package, AlertTriangle, Plus, Search, Filter, Download, Send } from 'lucide-react';
+import { ShoppingCart, CheckCircle, XCircle, Clock, FileText, Package, AlertTriangle, Plus, Search, Filter, Download, Send, Eye } from 'lucide-react';
 import { collection, getDocs, addDoc, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import * as XLSX from 'xlsx';
 import PurchaseRequestModal from './PurchaseRequestModal';
 import PurchaseOrderModal from './PurchaseOrderModal';
 import GoodsReceiptModal from './GoodsReceiptModal';
+import ViewPurchaseRequestModal from './ViewPurchaseRequestModal';
 
 const PurchaseManagement = () => {
   const [activeTab, setActiveTab] = useState('requests');
@@ -35,17 +36,17 @@ const PurchaseManagement = () => {
     try {
       setLoading(true);
 
-      if (activeTab === 'requests') {
-        const requestsRef = collection(db, 'purchase_requests');
-        const q = query(requestsRef, orderBy('created_at', 'desc'));
-        const snapshot = await getDocs(q);
-        setPurchaseRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      } else if (activeTab === 'orders') {
-        const ordersRef = collection(db, 'purchase_orders');
-        const q = query(ordersRef, orderBy('po_date', 'desc'));
-        const snapshot = await getDocs(q);
-        setPurchaseOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      } else if (activeTab === 'receipts') {
+      // Requests and orders both feed the stats cards, which are visible regardless
+      // of which tab is active, so keep them loaded together rather than per-tab.
+      const requestsRef = collection(db, 'purchase_requests');
+      const requestsQ = query(requestsRef, orderBy('created_at', 'desc'));
+      const ordersRef = collection(db, 'purchase_orders');
+      const ordersQ = query(ordersRef, orderBy('po_date', 'desc'));
+      const [requestsSnap, ordersSnap] = await Promise.all([getDocs(requestsQ), getDocs(ordersQ)]);
+      setPurchaseRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setPurchaseOrders(ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      if (activeTab === 'receipts') {
         const receiptsRef = collection(db, 'goods_receipt_notes');
         const q = query(receiptsRef, orderBy('received_date', 'desc'));
         const snapshot = await getDocs(q);
@@ -245,6 +246,7 @@ const PurchaseManagement = () => {
 const PurchaseRequestsTab = ({ requests, loading, onApprove, onReload }) => {
   const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
   const isApprover = currentUser.permissions?.includes('all') || currentUser.email?.includes('admin');
+  const [viewingRequest, setViewingRequest] = useState(null);
 
   const handleApprove = async (request) => {
     if (!isApprover) {
@@ -322,6 +324,7 @@ const PurchaseRequestsTab = ({ requests, loading, onApprove, onReload }) => {
   };
 
   return (
+    <>
     <div className="bg-white rounded-xl shadow-md overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -355,6 +358,13 @@ const PurchaseRequestsTab = ({ requests, loading, onApprove, onReload }) => {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => setViewingRequest(request)}
+                      className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
+                      title="View"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
                     {request.status === 'pending_approval' && isApprover && (
                       <>
                         <button
@@ -389,6 +399,13 @@ const PurchaseRequestsTab = ({ requests, loading, onApprove, onReload }) => {
         </table>
       </div>
     </div>
+    {viewingRequest && (
+      <ViewPurchaseRequestModal
+        request={viewingRequest}
+        onClose={() => setViewingRequest(null)}
+      />
+    )}
+    </>
   );
 };
 
