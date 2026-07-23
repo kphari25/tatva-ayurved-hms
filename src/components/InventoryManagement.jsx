@@ -5,6 +5,16 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch } fr
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
 
+const getPurchaseDate = (item) => item.last_purchase_date || item.purchase_date || item.created_at || null;
+
+const getDaysInInventory = (item) => {
+  const dateStr = getPurchaseDate(item);
+  if (!dateStr) return null;
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return null;
+  return Math.max(0, Math.floor((new Date() - date) / (1000 * 60 * 60 * 24)));
+};
+
 const InventoryManagement = () => {
   const [inventory, setInventory] = useState([]);
   const [filteredInventory, setFilteredInventory] = useState([]);
@@ -129,6 +139,7 @@ const InventoryManagement = () => {
                 stock_value: parseFloat(row.stock_value || row['Stock Value'] || 0),
                 purchase_date: purchaseDate,
                 month: purchaseDate, // Store in both fields for compatibility
+                last_purchase_date: purchaseDate || new Date().toISOString().split('T')[0],
                 imported: true,
                 imported_at: new Date().toISOString()
               };
@@ -387,6 +398,8 @@ const InventoryManagement = () => {
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">MRP</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">GST</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch/Expiry</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date of Purchase</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days in Inventory</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 </tr>
               </thead>
@@ -429,6 +442,12 @@ const InventoryManagement = () => {
                           </span>
                         )}
                       </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {getPurchaseDate(item) ? new Date(getPurchaseDate(item)).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {getDaysInInventory(item) !== null ? `${getDaysInInventory(item)} day${getDaysInInventory(item) === 1 ? '' : 's'}` : '-'}
+                      </td>
                       <td className="px-6 py-4 text-sm">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
                           item.is_active !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -441,7 +460,7 @@ const InventoryManagement = () => {
                     {/* Expanded Row with Complete Details */}
                     {expandedRow === item.firebaseId && (
                       <tr className="bg-blue-50">
-                        <td colSpan="10" className="px-6 py-6">
+                        <td colSpan="12" className="px-6 py-6">
                           <div className="grid grid-cols-3 gap-6">
                             {/* Column 1: Basic Information */}
                             <div className="space-y-3">
@@ -541,6 +560,12 @@ const InventoryManagement = () => {
                                 <span className={`font-medium ${item.prescription_required ? 'text-red-600' : 'text-green-600'}`}>
                                   {item.prescription_required ? 'Yes' : 'No'}
                                 </span>
+
+                                <span className="text-gray-600">Date of Purchase:</span>
+                                <span className="font-medium">{getPurchaseDate(item) ? new Date(getPurchaseDate(item)).toLocaleDateString() : '-'}</span>
+
+                                <span className="text-gray-600">Days in Inventory:</span>
+                                <span className="font-medium">{getDaysInInventory(item) !== null ? `${getDaysInInventory(item)} day${getDaysInInventory(item) === 1 ? '' : 's'}` : '-'}</span>
                               </div>
                             </div>
                           </div>

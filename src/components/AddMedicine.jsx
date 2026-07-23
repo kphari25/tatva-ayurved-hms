@@ -329,7 +329,8 @@ const AddMedicine = ({ onClose, onSuccess }) => {
         // Timestamps
         created_at: new Date().toISOString(),
         created_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email,
-        last_updated: new Date().toISOString()
+        last_updated: new Date().toISOString(),
+        last_purchase_date: new Date().toISOString().split('T')[0]
       };
 
       await addDoc(collection(db, 'inventory'), medicineData);

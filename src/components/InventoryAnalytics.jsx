@@ -6,6 +6,35 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+import InventoryCategoryModal from './InventoryCategoryModal';
+
+const getLastMovementDate = (item) => item.last_updated || item.imported_at || item.purchase_date || item.created_at;
+
+const daysSinceMovement = (item) => {
+  const dateStr = getLastMovementDate(item);
+  if (!dateStr) return null;
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return null;
+  return Math.floor((new Date() - date) / (1000 * 60 * 60 * 24));
+};
+
+const isOutOfStockItem = (item) => (parseFloat(item.stock_quantity) || 0) === 0;
+
+const isLowStockItem = (item) => {
+  const stock = parseFloat(item.stock_quantity) || 0;
+  return stock > 0 && stock < 10;
+};
+
+// No update in 2 months
+const isStagnantItem = (item) => {
+  const days = daysSinceMovement(item);
+  return days !== null && days > 60;
+};
+
+const isFastMovingItem = (item) => {
+  const days = daysSinceMovement(item);
+  return days !== null && days < 7;
+};
 
 const InventoryAnalytics = () => {
   const [loading, setLoading] = useState(true);
@@ -29,6 +58,12 @@ const InventoryAnalytics = () => {
     monthlyTrend: [],
     movementAnalysis: []
   });
+
+  const [drillDown, setDrillDown] = useState(null); // { title, items }
+
+  const openDrillDown = (title, predicate) => {
+    setDrillDown({ title, items: inventory.filter(predicate) });
+  };
 
   useEffect(() => {
     loadInventoryData();
@@ -65,9 +100,8 @@ const InventoryAnalytics = () => {
     let lowStockItems = 0;
     let outOfStock = 0;
     let stagnantItems = 0;
-
-    const twoMonthsAgo = new Date();
-    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+    let highMovingItems = 0;
+    let lowMovingItems = 0;
 
     items.forEach(item => {
       const stock = parseFloat(item.stock_quantity) || 0;
@@ -79,15 +113,11 @@ const InventoryAnalytics = () => {
       totalPurchasePrice += (stock * purchaseRate);
       totalSalesPrice += (stock * mrp);
 
-      // Low stock detection (less than 10 units)
-      if (stock > 0 && stock < 10) lowStockItems++;
-      if (stock === 0) outOfStock++;
-
-      // Stagnant items (no update in 2 months)
-      const lastUpdated = item.last_updated ? new Date(item.last_updated) : new Date(item.imported_at || item.purchase_date);
-      if (lastUpdated < twoMonthsAgo) {
-        stagnantItems++;
-      }
+      if (isLowStockItem(item)) lowStockItems++;
+      if (isOutOfStockItem(item)) outOfStock++;
+      if (isStagnantItem(item)) stagnantItems++;
+      if (isFastMovingItem(item)) highMovingItems++;
+      else if (!isStagnantItem(item)) lowMovingItems++;
     });
 
     setAnalytics({
@@ -98,8 +128,8 @@ const InventoryAnalytics = () => {
       lowStockItems,
       outOfStock,
       stagnantItems,
-      highMovingItems: Math.floor(items.length * 0.15), // Top 15%
-      lowMovingItems: Math.floor(items.length * 0.25) // Bottom 25%
+      highMovingItems,
+      lowMovingItems
     });
   };
 
@@ -138,9 +168,6 @@ const InventoryAnalytics = () => {
     }));
 
     // Movement analysis
-    const twoMonthsAgo = new Date();
-    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
-
     const movementCategories = {
       'High Moving': 0,
       'Medium Moving': 0,
@@ -149,12 +176,11 @@ const InventoryAnalytics = () => {
     };
 
     items.forEach(item => {
-      const lastUpdated = item.last_updated ? new Date(item.last_updated) : new Date(item.imported_at || item.purchase_date);
-      const daysSinceUpdate = Math.floor((new Date() - lastUpdated) / (1000 * 60 * 60 * 24));
+      const daysSinceUpdate = daysSinceMovement(item);
 
-      if (daysSinceUpdate > 60) movementCategories['Stagnant']++;
-      else if (daysSinceUpdate < 7) movementCategories['High Moving']++;
-      else if (daysSinceUpdate < 30) movementCategories['Medium Moving']++;
+      if (isStagnantItem(item)) movementCategories['Stagnant']++;
+      else if (isFastMovingItem(item)) movementCategories['High Moving']++;
+      else if (daysSinceUpdate !== null && daysSinceUpdate < 30) movementCategories['Medium Moving']++;
       else movementCategories['Low Moving']++;
     });
 
@@ -265,7 +291,10 @@ const InventoryAnalytics = () => {
 
           {/* Alert Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div
+              onClick={() => openDrillDown('Out of Stock', isOutOfStockItem)}
+              className="bg-red-50 border border-red-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+            >
               <div className="flex items-center gap-3">
                 <AlertTriangle className="w-8 h-8 text-red-600" />
                 <div>
@@ -274,7 +303,10 @@ const InventoryAnalytics = () => {
                 </div>
               </div>
             </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div
+              onClick={() => openDrillDown('Low Stock', isLowStockItem)}
+              className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+            >
               <div className="flex items-center gap-3">
                 <AlertTriangle className="w-8 h-8 text-yellow-600" />
                 <div>
@@ -283,7 +315,10 @@ const InventoryAnalytics = () => {
                 </div>
               </div>
             </div>
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+            <div
+              onClick={() => openDrillDown('Stagnant (>2 months)', isStagnantItem)}
+              className="bg-orange-50 border border-orange-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+            >
               <div className="flex items-center gap-3">
                 <TrendingDown className="w-8 h-8 text-orange-600" />
                 <div>
@@ -292,11 +327,14 @@ const InventoryAnalytics = () => {
                 </div>
               </div>
             </div>
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div
+              onClick={() => openDrillDown('Fast Moving', isFastMovingItem)}
+              className="bg-green-50 border border-green-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+            >
               <div className="flex items-center gap-3">
                 <TrendingUp className="w-8 h-8 text-green-600" />
                 <div>
-                  <p className="text-sm text-green-600 font-medium">High Moving</p>
+                  <p className="text-sm text-green-600 font-medium">Fast Moving</p>
                   <p className="text-2xl font-bold text-green-700">{analytics.highMovingItems}</p>
                 </div>
               </div>
@@ -411,6 +449,14 @@ const InventoryAnalytics = () => {
             </div>
           </div>
         </>
+      )}
+
+      {drillDown && (
+        <InventoryCategoryModal
+          title={drillDown.title}
+          items={drillDown.items}
+          onClose={() => setDrillDown(null)}
+        />
       )}
     </div>
   );
