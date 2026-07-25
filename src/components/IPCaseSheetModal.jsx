@@ -9,6 +9,7 @@ import MedicineTable from './MedicineTable';
 import { summarizeMedicineItems } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
+import { formatDateOnly } from '../lib/formatDate';
 
 const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
 
@@ -108,7 +109,7 @@ const SectionTitle = ({ children }) => (
   <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide pt-3 border-t border-gray-100 first:pt-0 first:border-0">{children}</h3>
 );
 
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const fmtDate = (d) => formatDateOnly(d);
 
 // ── Print HTML generator ────────────────────────────────────────────────
 const buildCaseSheetPrintHTML = (patient, form, dailyProgress) => {

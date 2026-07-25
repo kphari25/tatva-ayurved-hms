@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { formatDateOnly } from '../lib/formatDate';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicinePickerButton from './MedicinePickerButton';
@@ -273,7 +274,7 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
                     >
                       <div className="flex items-center gap-4">
                         <span className="font-semibold text-gray-800">
-                          {new Date(entry.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                          {formatDateOnly(entry.date, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
                         </span>
                         <div className="flex items-center gap-3 text-xs text-gray-500">
                           {entry.bp_morning && <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded-full">BP: {entry.bp_morning}</span>}

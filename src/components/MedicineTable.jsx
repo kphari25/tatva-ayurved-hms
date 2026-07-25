@@ -28,7 +28,7 @@ const stockLabel = (item) => {
 // a row's fields, and off the last field it adds (or jumps to) the next row.
 const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
   const [inventory, setInventory] = useState([]);
-  const [suggestions, setSuggestions] = useState({});
+  const [loadingInventory, setLoadingInventory] = useState(true);
   const [openDropdown, setOpenDropdown] = useState(null);
   const containerRef = useRef(null);
   const fieldRefs = useRef({});
@@ -45,6 +45,8 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
         setInventory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (e) {
         console.error('Error loading inventory:', e);
+      } finally {
+        setLoadingInventory(false);
       }
     })();
   }, []);
@@ -60,6 +62,9 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
 
   const setRows = (nextRows) => onChange(nextRows);
 
+  // Computed fresh from the current `inventory` on every render (rather than
+  // snapshotted into state at keystroke time) so results stay correct even if
+  // the ~4700-item inventory is still loading when the user starts typing.
   const getSuggestions = (q) =>
     q.length < 2 ? [] :
     inventory.filter(m =>
@@ -69,7 +74,6 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
 
   const handleNameChange = (rowId, value) => {
     setRows(rows.map(r => r.id === rowId ? { ...r, item_name: value, item_code: '', mrp: 0 } : r));
-    setSuggestions(prev => ({ ...prev, [rowId]: getSuggestions(value) }));
     setOpenDropdown(rowId);
   };
 
@@ -81,7 +85,6 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
     );
     if (updated[updated.length - 1].id === rowId) updated = [...updated, emptyRow()];
     setRows(updated);
-    setSuggestions(prev => ({ ...prev, [rowId]: [] }));
     setOpenDropdown(null);
     focusField(rowId, 'dose');
   };
@@ -151,6 +154,7 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
           <tbody className="divide-y divide-gray-100">
             {rows.map((row, i) => {
               const status = stockLabel(inventory.find(m => m.item_code && m.item_code === row.item_code));
+              const rowSuggestions = getSuggestions(row.item_name);
               return (
                 <tr key={row.id}>
                   <td className="px-2 py-1.5 text-gray-400 align-top pt-2.5">{i + 1}</td>
@@ -166,19 +170,25 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
                       className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     />
                     {status && <span className={`block text-[11px] mt-0.5 ${status.className}`}>{status.text}</span>}
-                    {openDropdown === row.id && (suggestions[row.id] || []).length > 0 && (
+                    {openDropdown === row.id && row.item_name.length >= 2 && (
                       <div className="absolute z-20 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg">
-                        {suggestions[row.id].map(m => (
-                          <button
-                            type="button"
-                            key={m.id}
-                            onClick={() => handleSelectMedicine(row.id, m)}
-                            className="w-full flex flex-col items-start px-3 py-2 text-xs text-left hover:bg-teal-50 border-b border-gray-50 last:border-0"
-                          >
-                            <span className="text-gray-800 font-medium">{m.item_name}</span>
-                            <span className="text-gray-400">₹{Number(m.mrp || 0).toLocaleString('en-IN')}</span>
-                          </button>
-                        ))}
+                        {loadingInventory ? (
+                          <p className="text-xs text-gray-400 text-center py-3">Loading medicines…</p>
+                        ) : rowSuggestions.length === 0 ? (
+                          <p className="text-xs text-gray-400 text-center py-3">No medicines found</p>
+                        ) : (
+                          rowSuggestions.map(m => (
+                            <button
+                              type="button"
+                              key={m.id}
+                              onClick={() => handleSelectMedicine(row.id, m)}
+                              className="w-full flex flex-col items-start px-3 py-2 text-xs text-left hover:bg-teal-50 border-b border-gray-50 last:border-0"
+                            >
+                              <span className="text-gray-800 font-medium">{m.item_name}</span>
+                              <span className="text-gray-400">₹{Number(m.mrp || 0).toLocaleString('en-IN')}</span>
+                            </button>
+                          ))
+                        )}
                       </div>
                     )}
                   </td>
