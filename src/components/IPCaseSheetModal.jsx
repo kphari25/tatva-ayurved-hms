@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Plus } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import IPDailyProgressModal from './IPDailyProgressModal';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
-import MedicinePickerButton from './MedicinePickerButton';
+import MedicineTable from './MedicineTable';
+import { summarizeMedicineItems } from '../lib/medicineSummary';
+import { loadDoctors } from '../lib/staff';
+import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
+
+const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
 
 const appendTreatment = (currentText, treatment) => {
   const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
   return currentText ? `${currentText}, ${entry}` : entry;
 };
-
-const appendMedicine = (currentText, medicine) =>
-  currentText ? `${currentText}, ${medicine.item_name}` : medicine.item_name;
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -323,11 +325,23 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
   const [dailyProgress, setDailyProgress] = useState([]);
   const [loadingProgress, setLoadingProgress] = useState(false);
   const [showAddDaily, setShowAddDaily] = useState(false);
+  const [doctors, setDoctors] = useState([]);
+  const tabContainerRef = useRef(null);
 
   useEffect(() => {
     loadCaseSheet();
     loadDailyProgress();
+    loadDoctors().then(setDoctors);
   }, []);
+
+  useEffect(() => {
+    if (!loading) focusFirstField(tabContainerRef.current);
+  }, [activeTab, loading]);
+
+  const advanceTab = (currentId) => {
+    const idx = TAB_SEQUENCE.indexOf(currentId);
+    if (idx >= 0 && idx < TAB_SEQUENCE.length - 1) setActiveTab(TAB_SEQUENCE[idx + 1]);
+  };
 
   const loadCaseSheet = async () => {
     try {
@@ -358,13 +372,14 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
     if (!patientId) return;
     try {
       setLoadingProgress(true);
-      const q = query(
-        collection(db, 'daily_progress'),
-        where('patient_id', '==', patientId),
-        orderBy('date', 'asc')
-      );
+      // Sorted client-side rather than via orderBy() — combining it with the
+      // where() above needs a Firestore composite index that isn't set up,
+      // which made this query fail silently and the tab always look empty.
+      const q = query(collection(db, 'daily_progress'), where('patient_id', '==', patientId));
       const snap = await getDocs(q);
-      setDailyProgress(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      entries.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+      setDailyProgress(entries);
     } catch (e) {
       console.error('Error loading daily progress:', e);
     } finally {
@@ -390,6 +405,41 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
         created_at: form.created_at || now,
         created_by: form.created_by || currentUser.email || '',
       }, { merge: true });
+
+      // Also reflect medication/treatment onto today's Daily Log entry so it's
+      // visible there without a separate "Add Daily Entry" step.
+      const hasLoggable = (form.medicine_items || []).length > 0 || form.treatment_details || (form.treatment_items || []).length > 0;
+      if (hasLoggable) {
+        const today = new Date().toISOString().split('T')[0];
+        const existing = await getDocs(query(
+          collection(db, 'daily_progress'),
+          where('patient_id', '==', patientId),
+          where('date', '==', today)
+        ));
+        const logFields = {
+          medicines_given: form.medication_details,
+          medicine_items: form.medicine_items || [],
+          treatment_performed: form.treatment_details,
+          treatment_items: form.treatment_items || [],
+        };
+        if (!existing.empty) {
+          await updateDoc(doc(db, 'daily_progress', existing.docs[0].id), {
+            ...logFields,
+            updated_at: now,
+            updated_by: currentUser.email || '',
+          });
+        } else {
+          await addDoc(collection(db, 'daily_progress'), {
+            ...logFields,
+            patient_id: patientId,
+            date: today,
+            created_at: now,
+            created_by: currentUser.email || '',
+          });
+        }
+        await loadDailyProgress();
+      }
+
       alert('✅ Case sheet saved!');
     } catch (e) {
       alert('Error saving: ' + e.message);
@@ -468,10 +518,23 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
             <>
               {/* ── CASE SHEET ── */}
               {activeTab === 'sheet' && (
-                <div className="space-y-5">
+                <div className="space-y-5" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e, () => advanceTab('sheet'))}>
                   <div className="grid grid-cols-3 gap-4">
                     <Field label="Department" value={form.department} onChange={v => set('department', v)} />
-                    <Field label="Physician's Name" value={form.physician_name} onChange={v => set('physician_name', v)} />
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Physician's Name</label>
+                      <select
+                        value={form.physician_name}
+                        onChange={e => set('physician_name', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                      >
+                        <option value="">Select Doctor</option>
+                        {doctors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                        {form.physician_name && !doctors.some(d => d.name === form.physician_name) && (
+                          <option value={form.physician_name}>{form.physician_name}</option>
+                        )}
+                      </select>
+                    </div>
                     <Field label="Date" type="date" value={form.case_sheet_date} onChange={v => set('case_sheet_date', v)} />
                   </div>
 
@@ -506,32 +569,15 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
 
               {/* ── HISTORY & EXAMINATION ── */}
               {activeTab === 'history' && (
-                <div className="space-y-5">
+                <div className="space-y-5" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e, () => advanceTab('history'))}>
                   <SectionTitle>History</SectionTitle>
                   <TextArea label="History of Presenting Complaints" rows={3} value={form.history_presenting_complaints} onChange={v => set('history_presenting_complaints', v)} />
                   <TextArea label="History of Past Illness" rows={3} value={form.history_past_illness} onChange={v => set('history_past_illness', v)} />
                   <TextArea label="Family History" rows={2} value={form.family_history} onChange={v => set('family_history', v)} />
                   <TextArea label="Presently Taking the Following Medicines" rows={2} value={form.current_medicines} onChange={v => set('current_medicines', v)} />
-                  <TextArea
-                    label="Medication Details"
-                    rows={2}
-                    value={form.medication_details}
-                    onChange={v => set('medication_details', v)}
-                    placeholder="Medicines prescribed…"
-                    actions={
-                      <MedicinePickerButton
-                        onSelect={(m) => setForm(prev => ({
-                          ...prev,
-                          medication_details: appendMedicine(prev.medication_details, m),
-                          medicine_items: [...(prev.medicine_items || []), { item_name: m.item_name, item_code: m.item_code || '', mrp: Number(m.mrp) || 0 }],
-                        }))}
-                      />
-                    }
-                  />
-                  <TreatmentItemsList
-                    items={(form.medicine_items || []).map(mi => ({ name: mi.item_name, price: mi.mrp }))}
-                    onRemove={(idx) => setForm(prev => ({ ...prev, medicine_items: prev.medicine_items.filter((_, i) => i !== idx) }))}
-                    note="this shows up in the Prescription and can be synced into a Medicine Sale invoice"
+                  <MedicineTable
+                    items={form.medicine_items}
+                    onChange={(items) => setForm(prev => ({ ...prev, medicine_items: items, medication_details: summarizeMedicineItems(items) }))}
                   />
                   <TextArea
                     label="Treatment Details"
@@ -726,7 +772,7 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
 
               {/* ── INVESTIGATIONS & PROCEDURE ── */}
               {activeTab === 'investigations' && (
-                <div className="space-y-5">
+                <div className="space-y-5" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e, () => advanceTab('investigations'))}>
                   <TextArea label="Investigations" rows={8} value={form.investigations} onChange={v => set('investigations', v)}
                     placeholder="Lab reports, imaging, and other investigation notes…" />
                   <TextArea label="Procedure" rows={8} value={form.procedure} onChange={v => set('procedure', v)}

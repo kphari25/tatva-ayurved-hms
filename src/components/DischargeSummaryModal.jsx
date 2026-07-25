@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { addDoc, updateDoc, doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { addDoc, updateDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -529,13 +529,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
     const patientId = patient?.id || patient?.firebaseId;
     if (patientId && (patient?.patient_type === 'IP' || patient?.ip_number)) {
       setLoadingProgress(true);
-      const q = query(
-        collection(db, 'daily_progress'),
-        where('patient_id', '==', patientId),
-        orderBy('date', 'asc')
-      );
+      // Sorted client-side rather than via orderBy() — combining it with the
+      // where() above needs a Firestore composite index that isn't set up,
+      // which made this query fail silently.
+      const q = query(collection(db, 'daily_progress'), where('patient_id', '==', patientId));
       getDocs(q).then(snap => {
         const records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        records.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
         setDailyProgress(records);
         if (records.length > 0 && !existingSummary) {
           autoPopulateFromProgress(records);

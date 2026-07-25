@@ -3,7 +3,7 @@ import {
   X, Plus, Trash2, Activity, Thermometer, Utensils,
   Stethoscope, Pill, ChevronDown, ChevronUp, Save, Calendar
 } from 'lucide-react';
-import { collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
@@ -85,13 +85,14 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
   const loadEntries = async () => {
     try {
       setLoading(true);
-      const q = query(
-        collection(db, 'daily_progress'),
-        where('patient_id', '==', patientId),
-        orderBy('date', 'desc')
-      );
+      // Sorted client-side rather than via orderBy() — combining it with the
+      // where() above needs a Firestore composite index that isn't set up,
+      // which made this query fail silently and the tab always look empty.
+      const q = query(collection(db, 'daily_progress'), where('patient_id', '==', patientId));
       const snap = await getDocs(q);
-      setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const results = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      results.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      setEntries(results);
     } catch (e) {
       console.error('Error loading daily progress:', e);
     } finally {
