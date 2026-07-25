@@ -14,6 +14,7 @@ import IPDailyProgressModal from './IPDailyProgressModal';
 import IPCaseSheetModal from './IPCaseSheetModal';
 import OPCaseSheetModal from './OPCaseSheetModal';
 import PrescriptionModal from './PrescriptionModal';
+import PatientRegistrationNew from './PatientRegistrationNew';
 
 const PatientPortal = ({ onAddPatient }) => {
   console.log('🔵 PatientPortal rendered, onAddPatient prop:', typeof onAddPatient);
@@ -37,6 +38,8 @@ const PatientPortal = ({ onAddPatient }) => {
   const [opCaseSheetPatient, setOpCaseSheetPatient] = useState(null);
   const [showPrescription, setShowPrescription] = useState(false);
   const [prescriptionPatient, setPrescriptionPatient] = useState(null);
+  const [showEditPatient, setShowEditPatient] = useState(false);
+  const [editingPatient, setEditingPatient] = useState(null);
 
   // Appointment scheduling state
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
@@ -561,6 +564,14 @@ const PatientPortal = ({ onAddPatient }) => {
                           title="View Details"
                         >
                           <Eye className="w-4 h-4" />
+                        </button>
+                        {/* Edit */}
+                        <button
+                          onClick={() => { setEditingPatient(patient); setShowEditPatient(true); }}
+                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          title="Edit Patient"
+                        >
+                          <Edit className="w-4 h-4" />
                         </button>
                         {/* Schedule Appointment */}
                         <button
@@ -1102,6 +1113,17 @@ const PatientPortal = ({ onAddPatient }) => {
           patient={prescriptionPatient}
           onClose={() => { setShowPrescription(false); setPrescriptionPatient(null); }}
         />
+      )}
+
+      {/* ── Edit Patient Modal ── */}
+      {showEditPatient && editingPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
+          <PatientRegistrationNew
+            patient={editingPatient}
+            onClose={() => { setShowEditPatient(false); setEditingPatient(null); }}
+            onSuccess={() => { setShowEditPatient(false); setEditingPatient(null); loadPatients(); }}
+          />
+        </div>
       )}
     </div>
   );

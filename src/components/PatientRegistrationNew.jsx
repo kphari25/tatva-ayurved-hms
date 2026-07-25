@@ -1,38 +1,72 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { UserPlus, Save, X, Receipt, CheckCircle, FileText, UserCheck } from 'lucide-react';
-import { collection, addDoc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
 import InvoiceModal from './InvoiceModal';
 
-const PatientRegistrationNew = ({ onClose, onSuccess }) => {
+// Visual/DOM order of every field in the form. Used to move focus to the next
+// field when the user presses Enter, instead of the browser's default of
+// submitting the form on Enter inside any single-line input.
+const FIELD_ORDER = [
+  'first_name', 'last_name', 'age', 'gender', 'patient_type', 'registration_fee',
+  'blood_group', 'phone', 'email', 'address', 'city', 'state', 'pincode',
+  'emergency_contact_name', 'emergency_contact_phone',
+  'allergies', 'chronic_conditions', 'current_medications', 'medical_history', 'notes'
+];
+
+const PatientRegistrationNew = ({ patient, onClose, onSuccess }) => {
+  const isEditMode = !!patient;
   const [loading, setLoading] = useState(false);
   const [sendWelcomeSMS, setSendWelcomeSMS] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [savedPatient, setSavedPatient] = useState(null);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
-  const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    age: '',
-    gender: '',
-    patient_type: 'OP',
-    phone: '',
-    email: '',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
-    emergency_contact_name: '',
-    emergency_contact_phone: '',
-    blood_group: '',
-    allergies: '',
-    chronic_conditions: '',
-    current_medications: '',
-    medical_history: '',
-    notes: '',
-    registration_fee: ''
-  });
+  const [formData, setFormData] = useState(() => ({
+    first_name: patient?.first_name || '',
+    last_name: patient?.last_name || '',
+    age: patient?.age || '',
+    gender: patient?.gender || '',
+    patient_type: patient?.patient_type || 'OP',
+    phone: patient?.phone || '',
+    email: patient?.email || '',
+    address: patient?.address || '',
+    city: patient?.city || '',
+    state: patient?.state || '',
+    pincode: patient?.pincode || '',
+    emergency_contact_name: patient?.emergency_contact_name || '',
+    emergency_contact_phone: patient?.emergency_contact_phone || '',
+    blood_group: patient?.blood_group || '',
+    allergies: patient?.allergies || '',
+    chronic_conditions: patient?.chronic_conditions || '',
+    current_medications: patient?.current_medications || '',
+    medical_history: patient?.medical_history || '',
+    notes: patient?.notes || '',
+    registration_fee: patient?.registration_fee || ''
+  }));
+
+  // Refs for every field, keyed by name, so Enter can jump to the next one.
+  const fieldRefs = useRef({});
+  const setFieldRef = (name) => (el) => { fieldRefs.current[name] = el; };
+  const focusNextField = (name) => {
+    const idx = FIELD_ORDER.indexOf(name);
+    for (let i = idx + 1; i < FIELD_ORDER.length; i++) {
+      const next = fieldRefs.current[FIELD_ORDER[i]];
+      if (next) {
+        next.focus();
+        if (next.select) next.select();
+        return;
+      }
+    }
+  };
+  // Attach to every field except textareas — Enter in a textarea should insert
+  // a newline, not advance, so we deliberately don't wire this to those.
+  const advanceOnEnter = (name) => (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      focusNextField(name);
+    }
+  };
 
   // Generate next MRD number (MRD-1001, MRD-1002, …)
   const generateMRDNumber = async () => {
@@ -111,6 +145,19 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
     try {
       setLoading(true);
 
+      if (isEditMode) {
+        const updateData = { ...formData, updated_at: new Date().toISOString() };
+        // Backfill an IP number if the patient is switched to IP and never had one
+        if (formData.patient_type === 'IP' && !patient.ip_number) {
+          updateData.ip_number = await generateIPNumber();
+        }
+        await updateDoc(doc(db, 'patients', patient.id), updateData);
+        alert(`✅ Patient updated successfully!\n\n${formData.first_name} ${formData.last_name}`);
+        if (onSuccess) onSuccess();
+        if (onClose) onClose();
+        return;
+      }
+
       // Generate numbers
       const patientNumber = await generatePatientNumber();
       const mrdNumber = await generateMRDNumber();
@@ -160,8 +207,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
       setRegistrationSuccess(true);
 
     } catch (error) {
-      console.error('❌ Error registering patient:', error);
-      alert('Failed to register patient: ' + error.message);
+      console.error('❌ Error saving patient:', error);
+      alert(`Failed to ${isEditMode ? 'update' : 'register'} patient: ` + error.message);
     } finally {
       setLoading(false);
     }
@@ -258,8 +305,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                 <UserPlus className="w-6 h-6 text-teal-600" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-800">New Patient Registration</h1>
-                <p className="text-gray-600 text-sm">Complete medical history and information</p>
+                <h1 className="text-2xl font-bold text-gray-800">{isEditMode ? 'Edit Patient' : 'New Patient Registration'}</h1>
+                <p className="text-gray-600 text-sm">{isEditMode ? 'Update patient details and medical history' : 'Complete medical history and information'}</p>
               </div>
             </div>
             {onClose && (
@@ -285,6 +332,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="first_name"
                   value={formData.first_name}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('first_name')}
+                  ref={setFieldRef('first_name')}
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
@@ -299,6 +348,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="last_name"
                   value={formData.last_name}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('last_name')}
+                  ref={setFieldRef('last_name')}
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
@@ -313,6 +364,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="age"
                   value={formData.age}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('age')}
+                  ref={setFieldRef('age')}
                   required
                   min="0"
                   max="150"
@@ -329,6 +382,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="gender"
                   value={formData.gender}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('gender')}
+                  ref={setFieldRef('gender')}
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 >
@@ -347,6 +402,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="patient_type"
                   value={formData.patient_type}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('patient_type')}
+                  ref={setFieldRef('patient_type')}
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 >
@@ -365,6 +422,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="registration_fee"
                   value={formData.registration_fee}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('registration_fee')}
+                  ref={setFieldRef('registration_fee')}
                   min="0"
                   placeholder="e.g. 500"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -378,7 +437,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                 </label>
                 <div className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-teal-50 text-teal-700 font-semibold text-sm flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-teal-400 inline-block"></span>
-                  Will be assigned on save (MRD-1001+)
+                  {isEditMode ? (patient.mrd_number || '—') : 'Will be assigned on save (MRD-1001+)'}
                 </div>
               </div>
 
@@ -390,7 +449,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   </label>
                   <div className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-purple-50 text-purple-700 font-semibold text-sm flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-purple-400 inline-block"></span>
-                    Will be assigned on save (IP-3000+)
+                    {isEditMode ? (patient.ip_number || 'Will be assigned on save (IP-3000+)') : 'Will be assigned on save (IP-3000+)'}
                   </div>
                 </div>
               )}
@@ -401,6 +460,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="blood_group"
                   value={formData.blood_group}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('blood_group')}
+                  ref={setFieldRef('blood_group')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 >
                   <option value="">Select Blood Group</option>
@@ -428,6 +489,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="phone"
                   value={formData.phone}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('phone')}
+                  ref={setFieldRef('phone')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
@@ -439,6 +502,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('email')}
+                  ref={setFieldRef('email')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
@@ -449,6 +514,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="address"
                   value={formData.address}
                   onChange={handleChange}
+                  ref={setFieldRef('address')}
                   rows="2"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
@@ -461,6 +527,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="city"
                   value={formData.city}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('city')}
+                  ref={setFieldRef('city')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
@@ -472,6 +540,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="state"
                   value={formData.state}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('state')}
+                  ref={setFieldRef('state')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
@@ -483,6 +553,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="pincode"
                   value={formData.pincode}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('pincode')}
+                  ref={setFieldRef('pincode')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
@@ -500,6 +572,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="emergency_contact_name"
                   value={formData.emergency_contact_name}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('emergency_contact_name')}
+                  ref={setFieldRef('emergency_contact_name')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
@@ -511,6 +585,8 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="emergency_contact_phone"
                   value={formData.emergency_contact_phone}
                   onChange={handleChange}
+                  onKeyDown={advanceOnEnter('emergency_contact_phone')}
+                  ref={setFieldRef('emergency_contact_phone')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
@@ -527,6 +603,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="allergies"
                   value={formData.allergies}
                   onChange={handleChange}
+                  ref={setFieldRef('allergies')}
                   rows="2"
                   placeholder="List any known allergies..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -539,6 +616,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="chronic_conditions"
                   value={formData.chronic_conditions}
                   onChange={handleChange}
+                  ref={setFieldRef('chronic_conditions')}
                   rows="2"
                   placeholder="List any chronic conditions..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -551,6 +629,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="current_medications"
                   value={formData.current_medications}
                   onChange={handleChange}
+                  ref={setFieldRef('current_medications')}
                   rows="2"
                   placeholder="List current medications..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -563,6 +642,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="medical_history"
                   value={formData.medical_history}
                   onChange={handleChange}
+                  ref={setFieldRef('medical_history')}
                   rows="3"
                   placeholder="Previous surgeries, major illnesses, etc..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -575,6 +655,7 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
                   name="notes"
                   value={formData.notes}
                   onChange={handleChange}
+                  ref={setFieldRef('notes')}
                   rows="2"
                   placeholder="Any additional information..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -586,21 +667,23 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
           {/* Submit Button */}
           <div className="flex justify-end gap-3 pt-6 border-t">
             {/* SMS Option */}
-            <div className="flex items-center gap-2 mr-auto">
-              <input
-                type="checkbox"
-                id="sendWelcomeSMS"
-                checked={sendWelcomeSMS}
-                onChange={(e) => setSendWelcomeSMS(e.target.checked)}
-                className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
-              />
-              <label htmlFor="sendWelcomeSMS" className="text-sm text-gray-700 flex items-center gap-2">
-                <span>📱 Send Welcome SMS</span>
-                {formData.phone && (
-                  <span className="text-xs text-gray-500">to {formData.phone}</span>
-                )}
-              </label>
-            </div>
+            {!isEditMode && (
+              <div className="flex items-center gap-2 mr-auto">
+                <input
+                  type="checkbox"
+                  id="sendWelcomeSMS"
+                  checked={sendWelcomeSMS}
+                  onChange={(e) => setSendWelcomeSMS(e.target.checked)}
+                  className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                />
+                <label htmlFor="sendWelcomeSMS" className="text-sm text-gray-700 flex items-center gap-2">
+                  <span>📱 Send Welcome SMS</span>
+                  {formData.phone && (
+                    <span className="text-xs text-gray-500">to {formData.phone}</span>
+                  )}
+                </label>
+              </div>
+            )}
 
             {onClose && (
               <button
@@ -619,12 +702,12 @@ const PatientRegistrationNew = ({ onClose, onSuccess }) => {
               {loading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Registering...
+                  {isEditMode ? 'Updating...' : 'Registering...'}
                 </>
               ) : (
                 <>
                   <Save className="w-5 h-5" />
-                  Register Patient
+                  {isEditMode ? 'Update Patient' : 'Register Patient'}
                 </>
               )}
             </button>
