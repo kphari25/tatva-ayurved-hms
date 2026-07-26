@@ -4,7 +4,6 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
-import MedicinePickerButton from './MedicinePickerButton';
 import MedicineTable from './MedicineTable';
 import { summarizeMedicineItems } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
@@ -17,9 +16,6 @@ const appendTreatment = (currentText, treatment) => {
   const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
   return currentText ? `${currentText}, ${entry}` : entry;
 };
-
-const appendMedicine = (currentText, medicine) =>
-  currentText ? `${currentText}, ${medicine.item_name}` : medicine.item_name;
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -812,26 +808,9 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                     </div>
                     <div className="space-y-3 mb-3">
                       <TextArea label="Clinical Findings" rows={2} value={visitForm.clinical_findings} onChange={v => setVisitForm(p => ({ ...p, clinical_findings: v }))} />
-                      <TextArea
-                        label="Medication Details"
-                        rows={2}
-                        value={visitForm.medication_notes}
-                        onChange={v => setVisitForm(p => ({ ...p, medication_notes: v }))}
-                        placeholder="Medicines prescribed…"
-                        actions={
-                          <MedicinePickerButton
-                            onSelect={(m) => setVisitForm(p => ({
-                              ...p,
-                              medication_notes: appendMedicine(p.medication_notes, m),
-                              medicine_items: [...(p.medicine_items || []), { item_name: m.item_name, item_code: m.item_code || '', mrp: Number(m.mrp) || 0 }],
-                            }))}
-                          />
-                        }
-                      />
-                      <TreatmentItemsList
-                        items={(visitForm.medicine_items || []).map(mi => ({ name: mi.item_name, price: mi.mrp }))}
-                        onRemove={(idx) => setVisitForm(p => ({ ...p, medicine_items: p.medicine_items.filter((_, i) => i !== idx) }))}
-                        note="this shows up in the Prescription and can be synced into a Medicine Sale invoice"
+                      <MedicineTable
+                        items={visitForm.medicine_items}
+                        onChange={(items) => setVisitForm(p => ({ ...p, medicine_items: items, medication_notes: summarizeMedicineItems(items) }))}
                       />
                       <TextArea
                         label="Treatment Details"

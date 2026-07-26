@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -30,7 +31,9 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
   const [inventory, setInventory] = useState([]);
   const [loadingInventory, setLoadingInventory] = useState(true);
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [dropdownRect, setDropdownRect] = useState(null);
   const containerRef = useRef(null);
+  const dropdownRef = useRef(null);
   const fieldRefs = useRef({});
   // Stable placeholder row so it isn't re-created (with a new id/key) on every
   // render while `items` is empty — that was remounting the row's <input> and
@@ -53,14 +56,39 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
 
   useEffect(() => {
     if (openDropdown === null) return;
+    // The dropdown is portaled to <body> (see render), so a click inside it
+    // isn't a descendant of containerRef — check both before treating it as "outside".
     const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpenDropdown(null);
+      const insideContainer = containerRef.current && containerRef.current.contains(e.target);
+      const insideDropdown = dropdownRef.current && dropdownRef.current.contains(e.target);
+      if (!insideContainer && !insideDropdown) setOpenDropdown(null);
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    // Close rather than track a stale position while the page scrolls/resizes.
+    const closeOnScrollOrResize = () => setOpenDropdown(null);
+    window.addEventListener('scroll', closeOnScrollOrResize, true);
+    window.addEventListener('resize', closeOnScrollOrResize);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', closeOnScrollOrResize, true);
+      window.removeEventListener('resize', closeOnScrollOrResize);
+    };
   }, [openDropdown]);
 
   const setRows = (nextRows) => onChange(nextRows);
+
+  // Positions the suggestions dropdown (portaled to <body>) against the row's
+  // Medicine input — a plain absolutely-positioned dropdown gets clipped by the
+  // table wrapper's overflow-x-auto (setting overflow-x forces overflow-y to
+  // behave as auto too, per the CSS spec), so it needs to escape via a portal.
+  const openDropdownFor = (rowId) => {
+    setOpenDropdown(rowId);
+    const el = fieldRefs.current[`${rowId}_item_name`];
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setDropdownRect({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 260) });
+    }
+  };
 
   // Computed fresh from the current `inventory` on every render (rather than
   // snapshotted into state at keystroke time) so results stay correct even if
@@ -74,7 +102,7 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
 
   const handleNameChange = (rowId, value) => {
     setRows(rows.map(r => r.id === rowId ? { ...r, item_name: value, item_code: '', mrp: 0 } : r));
-    setOpenDropdown(rowId);
+    openDropdownFor(rowId);
   };
 
   const handleSelectMedicine = (rowId, med) => {
@@ -163,33 +191,44 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
                       type="text"
                       value={row.item_name}
                       onChange={e => handleNameChange(row.id, e.target.value)}
-                      onFocus={() => setOpenDropdown(row.id)}
+                      onFocus={() => openDropdownFor(row.id)}
                       onKeyDown={advanceWithinRow(row.id, 'item_name')}
                       ref={el => { fieldRefs.current[`${row.id}_item_name`] = el; }}
                       placeholder="Search medicine…"
                       className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     />
                     {status && <span className={`block text-[11px] mt-0.5 ${status.className}`}>{status.text}</span>}
-                    {openDropdown === row.id && row.item_name.length >= 2 && (
-                      <div className="absolute z-20 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg">
+                    {openDropdown === row.id && row.item_name.length >= 2 && dropdownRect && createPortal(
+                      <div
+                        ref={dropdownRef}
+                        className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto"
+                        style={{ top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }}
+                      >
                         {loadingInventory ? (
                           <p className="text-xs text-gray-400 text-center py-3">Loading medicines…</p>
                         ) : rowSuggestions.length === 0 ? (
                           <p className="text-xs text-gray-400 text-center py-3">No medicines found</p>
                         ) : (
-                          rowSuggestions.map(m => (
-                            <button
-                              type="button"
-                              key={m.id}
-                              onClick={() => handleSelectMedicine(row.id, m)}
-                              className="w-full flex flex-col items-start px-3 py-2 text-xs text-left hover:bg-teal-50 border-b border-gray-50 last:border-0"
-                            >
-                              <span className="text-gray-800 font-medium">{m.item_name}</span>
-                              <span className="text-gray-400">₹{Number(m.mrp || 0).toLocaleString('en-IN')}</span>
-                            </button>
-                          ))
+                          rowSuggestions.map(m => {
+                            const st = stockLabel(m);
+                            return (
+                              <button
+                                type="button"
+                                key={m.id}
+                                onClick={() => handleSelectMedicine(row.id, m)}
+                                className="w-full flex flex-col items-start px-3 py-2 text-xs text-left hover:bg-teal-50 border-b border-gray-50 last:border-0"
+                              >
+                                <span className="text-gray-800 font-medium">{m.item_name}</span>
+                                <span className="flex items-center gap-2">
+                                  <span className="text-gray-400">₹{Number(m.mrp || 0).toLocaleString('en-IN')}</span>
+                                  {st && <span className={st.className}>{st.text}</span>}
+                                </span>
+                              </button>
+                            );
+                          })
                         )}
-                      </div>
+                      </div>,
+                      document.body
                     )}
                   </td>
                   <td className="px-2 py-1.5 align-top">
