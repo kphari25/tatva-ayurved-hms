@@ -9,12 +9,18 @@ rules_version = '2';
 // Firestore data already relies on); they only constrain file type/size on
 // upload. If real Firebase Auth sign-in is added later, tighten this to
 // require it.
+//
+// Uses explicit allow create/delete (not a blanket allow write) — a plain
+// `allow write: if request.resource...` was unconditionally rejecting every
+// request in this project regardless of the condition's content, even
+// `if true`-equivalent checks; splitting it this way resolved that.
 service firebase.storage {
   match /b/{bucket}/o {
     match /case_sheets/{patientId}/investigations/{fileName} {
       allow read: if true;
-      allow write: if request.resource.size < 15 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|application/pdf');
+      allow create: if request.resource.size < 15 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if true;
     }
   }
 }
