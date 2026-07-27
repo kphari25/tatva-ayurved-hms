@@ -4,7 +4,7 @@ import {
   Phone, Mail, Calendar, MapPin, Activity,
   X, FileText, Download, Filter, CalendarPlus,
   Stethoscope, Clock, MessageSquare, CheckCircle, AlertCircle, Send,
-  ClipboardList, UserRound, BookOpen, Pill
+  ClipboardList, UserRound, BookOpen, Pill, BedDouble
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc } from 'firebase/firestore';
@@ -215,6 +215,24 @@ const PatientPortal = ({ onAddPatient }) => {
       ));
     } catch (e) {
       alert('Failed to assign doctor: ' + e.message);
+    }
+  };
+
+  const handleAdmitPatient = async (patient) => {
+    if (!confirm(`Admit ${patient.first_name} ${patient.last_name} as an in-patient?`)) return;
+    try {
+      const admissionDate = new Date().toISOString().split('T')[0];
+      await updateDoc(doc(db, 'patients', patient.id || patient.firebaseId), {
+        admission_status: 'admitted',
+        admission_date: admissionDate,
+      });
+      setPatients(prev => prev.map(p =>
+        (p.id || p.firebaseId) === (patient.id || patient.firebaseId)
+          ? { ...p, admission_status: 'admitted', admission_date: admissionDate }
+          : p
+      ));
+    } catch (e) {
+      alert('Failed to admit patient: ' + e.message);
     }
   };
 
@@ -522,6 +540,11 @@ const PatientPortal = ({ onAddPatient }) => {
                       <span className={`px-3 py-1 text-xs rounded-full font-semibold ${(patient.patient_type || 'OP') === 'IP' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
                         {patient.patient_type || 'OP'}
                       </span>
+                      {patient.admission_status === 'pending_admission' && (
+                        <span className="block mt-1 px-2 py-0.5 text-xs rounded-full font-semibold bg-orange-100 text-orange-700 text-center">
+                          Pending Admission
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm">
@@ -589,6 +612,16 @@ const PatientPortal = ({ onAddPatient }) => {
                         >
                           <UserRound className="w-4 h-4" />
                         </button>
+                        {/* Admit Patient — pending IP admissions only */}
+                        {patient.admission_status === 'pending_admission' && (
+                          <button
+                            onClick={() => handleAdmitPatient(patient)}
+                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="Admit Patient"
+                          >
+                            <BedDouble className="w-4 h-4" />
+                          </button>
+                        )}
                         {/* IP Case Sheet — IP patients only */}
                         {(patient.patient_type === 'IP' || patient.ip_number) && (
                           <button

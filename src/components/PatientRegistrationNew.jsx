@@ -169,6 +169,9 @@ const PatientRegistrationNew = ({ patient, onClose, onSuccess }) => {
         patient_number: patientNumber,
         mrd_number: mrdNumber,
         ...(ipNumber ? { ip_number: ipNumber } : {}),
+        // New IP registrations start as a pending admission request — front
+        // desk/admin confirms the actual admission via the "Admit" action.
+        ...(formData.patient_type === 'IP' ? { admission_status: 'pending_admission' } : {}),
         prescriptions: [],
         visits: [],
         created_at: new Date().toISOString(),

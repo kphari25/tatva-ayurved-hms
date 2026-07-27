@@ -560,6 +560,11 @@ const DischargeModal = ({ patient, patients, onClose, onSave }) => {
         alert('✅ Discharge record created successfully!');
       }
 
+      // Drop the patient out of "currently admitted" once the discharge bill is fully settled.
+      if (dischargeData.status === 'completed' && dischargeData.patient_id) {
+        await updateDoc(doc(db, 'patients', dischargeData.patient_id), { admission_status: 'discharged' });
+      }
+
       if (onSave) onSave();
 
     } catch (error) {

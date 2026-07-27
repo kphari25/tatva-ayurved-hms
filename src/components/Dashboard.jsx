@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X } from 'lucide-react';
-import { collection, getDocs, query, where, orderBy, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { formatDateOnly } from '../lib/formatDate';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -166,6 +167,8 @@ const Dashboard = () => {
   const [showAddAppointment, setShowAddAppointment] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [doctors, setDoctors] = useState([]);
+  const [therapists, setTherapists] = useState([]);
+  const [todayAppointments, setTodayAppointments] = useState([]);
   const [greeting, setGreeting] = useState(getGreeting());
   const [appointmentView, setAppointmentView] = useState('daily'); // daily | weekly | monthly
   const [panelAppointments, setPanelAppointments] = useState([]);
@@ -204,41 +207,54 @@ const Dashboard = () => {
       setDoctors(docs);
     }).catch(() => {});
 
+    // Load the full therapist roster (so idle therapists show up as
+    // "available" too, not just ones with an appointment today).
+    getDocs(query(collection(db, 'users'), where('role', '==', 'therapist'))).then(snap => {
+      setTherapists(snap.docs.map(d => ({ id: d.id, name: d.data().name || d.data().email || 'Therapist' })));
+    }).catch(() => {});
+
     // Real-time listener for today's appointments
     const today = new Date().toISOString().split('T')[0];
     const unsubscribe = onSnapshot(
       query(collection(db, 'appointments'), where('date', '==', today)),
       (snap) => {
-        const todayAppointments = snap.docs
+        const appts = snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
           .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-
-        // Build therapist schedule from assigned appointments
-        const therapistMap = {};
-        todayAppointments.forEach(a => {
-          if (a.therapistId && a.therapistName) {
-            if (!therapistMap[a.therapistId]) {
-              therapistMap[a.therapistId] = { id: a.therapistId, therapist: a.therapistName, sessions: 0, nextSlot: null, availability: 'busy' };
-            }
-            therapistMap[a.therapistId].sessions += 1;
-            if (!therapistMap[a.therapistId].nextSlot) {
-              therapistMap[a.therapistId].nextSlot = a.time;
-            }
-          }
-        });
-        const therapistSchedule = Object.values(therapistMap);
-
+        setTodayAppointments(appts);
         setDashboardData(prev => ({
           ...prev,
-          todayAppointments,
-          therapistSchedule,
-          stats: { ...prev.stats, totalAppointments: todayAppointments.length },
+          stats: { ...prev.stats, totalAppointments: appts.length },
         }));
       }
     );
 
     return () => unsubscribe();
   }, []);
+
+  // Therapist schedule — derived from the full roster + today's appointments,
+  // so it stays correct regardless of which of those two loads/updates first
+  // (previously this was clobbered by a separate effect that reset it to []).
+  useEffect(() => {
+    const sessionsByTherapist = {};
+    todayAppointments.forEach(a => {
+      if (!a.therapistId) return;
+      if (!sessionsByTherapist[a.therapistId]) sessionsByTherapist[a.therapistId] = { sessions: 0, nextSlot: null };
+      sessionsByTherapist[a.therapistId].sessions += 1;
+      if (!sessionsByTherapist[a.therapistId].nextSlot) sessionsByTherapist[a.therapistId].nextSlot = a.time;
+    });
+    const therapistSchedule = therapists.map(t => {
+      const s = sessionsByTherapist[t.id];
+      return {
+        id: t.id,
+        therapist: t.name,
+        sessions: s ? s.sessions : 0,
+        nextSlot: s ? s.nextSlot : null,
+        availability: s && s.sessions > 0 ? 'busy' : 'available',
+      };
+    });
+    setDashboardData(prev => ({ ...prev, therapistSchedule }));
+  }, [todayAppointments, therapists]);
 
   // Keep the greeting in sync with the current time in India
   useEffect(() => {
@@ -277,11 +293,12 @@ const Dashboard = () => {
       const today = new Date().toISOString().split('T')[0];
 
       // Load all necessary data (appointments handled by real-time listener)
-      const [patients, discharges, invoices, leads] = await Promise.all([
+      const [patients, discharges, invoices, leads, ipCaseSheets] = await Promise.all([
         getDocs(collection(db, 'patients')),
         getDocs(collection(db, 'discharges')),
         getDocs(collection(db, 'invoices')),
         getDocs(collection(db, 'leads')),
+        getDocs(collection(db, 'ip_case_sheets')),
       ]);
 
       const patientsData = patients.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -289,8 +306,13 @@ const Dashboard = () => {
       const invoicesData = invoices.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const leadsData = leads.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+      // Keyed by patient id — bed/ward/diagnosis live on the IP case sheet,
+      // not on the patient document itself.
+      const ipCaseSheetsById = {};
+      ipCaseSheets.docs.forEach(d => { ipCaseSheetsById[d.id] = d.data(); });
+
       // Filter today's discharges
-      const todayDischarges = dischargesData.filter(d => 
+      const todayDischarges = dischargesData.filter(d =>
         d.discharge_date && d.discharge_date.startsWith(today) && d.status !== 'completed'
       );
 
@@ -303,20 +325,48 @@ const Dashboard = () => {
       const hotLeads = leadsData.filter(l => l.priority === 'hot' && l.status !== 'converted');
 
       // Get pending follow-ups
-      const pendingFollowups = leadsData.filter(l => 
-        l.next_followup && 
-        new Date(l.next_followup) <= new Date() && 
+      const pendingFollowups = leadsData.filter(l =>
+        l.next_followup &&
+        new Date(l.next_followup) <= new Date() &&
         l.status !== 'converted'
       );
 
-      // IP patients loaded from Firebase discharges/patients data
-      const ipPatients = patientsData.filter(p => p.admission_type === 'ip' && p.status === 'admitted');
+      // Lead → patient conversion snapshot (same formula LeadManagement.jsx
+      // already uses for its own stat card).
+      const convertedLeads = leadsData.filter(l => l.status === 'converted');
+      const conversionRate = leadsData.length > 0
+        ? ((convertedLeads.length / leadsData.length) * 100).toFixed(1)
+        : 0;
 
-      // Pending admissions from patients collection
-      const pendingAdmissions = patientsData.filter(p => p.admission_type === 'ip' && p.status === 'pending_admission');
+      // Currently-admitted IP patients: real patient_type field, excluding
+      // ones still awaiting admission approval or already discharged.
+      // Patients registered before admission_status existed have neither
+      // value set — treat them as already-admitted rather than dropping
+      // them from the list.
+      const ipPatients = patientsData
+        .filter(p => p.patient_type === 'IP' && p.admission_status !== 'pending_admission' && p.admission_status !== 'discharged')
+        .map(p => {
+          const cs = ipCaseSheetsById[p.id] || {};
+          const admissionDate = p.admission_date || p.created_at;
+          return {
+            id: p.id,
+            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+            room: [cs.ward, cs.bed_no ? `Bed ${cs.bed_no}` : null].filter(Boolean).join(' · ') || '—',
+            admission: admissionDate,
+            diagnosis: cs.admin_diagnosis || '—',
+            daysAdmitted: admissionDate ? Math.max(0, Math.floor((Date.now() - new Date(admissionDate)) / (1000 * 60 * 60 * 24))) : null,
+          };
+        });
 
-      // Therapist schedule - empty until connected to scheduling module
-      const therapistSchedule = [];
+      // Pending admission requests — new IP registrations awaiting approval.
+      const pendingAdmissions = patientsData
+        .filter(p => p.patient_type === 'IP' && p.admission_status === 'pending_admission')
+        .map(p => ({
+          id: p.id,
+          patient: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+          mrd_number: p.mrd_number || p.patient_number || '',
+          requested_at: p.created_at,
+        }));
 
       setDashboardData(prev => ({
         ...prev,
@@ -325,7 +375,6 @@ const Dashboard = () => {
         todayDischarges,
         outstandingPayments: invoicesData.filter(inv => inv.status !== 'paid'),
         leads: pendingFollowups,
-        therapistSchedule,
         stats: {
           ...prev.stats,
           ipPatientsCount: ipPatients.length,
@@ -333,7 +382,10 @@ const Dashboard = () => {
           todayDischargesCount: todayDischarges.length,
           outstandingAmount: outstanding,
           hotLeads: hotLeads.length,
-          pendingFollowups: pendingFollowups.length
+          pendingFollowups: pendingFollowups.length,
+          totalLeads: leadsData.length,
+          convertedLeads: convertedLeads.length,
+          conversionRate,
         }
       }));
 
@@ -378,6 +430,20 @@ const Dashboard = () => {
       alert('Failed to add appointment. Please try again.');
     } finally {
       setSavingAppointment(false);
+    }
+  };
+
+  const admitPatient = async (patient) => {
+    if (!window.confirm(`Admit ${patient.patient}?`)) return;
+    try {
+      await updateDoc(doc(db, 'patients', patient.id), {
+        admission_status: 'admitted',
+        admission_date: new Date().toISOString().split('T')[0],
+      });
+      await loadDashboardData();
+    } catch (error) {
+      console.error('Error admitting patient:', error);
+      alert('Failed to admit patient. Please try again.');
     }
   };
 
@@ -594,26 +660,24 @@ const Dashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Patient</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Room</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admission</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Condition</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Diagnosis</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {dashboardData.ipPatients.map(patient => (
+                  {dashboardData.ipPatients.length === 0 ? (
+                    <tr><td colSpan="5" className="px-6 py-8 text-center text-sm text-gray-400">No patients currently admitted</td></tr>
+                  ) : dashboardData.ipPatients.map(patient => (
                     <tr key={patient.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">{patient.name}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">{patient.room}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">
-                        {new Date(patient.admission).toLocaleDateString()}
+                        {patient.admission ? formatDateOnly(patient.admission) : '—'}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{patient.condition}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{patient.diagnosis}</td>
                       <td className="px-6 py-4 text-center">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          patient.status === 'stable' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-blue-100 text-blue-800'
-                        }`}>
-                          {patient.status.charAt(0).toUpperCase() + patient.status.slice(1)}
+                        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                          {patient.daysAdmitted !== null ? `Day ${patient.daysAdmitted + 1}` : '—'}
                         </span>
                       </td>
                     </tr>
@@ -626,6 +690,32 @@ const Dashboard = () => {
 
         {/* Right Column - 1/3 width */}
         <div className="space-y-6">
+          {/* Lead Conversion Snapshot */}
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <Phone className="w-5 h-5 text-white" />
+                <h3 className="font-bold text-white">Lead Conversion</h3>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <p className="text-2xl font-bold text-gray-900">{dashboardData.stats.totalLeads || 0}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Called In</p>
+                </div>
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <p className="text-2xl font-bold text-green-700">{dashboardData.stats.convertedLeads || 0}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Became Patients</p>
+                </div>
+              </div>
+              <div className="text-center p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                <p className="text-3xl font-bold text-indigo-700">{dashboardData.stats.conversionRate || 0}%</p>
+                <p className="text-xs text-indigo-600 mt-0.5">Conversion Rate</p>
+              </div>
+            </div>
+          </div>
+
           {/* Pending Admissions */}
           <div className="bg-white rounded-xl shadow-md overflow-hidden">
             <div className="bg-gradient-to-r from-orange-600 to-orange-700 px-6 py-4">
@@ -641,10 +731,15 @@ const Dashboard = () => {
                 dashboardData.pendingAdmissions.map(admission => (
                   <div key={admission.id} className="p-3 bg-orange-50 rounded-lg border border-orange-200">
                     <p className="font-semibold text-gray-900 text-sm">{admission.patient}</p>
-                    <p className="text-xs text-gray-600 mt-1">{admission.package}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-orange-700 font-medium">Today</span>
-                      <button className="text-xs bg-orange-600 text-white px-3 py-1 rounded hover:bg-orange-700">
+                    <p className="text-xs text-gray-600 mt-1">
+                      {admission.mrd_number && <span className="font-mono">{admission.mrd_number}</span>}
+                      {admission.requested_at && ` · Requested ${formatDateOnly(admission.requested_at)}`}
+                    </p>
+                    <div className="flex items-center justify-end mt-2">
+                      <button
+                        onClick={() => admitPatient(admission)}
+                        className="text-xs bg-orange-600 text-white px-3 py-1 rounded hover:bg-orange-700"
+                      >
                         Admit
                       </button>
                     </div>
@@ -672,7 +767,10 @@ const Dashboard = () => {
                     <p className="text-xs text-gray-600 mt-1">
                       Pending: ₹{discharge.pending_amount?.toLocaleString() || 0}
                     </p>
-                    <button className="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 w-full">
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'discharge' }))}
+                      className="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 w-full"
+                    >
                       Complete Discharge
                     </button>
                   </div>
