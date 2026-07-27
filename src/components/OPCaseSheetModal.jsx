@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
+import { X, Printer, Save, Plus, Trash2, Pencil } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, deleteDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
+import InvestigationAttachments from './InvestigationAttachments';
 import { summarizeMedicineItems } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
-import { formatDateOnly } from '../lib/formatDate';
+import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 
 const TAB_SEQUENCE = ['assessment', 'history'];
 
@@ -75,7 +76,7 @@ const emptyForm = () => ({
   aharasakthi: '', vyayamasakthi: '', vayah: '',
   dosham: '', dushyam: '', agni: '', kalam: '', srotas: '', dasavidha_other: '',
 
-  investigations: '', provisional_diagnosis: '', diagnosis: '',
+  investigations: '', provisional_diagnosis: '', diagnosis: '', investigation_attachments: [],
 });
 
 const emptyVisitEntry = () => ({
@@ -86,9 +87,11 @@ const emptyVisitEntry = () => ({
   treatment_notes: '',
   treatment_items: [],
   pain_intensity_score: '',
-  next_followup_date: '',
+  treatment_days: 1,
   signed_by: '',
 });
+
+const TREATMENT_DAYS_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
 const Field = ({ label, value, onChange, placeholder, type = 'text' }) => (
   <div>
@@ -376,6 +379,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
   const [loadingVisits, setLoadingVisits] = useState(false);
   const [visitForm, setVisitForm] = useState(emptyVisitEntry());
   const [savingVisit, setSavingVisit] = useState(false);
+  const [editingVisitId, setEditingVisitId] = useState(null);
   const [doctors, setDoctors] = useState([]);
   const tabContainerRef = useRef(null);
 
@@ -460,19 +464,46 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     }
   };
 
-  const handleAddVisitNote = async () => {
+  const handleSaveVisitNote = async () => {
     if (!visitForm.date) { alert('Please select a date.'); return; }
     try {
       setSavingVisit(true);
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-      await addDoc(collection(db, 'op_visit_notes'), {
-        ...visitForm,
-        patient_id: patientId,
-        patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
-        created_at: new Date().toISOString(),
-        created_by: currentUser.email || '',
-      });
+      const now = new Date().toISOString();
+      const { treatment_days, ...entryFields } = visitForm;
+
+      if (editingVisitId) {
+        await updateDoc(doc(db, 'op_visit_notes', editingVisitId), {
+          ...entryFields,
+          updated_at: now,
+          updated_by: currentUser.email || '',
+        });
+      } else {
+        // "Treatment Days" pre-schedules one entry per consecutive day, all
+        // starting with the same findings/medication/treatment — the doctor
+        // then edits each day's entry individually as that day happens.
+        const days = Math.max(1, Math.min(15, Number(treatment_days) || 1));
+        const groupId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const batch = writeBatch(db);
+        for (let i = 0; i < days; i++) {
+          const ref = doc(collection(db, 'op_visit_notes'));
+          batch.set(ref, {
+            ...entryFields,
+            date: addDaysToDateString(visitForm.date, i),
+            patient_id: patientId,
+            patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
+            treatment_group_id: groupId,
+            day_number: i + 1,
+            total_days: days,
+            created_at: now,
+            created_by: currentUser.email || '',
+          });
+        }
+        await batch.commit();
+      }
+
       setVisitForm(emptyVisitEntry());
+      setEditingVisitId(null);
       await loadVisitNotes();
     } catch (e) {
       alert('Error saving visit entry: ' + e.message);
@@ -481,11 +512,32 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     }
   };
 
+  const handleEditVisitNote = (entry) => {
+    setEditingVisitId(entry.id);
+    setVisitForm({
+      date: entry.date || new Date().toISOString().split('T')[0],
+      clinical_findings: entry.clinical_findings || '',
+      medication_notes: entry.medication_notes || '',
+      medicine_items: entry.medicine_items || [],
+      treatment_notes: entry.treatment_notes || '',
+      treatment_items: entry.treatment_items || [],
+      pain_intensity_score: entry.pain_intensity_score || '',
+      treatment_days: 1,
+      signed_by: entry.signed_by || '',
+    });
+  };
+
+  const handleCancelEditVisit = () => {
+    setEditingVisitId(null);
+    setVisitForm(emptyVisitEntry());
+  };
+
   const handleDeleteVisitNote = async (id) => {
     if (!window.confirm('Remove this visit entry?')) return;
     try {
       await deleteDoc(doc(db, 'op_visit_notes', id));
       setVisitNotes(prev => prev.filter(v => v.id !== id));
+      if (editingVisitId === id) handleCancelEditVisit();
     } catch (e) {
       alert('Error deleting entry: ' + e.message);
     }
@@ -744,6 +796,11 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                   </div>
 
                   <TextArea label="Investigations (Done / Suggested)" rows={3} value={form.investigations} onChange={v => set('investigations', v)} />
+                  <InvestigationAttachments
+                    patientId={patientId}
+                    attachments={form.investigation_attachments}
+                    onChange={(items) => set('investigation_attachments', items)}
+                  />
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Provisional Diagnosis" value={form.provisional_diagnosis} onChange={v => set('provisional_diagnosis', v)} />
                     <Field label="Diagnosis" value={form.diagnosis} onChange={v => set('diagnosis', v)} />
@@ -755,12 +812,30 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
               {activeTab === 'visits' && (
                 <div className="space-y-5">
                   <div className="border border-gray-200 rounded-xl p-4 bg-gray-50" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e)}>
-                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">Add Visit Entry</h3>
+                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">
+                      {editingVisitId ? `Editing Entry — ${fmtDate(visitForm.date)}` : 'Add Visit Entry'}
+                    </h3>
                     <div className="grid grid-cols-3 gap-3 mb-3">
                       <Field label="Date" type="date" value={visitForm.date} onChange={v => setVisitForm(p => ({ ...p, date: v }))} />
                       <Field label="Pain Intensity Score" value={visitForm.pain_intensity_score} onChange={v => setVisitForm(p => ({ ...p, pain_intensity_score: v }))} />
-                      <Field label="Next Follow-up Date" type="date" value={visitForm.next_followup_date} onChange={v => setVisitForm(p => ({ ...p, next_followup_date: v }))} />
+                      {!editingVisitId && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Treatment Days</label>
+                          <select
+                            value={visitForm.treatment_days}
+                            onChange={e => setVisitForm(p => ({ ...p, treatment_days: Number(e.target.value) }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                          >
+                            {TREATMENT_DAYS_OPTIONS.map(n => <option key={n} value={n}>{n} day{n > 1 ? 's' : ''}</option>)}
+                          </select>
+                        </div>
+                      )}
                     </div>
+                    {!editingVisitId && visitForm.treatment_days > 1 && (
+                      <p className="text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 mb-3">
+                        This will create {visitForm.treatment_days} entries, one per day from {fmtDate(visitForm.date)} to {fmtDate(addDaysToDateString(visitForm.date, visitForm.treatment_days - 1))}, so you can fill in each day's findings and medication as treatment progresses.
+                      </p>
+                    )}
                     <div className="space-y-3 mb-3">
                       <TextArea label="Clinical Findings" rows={2} value={visitForm.clinical_findings} onChange={v => setVisitForm(p => ({ ...p, clinical_findings: v }))} />
                       <MedicineTable
@@ -788,13 +863,28 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                       />
                       <Field label="Signed By (Doctor)" value={visitForm.signed_by} onChange={v => setVisitForm(p => ({ ...p, signed_by: v }))} />
                     </div>
-                    <button
-                      onClick={handleAddVisitNote}
-                      disabled={savingVisit}
-                      className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:opacity-60"
-                    >
-                      <Plus className="w-4 h-4" /> {savingVisit ? 'Saving...' : 'Add Entry'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveVisitNote}
+                        disabled={savingVisit}
+                        className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:opacity-60"
+                      >
+                        <Plus className="w-4 h-4" />
+                        {savingVisit
+                          ? 'Saving...'
+                          : editingVisitId
+                            ? 'Update Entry'
+                            : visitForm.treatment_days > 1 ? `Add ${visitForm.treatment_days} Entries` : 'Add Entry'}
+                      </button>
+                      {editingVisitId && (
+                        <button
+                          onClick={handleCancelEditVisit}
+                          className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                        >
+                          Cancel Edit
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {loadingVisits ? (
@@ -806,13 +896,21 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                   ) : (
                     <div className="space-y-3">
                       {visitNotes.map(v => (
-                        <div key={v.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div key={v.id} className={`border rounded-xl overflow-hidden ${editingVisitId === v.id ? 'border-teal-400 ring-1 ring-teal-200' : 'border-gray-200'}`}>
                           <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-                            <span className="font-semibold text-gray-800 text-sm">{fmtDate(v.date)}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-800 text-sm">{fmtDate(v.date)}</span>
+                              {v.total_days > 1 && (
+                                <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">Day {v.day_number} of {v.total_days}</span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2">
                               {v.next_followup_date && (
                                 <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Next: {fmtDate(v.next_followup_date)}</span>
                               )}
+                              <button onClick={() => handleEditVisitNote(v)} className="p-1 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
                               <button onClick={() => handleDeleteVisitNote(v.id)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

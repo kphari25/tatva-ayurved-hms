@@ -3,6 +3,7 @@ import { X, Printer, Save, Plus } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import IPDailyProgressModal from './IPDailyProgressModal';
+import InvestigationAttachments from './InvestigationAttachments';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly } from '../lib/formatDate';
@@ -63,6 +64,7 @@ const emptyForm = () => ({
   ayurvedic_diagnosis: '',
   investigations: '',
   procedure: '',
+  investigation_attachments: [],
 });
 
 const Field = ({ label, value, onChange, placeholder, type = 'text' }) => (
@@ -722,6 +724,11 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
                 <div className="space-y-5" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e, () => advanceTab('investigations'))}>
                   <TextArea label="Investigations" rows={8} value={form.investigations} onChange={v => set('investigations', v)}
                     placeholder="Lab reports, imaging, and other investigation notes…" />
+                  <InvestigationAttachments
+                    patientId={patientId}
+                    attachments={form.investigation_attachments}
+                    onChange={(items) => set('investigation_attachments', items)}
+                  />
                   <TextArea label="Procedure" rows={8} value={form.procedure} onChange={v => set('procedure', v)}
                     placeholder="Procedure notes…" />
                 </div>

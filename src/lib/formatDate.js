@@ -9,3 +9,18 @@ export const formatDateOnly = (dateStr, options = { day: 'numeric', month: 'shor
   const [, y, m, d] = match;
   return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('en-IN', options);
 };
+
+// Adds `days` to a plain YYYY-MM-DD date string and returns another
+// YYYY-MM-DD string, via local Date components (see note above) rather than
+// parsing the string as UTC.
+export const addDaysToDateString = (dateStr, days) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  if (!match) return dateStr;
+  const [, y, m, d] = match;
+  const dt = new Date(Number(y), Number(m) - 1, Number(d));
+  dt.setDate(dt.getDate() + days);
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};

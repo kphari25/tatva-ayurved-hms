@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// Case-sheet investigation attachments (blood reports, scans, prescriptions).
+//
+// NOTE: this app does not actually sign users in via Firebase Auth — its
+// login screen is a custom localStorage-based check, not the Firebase Auth
+// SDK — so `request.auth` is always null here. These rules intentionally
+// don't gate on it (matching the same open trust model the rest of the app's
+// Firestore data already relies on); they only constrain file type/size on
+// upload. If real Firebase Auth sign-in is added later, tighten this to
+// require it.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /case_sheets/{patientId}/investigations/{fileName} {
+      allow read: if true;
+      allow write: if request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+  }
+}
