@@ -1,22 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Plus } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc, addDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import IPDailyProgressModal from './IPDailyProgressModal';
-import TreatmentPickerButton from './TreatmentPickerButton';
-import TreatmentItemsList from './TreatmentItemsList';
-import MedicineTable from './MedicineTable';
-import { summarizeMedicineItems } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly } from '../lib/formatDate';
 
 const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
-
-const appendTreatment = (currentText, treatment) => {
-  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
-  return currentText ? `${currentText}, ${entry}` : entry;
-};
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -55,9 +46,7 @@ const emptyForm = () => ({
   family_history: '',
   current_medicines: '',
   medication_details: '',
-  medicine_items: [],
   treatment_details: '',
-  treatment_items: [],
 
   diet: '', appetite: '', bowel: '', micturition: '', sleep: '',
   habits_addiction: '', hypersensitivity: '', hereditary: '', menstrual_history: '',
@@ -407,40 +396,6 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
         created_by: form.created_by || currentUser.email || '',
       }, { merge: true });
 
-      // Also reflect medication/treatment onto today's Daily Log entry so it's
-      // visible there without a separate "Add Daily Entry" step.
-      const hasLoggable = (form.medicine_items || []).length > 0 || form.treatment_details || (form.treatment_items || []).length > 0;
-      if (hasLoggable) {
-        const today = new Date().toISOString().split('T')[0];
-        const existing = await getDocs(query(
-          collection(db, 'daily_progress'),
-          where('patient_id', '==', patientId),
-          where('date', '==', today)
-        ));
-        const logFields = {
-          medicines_given: form.medication_details,
-          medicine_items: form.medicine_items || [],
-          treatment_performed: form.treatment_details,
-          treatment_items: form.treatment_items || [],
-        };
-        if (!existing.empty) {
-          await updateDoc(doc(db, 'daily_progress', existing.docs[0].id), {
-            ...logFields,
-            updated_at: now,
-            updated_by: currentUser.email || '',
-          });
-        } else {
-          await addDoc(collection(db, 'daily_progress'), {
-            ...logFields,
-            patient_id: patientId,
-            date: today,
-            created_at: now,
-            created_by: currentUser.email || '',
-          });
-        }
-        await loadDailyProgress();
-      }
-
       alert('✅ Case sheet saved!');
     } catch (e) {
       alert('Error saving: ' + e.message);
@@ -576,28 +531,19 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
                   <TextArea label="History of Past Illness" rows={3} value={form.history_past_illness} onChange={v => set('history_past_illness', v)} />
                   <TextArea label="Family History" rows={2} value={form.family_history} onChange={v => set('family_history', v)} />
                   <TextArea label="Presently Taking the Following Medicines" rows={2} value={form.current_medicines} onChange={v => set('current_medicines', v)} />
-                  <MedicineTable
-                    items={form.medicine_items}
-                    onChange={(items) => setForm(prev => ({ ...prev, medicine_items: items, medication_details: summarizeMedicineItems(items) }))}
+                  <TextArea
+                    label="Medication Details"
+                    rows={3}
+                    value={form.medication_details}
+                    onChange={v => set('medication_details', v)}
+                    placeholder="Medications reported by the patient (as told to you) — the structured, per-day medication list is entered in the Vitals & Daily Log tab."
                   />
                   <TextArea
                     label="Treatment Details"
-                    rows={2}
+                    rows={3}
                     value={form.treatment_details}
                     onChange={v => set('treatment_details', v)}
-                    actions={
-                      <TreatmentPickerButton
-                        onSelect={(t) => setForm(prev => ({
-                          ...prev,
-                          treatment_details: appendTreatment(prev.treatment_details, t),
-                          treatment_items: [...(prev.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
-                        }))}
-                      />
-                    }
-                  />
-                  <TreatmentItemsList
-                    items={form.treatment_items}
-                    onRemove={(idx) => setForm(prev => ({ ...prev, treatment_items: prev.treatment_items.filter((_, i) => i !== idx) }))}
+                    placeholder="Treatment history reported by the patient — the structured, per-day treatment list is entered in the Vitals & Daily Log tab."
                   />
 
                   <SectionTitle>Personal History</SectionTitle>

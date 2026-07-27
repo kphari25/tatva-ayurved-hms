@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc, updateDoc, collection, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
 import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
@@ -49,7 +49,7 @@ const emptyForm = () => ({
 
   known_allergies: '', presenting_complaints: '', pain_assessment: '',
 
-  history_present_illness: '', history_previous_illness: '', medication_details: '', medicine_items: [], treatment_details: '', treatment_items: [],
+  history_present_illness: '', history_previous_illness: '', medication_details: '', treatment_details: '',
 
   dm: '', htn: '', hyperlipidemia: '', ihd: '', thyroid_dysfunction: '',
   comorbidity_other_label: '', comorbidity_other_value: '',
@@ -452,42 +452,6 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
         created_by: form.created_by || currentUser.email || '',
       }, { merge: true });
 
-      // Also reflect medication/treatment onto today's Visit Log entry so it's
-      // visible there without a separate "Add Visit Entry" step.
-      const hasLoggable = (form.medicine_items || []).length > 0 || form.treatment_details || (form.treatment_items || []).length > 0;
-      if (hasLoggable) {
-        const today = new Date().toISOString().split('T')[0];
-        const existing = await getDocs(query(
-          collection(db, 'op_visit_notes'),
-          where('patient_id', '==', patientId),
-          where('date', '==', today)
-        ));
-        const logFields = {
-          medication_notes: form.medication_details,
-          medicine_items: form.medicine_items || [],
-          treatment_notes: form.treatment_details,
-          treatment_items: form.treatment_items || [],
-          signed_by: form.physician,
-        };
-        if (!existing.empty) {
-          await updateDoc(doc(db, 'op_visit_notes', existing.docs[0].id), {
-            ...logFields,
-            updated_at: now,
-            updated_by: currentUser.email || '',
-          });
-        } else {
-          await addDoc(collection(db, 'op_visit_notes'), {
-            ...logFields,
-            patient_id: patientId,
-            patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
-            date: today,
-            created_at: now,
-            created_by: currentUser.email || '',
-          });
-        }
-        await loadVisitNotes();
-      }
-
       alert('✅ Case sheet saved!');
     } catch (e) {
       alert('Error saving: ' + e.message);
@@ -682,28 +646,19 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                 <div className="space-y-5" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e, () => advanceTab('history'))}>
                   <TextArea label="History of Present Illness" rows={3} value={form.history_present_illness} onChange={v => set('history_present_illness', v)} />
                   <TextArea label="History of Previous Illness" rows={3} value={form.history_previous_illness} onChange={v => set('history_previous_illness', v)} />
-                  <MedicineTable
-                    items={form.medicine_items}
-                    onChange={(items) => setForm(prev => ({ ...prev, medicine_items: items, medication_details: summarizeMedicineItems(items) }))}
+                  <TextArea
+                    label="Medication Details"
+                    rows={3}
+                    value={form.medication_details}
+                    onChange={v => set('medication_details', v)}
+                    placeholder="Medications reported by the patient (as told to you) — the structured, per-visit medication list is entered in the Visit Log tab."
                   />
                   <TextArea
                     label="Treatment Details"
-                    rows={2}
+                    rows={3}
                     value={form.treatment_details}
                     onChange={v => set('treatment_details', v)}
-                    actions={
-                      <TreatmentPickerButton
-                        onSelect={(t) => setForm(prev => ({
-                          ...prev,
-                          treatment_details: appendTreatment(prev.treatment_details, t),
-                          treatment_items: [...(prev.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
-                        }))}
-                      />
-                    }
-                  />
-                  <TreatmentItemsList
-                    items={form.treatment_items}
-                    onRemove={(idx) => setForm(prev => ({ ...prev, treatment_items: prev.treatment_items.filter((_, i) => i !== idx) }))}
+                    placeholder="Treatment history reported by the patient — the structured, per-visit treatment list is entered in the Visit Log tab."
                   />
 
                   <SectionTitle>Comorbidities</SectionTitle>
