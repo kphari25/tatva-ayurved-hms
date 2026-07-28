@@ -440,7 +440,34 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
+  const hasUnsavedVisitEntry = () => {
+    if (activeTab !== 'visits') return false;
+    const f = visitForm;
+    return !!(
+      (f.clinical_findings && f.clinical_findings.trim()) ||
+      (f.medication_notes && f.medication_notes.trim()) ||
+      (f.treatment_notes && f.treatment_notes.trim()) ||
+      (f.medicine_items && f.medicine_items.length > 0) ||
+      (f.treatment_items && f.treatment_items.length > 0) ||
+      (f.pain_intensity_score !== '' && f.pain_intensity_score != null) ||
+      (f.signed_by && f.signed_by.trim())
+    );
+  };
+
   const handleSave = async () => {
+    // The header Save button only writes Initial Assessment / History &
+    // Examination — it doesn't know about the separate "Add Entry" form on
+    // the Visit Log tab. Without this check, text typed there but saved via
+    // this button instead of "Add Entry" is silently discarded.
+    if (hasUnsavedVisitEntry()) {
+      const proceed = window.confirm(
+        'You have an unsaved Visit Log entry on this tab.\n\n' +
+        'This Save button only saves the Initial Assessment and History & Examination sections — it does NOT save the Visit Log entry.\n\n' +
+        'Go to the Visit Log tab and click "Add Entry" to save it.\n\n' +
+        'Click OK to save the case sheet anyway (the Visit Log entry will stay unsaved), or Cancel to go back and click "Add Entry" first.'
+      );
+      if (!proceed) return;
+    }
     try {
       setSaving(true);
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
