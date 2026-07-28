@@ -580,10 +580,16 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
   };
 
   const autoPopulateFromProgress = (records) => {
-    // Build treatment summary from daily records
-    const treatmentLines = records
-      .filter(r => r.treatment_performed)
-      .map(r => `${new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ${r.treatment_performed}`);
+    // Daily Treatment Log entries, one per recorded IP daily-progress day —
+    // this is the field the "Daily Treatment Log" section/print actually reads.
+    const dailyEntries = records
+      .filter(r => r.treatment_performed || r.medicines_given || r.doctors_notes)
+      .map(r => ({
+        date: r.date || '',
+        treatment: r.treatment_performed || '',
+        medicines: r.medicines_given || '',
+        notes: r.doctors_notes || '',
+      }));
 
     const medicineLines = records
       .filter(r => r.medicines_given)
@@ -602,10 +608,10 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
         spo2: lastWithVitals?.spo2 || prev.vitals.spo2,
         weight: lastWithVitals?.weight || prev.vitals.weight,
       },
-      treatment_given: prev.treatment_given.length > 0
-        ? prev.treatment_given
-        : treatmentLines.length > 0 ? treatmentLines : prev.treatment_given,
-      internal_medicines: prev.internal_medicines.length > 0
+      daily_treatments: (prev.daily_treatments || []).length > 0
+        ? prev.daily_treatments
+        : dailyEntries,
+      internal_medicines: prev.internal_medicines.filter(Boolean).length > 0
         ? prev.internal_medicines
         : medicineLines.length > 0 ? medicineLines : prev.internal_medicines,
     }));
