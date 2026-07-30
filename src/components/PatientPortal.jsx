@@ -40,6 +40,10 @@ const PatientPortal = ({ onAddPatient }) => {
   const [prescriptionPatient, setPrescriptionPatient] = useState(null);
   const [showEditPatient, setShowEditPatient] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
+  const [showAssignDoctor, setShowAssignDoctor] = useState(false);
+  const [assignDoctorPatient, setAssignDoctorPatient] = useState(null);
+  const [assignDoctorName, setAssignDoctorName] = useState('');
+  const [assignDoctorSaving, setAssignDoctorSaving] = useState(false);
 
   // Appointment scheduling state
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
@@ -200,21 +204,28 @@ const PatientPortal = ({ onAddPatient }) => {
     }
   };
 
-  const handleAssignDoctor = async (patient) => {
-    const doctorName = window.prompt(
-      `Assign doctor to ${patient.first_name} ${patient.last_name}:`,
-      patient.assigned_doctor || ''
-    );
-    if (doctorName === null) return;
+  const openAssignDoctorModal = (patient) => {
+    setAssignDoctorPatient(patient);
+    setAssignDoctorName(patient.assigned_doctor || '');
+    setShowAssignDoctor(true);
+  };
+
+  const handleSaveAssignDoctor = async () => {
+    const patient = assignDoctorPatient;
+    setAssignDoctorSaving(true);
     try {
-      await updateDoc(doc(db, 'patients', patient.id || patient.firebaseId), { assigned_doctor: doctorName });
+      await updateDoc(doc(db, 'patients', patient.id || patient.firebaseId), { assigned_doctor: assignDoctorName });
       setPatients(prev => prev.map(p =>
         (p.id || p.firebaseId) === (patient.id || patient.firebaseId)
-          ? { ...p, assigned_doctor: doctorName }
+          ? { ...p, assigned_doctor: assignDoctorName }
           : p
       ));
+      setShowAssignDoctor(false);
+      setAssignDoctorPatient(null);
     } catch (e) {
       alert('Failed to assign doctor: ' + e.message);
+    } finally {
+      setAssignDoctorSaving(false);
     }
   };
 
@@ -606,7 +617,7 @@ const PatientPortal = ({ onAddPatient }) => {
                         </button>
                         {/* Assign Doctor */}
                         <button
-                          onClick={() => handleAssignDoctor(patient)}
+                          onClick={() => openAssignDoctorModal(patient)}
                           className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                           title={patient.assigned_doctor ? `Doctor: ${patient.assigned_doctor}` : 'Assign Doctor'}
                         >
@@ -925,6 +936,73 @@ const PatientPortal = ({ onAddPatient }) => {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Doctor Modal */}
+      {showAssignDoctor && assignDoctorPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Assign Doctor</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {assignDoctorPatient.first_name} {assignDoctorPatient.last_name}
+                  {assignDoctorPatient.mrd_number && <span className="ml-2 text-teal-600 font-mono">{assignDoctorPatient.mrd_number}</span>}
+                </p>
+              </div>
+              <button onClick={() => setShowAssignDoctor(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Stethoscope className="w-4 h-4 inline mr-1" />
+                  Doctor / Therapist
+                </label>
+                <select
+                  value={doctors.some(d => (`${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name) === assignDoctorName) ? assignDoctorName : ''}
+                  onChange={e => setAssignDoctorName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none mb-2"
+                >
+                  <option value="">-- Select from staff --</option>
+                  {doctors.map(d => {
+                    const name = `${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name;
+                    return (
+                      <option key={d.id} value={name}>
+                        {name} — {d.designation || d.department || d.role || ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Or type a doctor name manually"
+                  value={assignDoctorName}
+                  onChange={e => setAssignDoctorName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-1">
+                <button
+                  onClick={() => setShowAssignDoctor(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveAssignDoctor}
+                  disabled={assignDoctorSaving}
+                  className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-60"
+                >
+                  {assignDoctorSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
