@@ -547,6 +547,12 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
         getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
           if (snap.exists()) autoPopulateFromCaseSheet(snap.data());
         }).catch(() => {});
+
+        // Load OP Case Sheet vitals — takes priority over daily-progress vitals
+        // for "on admission" since it's recorded at the actual admitting visit.
+        getDoc(doc(db, 'op_case_sheets', patientId)).then(snap => {
+          if (snap.exists()) autoPopulateVitalsFromOpCaseSheet(snap.data());
+        }).catch(() => {});
       }
     }
   }, []);
@@ -579,6 +585,19 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
     }));
   };
 
+  const autoPopulateVitalsFromOpCaseSheet = (cs) => {
+    setForm(prev => ({
+      ...prev,
+      vitals: {
+        ...prev.vitals,
+        bp: cs.bp || prev.vitals.bp,
+        temperature: cs.temperature || prev.vitals.temperature,
+        pulse: cs.pulse || prev.vitals.pulse,
+        weight: cs.weight || prev.vitals.weight,
+      },
+    }));
+  };
+
   const autoPopulateFromProgress = (records) => {
     // Daily Treatment Log entries, one per recorded IP daily-progress day —
     // this is the field the "Daily Treatment Log" section/print actually reads.
@@ -595,18 +614,19 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
       .filter(r => r.medicines_given)
       .map(r => `${new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ${r.medicines_given}`);
 
-    // Use last known vitals
+    // Use last known vitals as a fallback — OP Case Sheet vitals (loaded separately)
+    // take priority for "on admission", so only fill fields still blank here.
     const lastWithVitals = [...records].reverse().find(r => r.bp_morning || r.temperature);
 
     setForm(prev => ({
       ...prev,
       vitals: {
         ...prev.vitals,
-        bp: lastWithVitals?.bp_morning || prev.vitals.bp,
-        temperature: lastWithVitals?.temperature || prev.vitals.temperature,
-        pulse: lastWithVitals?.pulse || prev.vitals.pulse,
-        spo2: lastWithVitals?.spo2 || prev.vitals.spo2,
-        weight: lastWithVitals?.weight || prev.vitals.weight,
+        bp: prev.vitals.bp || lastWithVitals?.bp_morning || '',
+        temperature: prev.vitals.temperature || lastWithVitals?.temperature || '',
+        pulse: prev.vitals.pulse || lastWithVitals?.pulse || '',
+        spo2: prev.vitals.spo2 || lastWithVitals?.spo2 || '',
+        weight: prev.vitals.weight || lastWithVitals?.weight || '',
       },
       daily_treatments: (prev.daily_treatments || []).length > 0
         ? prev.daily_treatments
