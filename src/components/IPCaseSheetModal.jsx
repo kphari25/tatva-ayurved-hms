@@ -17,8 +17,8 @@ const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
 const PRINT_SECTIONS = [
   { id: 'sheet', label: 'Case Sheet' },
   { id: 'history', label: 'History & Examination' },
-  { id: 'vitals', label: 'Vitals & Daily Log' },
   { id: 'investigations', label: 'Investigations & Procedure' },
+  { id: 'vitals', label: 'Vitals & Daily Log' },
 ];
 
 const TREATMENT_DAYS_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
@@ -256,7 +256,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
 <p style="white-space:pre-line;">${form.procedure}</p>`;
 
   const availableSections = { sheet: sheetHTML, history: historyHTML, vitals: vitalsHTML, investigations: investigationsHTML };
-  const orderedKeys = ['sheet', 'history', 'vitals', 'investigations'];
+  const orderedKeys = ['sheet', 'history', 'investigations', 'vitals'];
   const selectedKeys = sectionId === 'all' ? orderedKeys : orderedKeys.filter(k => k === sectionId);
   const bodyHTML = selectedKeys
     .map((k, i) => (i > 0 ? '<div class="page-break"></div>' : '') + availableSections[k])
@@ -558,8 +558,8 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
   const tabs = [
     { id: 'sheet', label: 'Case Sheet' },
     { id: 'history', label: 'History & Examination' },
-    { id: 'vitals', label: `Vitals & Daily Log ${dailyProgress.length > 0 ? `(${dailyProgress.length})` : ''}` },
     { id: 'investigations', label: 'Investigations & Procedure' },
+    { id: 'vitals', label: `Vitals & Daily Log ${dailyProgress.length > 0 ? `(${dailyProgress.length})` : ''}` },
   ];
 
   return (
