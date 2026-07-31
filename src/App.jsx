@@ -42,6 +42,7 @@ function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [showRegistration, setShowRegistration] = useState(false);
   const [initialPatientId, setInitialPatientId] = useState(null);
+  const [initialDischargePatientId, setInitialDischargePatientId] = useState(null);
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
   useEffect(() => {
@@ -80,14 +81,24 @@ function App() {
       setInitialPatientId(event.detail);
     };
 
+    // Listen for "start a discharge for this patient" trigger (Patient
+    // Portal's Discharge button)
+    const handleStartDischarge = (event) => {
+      setCurrentView('discharge');
+      setShowRegistration(false);
+      setInitialDischargePatientId(event.detail);
+    };
+
     window.addEventListener('navigate', handleNavigate);
     window.addEventListener('openNewPatient', handleOpenNewPatient);
     window.addEventListener('viewPatient', handleViewPatient);
+    window.addEventListener('startDischarge', handleStartDischarge);
 
     return () => {
       window.removeEventListener('navigate', handleNavigate);
       window.removeEventListener('openNewPatient', handleOpenNewPatient);
       window.removeEventListener('viewPatient', handleViewPatient);
+      window.removeEventListener('startDischarge', handleStartDischarge);
     };
   }, []);
 
@@ -337,7 +348,12 @@ function App() {
         {currentView === 'diet-module' && <DietModule />}
         {currentView === 'analytics' && <InventoryAnalytics />}
         {currentView === 'invoices' && <InvoicesManagement />}
-        {currentView === 'discharge' && <DischargeManagement />}
+        {currentView === 'discharge' && (
+          <DischargeManagement
+            initialDischargePatientId={initialDischargePatientId}
+            onInitialDischargePatientHandled={() => setInitialDischargePatientId(null)}
+          />
+        )}
         
         {currentView === 'prescriptions' && (
           <div className="p-6">

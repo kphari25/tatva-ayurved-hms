@@ -3,8 +3,9 @@ import { FileText, Plus, Search, Printer, Send, AlertCircle, IndianRupee, CheckC
 import { collection, getDocs, addDoc, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import DischargeSummaryModal from './DischargeSummaryModal';
+import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 
-const DischargeManagement = () => {
+const DischargeManagement = ({ initialDischargePatientId, onInitialDischargePatientHandled }) => {
   const [patients, setPatients] = useState([]);
   const [ipPatients, setIpPatients] = useState([]);
   const [discharges, setDischarges] = useState([]);
@@ -16,6 +17,7 @@ const DischargeManagement = () => {
   const [showReviewLinkModal, setShowReviewLinkModal] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [summaryPatient, setSummaryPatient] = useState(null);
+  const [summaryExistingSummary, setSummaryExistingSummary] = useState(null);
   const [reviewPatient, setReviewPatient] = useState(null);
 
   // Google Review Link - Update this with your actual Google Business link
@@ -39,9 +41,13 @@ const DischargeManagement = () => {
       }));
       setPatients(patientsData);
 
-      // Filter IP patients (you might have an IP status field)
-      // For now, we'll show all patients - you can add IP status filtering
-      setIpPatients(patientsData);
+      // Currently-admitted IP patients only — same rule Dashboard.jsx uses for
+      // its In-Patient list, so this page's "In-Patients" count and the "New
+      // Discharge" patient picker don't include OP patients, patients still
+      // awaiting admission approval, or patients already discharged.
+      setIpPatients(patientsData.filter(p =>
+        p.patient_type === 'IP' && p.admission_status !== 'pending_admission' && p.admission_status !== 'discharged'
+      ));
 
       // Load discharge records
       const dischargeRef = collection(db, 'discharges');
@@ -66,6 +72,44 @@ const DischargeManagement = () => {
   const handleStartDischarge = (patient) => {
     setSelectedPatient(patient);
     setShowDischargeModal(true);
+  };
+
+  // Jump straight into the wizard for a specific patient when navigated here
+  // from Patient Portal's "Discharge" button (mirrors the 'viewPatient'
+  // cross-view event pattern used for Dashboard → Patient Portal).
+  useEffect(() => {
+    if (!initialDischargePatientId || patients.length === 0) return;
+    const patient = patients.find(p => p.id === initialDischargePatientId);
+    if (patient) handleStartDischarge(patient);
+    onInitialDischargePatientHandled && onInitialDischargePatientHandled();
+  }, [initialDischargePatientId, patients]);
+
+  // Resumes an already-started Discharge Summary instead of always opening a
+  // blank form (which used to create a brand-new duplicate doc on every save).
+  const openSummaryModal = async (patient) => {
+    setSummaryPatient(patient);
+    setSummaryExistingSummary(patient ? await fetchLatestDischargeSummary(patient.firebaseId || patient.id) : null);
+    setShowSummaryModal(true);
+  };
+
+  const handleCompleteDischarge = async (discharge) => {
+    const pending = discharge.pending_amount || 0;
+    if (pending > 0) {
+      const confirmed = window.confirm(
+        `₹${pending.toLocaleString()} is still pending for ${discharge.patient_name}. Mark this discharge as completed anyway?`
+      );
+      if (!confirmed) return;
+    }
+    try {
+      await updateDoc(doc(db, 'discharges', discharge.id), { status: 'completed' });
+      if (discharge.patient_id) {
+        await updateDoc(doc(db, 'patients', discharge.patient_id), { admission_status: 'discharged' });
+      }
+      await loadData();
+    } catch (error) {
+      console.error('Error completing discharge:', error);
+      alert('Failed to complete discharge: ' + error.message);
+    }
   };
 
   const handleShareReviewLink = (patient) => {
@@ -158,7 +202,7 @@ ${GOOGLE_REVIEW_LINK}
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => { setSummaryPatient(null); setShowSummaryModal(true); }}
+              onClick={() => { setSummaryPatient(null); setSummaryExistingSummary(null); setShowSummaryModal(true); }}
               className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
             >
               <FileText className="w-5 h-5" />
@@ -340,8 +384,7 @@ ${GOOGLE_REVIEW_LINK}
                             const patient = patients.find(p =>
                               p.patient_number === discharge.patient_number || p.id === discharge.patient_id
                             ) || { first_name: discharge.patient_name, last_name: '', patient_number: discharge.patient_number };
-                            setSummaryPatient(patient);
-                            setShowSummaryModal(true);
+                            openSummaryModal(patient);
                           }}
                           className="px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700 flex items-center gap-1"
                           title="Discharge Summary"
@@ -349,6 +392,16 @@ ${GOOGLE_REVIEW_LINK}
                           <FileText className="w-4 h-4" />
                           <span>Summary</span>
                         </button>
+                        {discharge.status !== 'completed' && (
+                          <button
+                            onClick={() => handleCompleteDischarge(discharge)}
+                            className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 flex items-center gap-1"
+                            title="Mark this discharge as completed"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            <span>Mark Discharged</span>
+                          </button>
+                        )}
                         {discharge.status === 'completed' && (
                           <>
                             <button
@@ -396,8 +449,9 @@ ${GOOGLE_REVIEW_LINK}
       {showSummaryModal && (
         <DischargeSummaryModal
           patient={summaryPatient}
-          onClose={() => { setShowSummaryModal(false); setSummaryPatient(null); }}
-          onSave={() => { setShowSummaryModal(false); setSummaryPatient(null); }}
+          existingSummary={summaryExistingSummary}
+          onClose={() => { setShowSummaryModal(false); setSummaryPatient(null); setSummaryExistingSummary(null); }}
+          onSave={() => { setShowSummaryModal(false); setSummaryPatient(null); setSummaryExistingSummary(null); }}
         />
       )}
 
@@ -488,9 +542,28 @@ ${GOOGLE_REVIEW_LINK}
 
 // Discharge Modal Component
 const DischargeModal = ({ patient, patients, onClose, onSave }) => {
-  const [step, setStep] = useState(1); // 1: Select Patient, 2: Bill Details, 3: Summary
+  // When opened with a patient already selected (the "View" button on an
+  // existing discharge, or jumping in from Patient Portal's Discharge
+  // button), skip straight to Step 2 — otherwise selectedPatient is truthy
+  // but step stays 1, and neither step's JSX matches, leaving a blank modal.
+  const [step, setStep] = useState(patient ? 2 : 1); // 1: Select Patient, 2: Bill Details, 3: Summary
   const [selectedPatient, setSelectedPatient] = useState(patient || null);
   const [saving, setSaving] = useState(false);
+
+  // The rich clinical Discharge Summary (from Patient Portal), linked in on
+  // Step 3 rather than duplicated into this wizard's plain text fields.
+  const [linkedSummary, setLinkedSummary] = useState(null);
+  const [loadingLinkedSummary, setLoadingLinkedSummary] = useState(false);
+  const [showLinkedSummaryModal, setShowLinkedSummaryModal] = useState(false);
+
+  useEffect(() => {
+    const patientId = selectedPatient?.firebaseId || selectedPatient?.id;
+    if (!patientId) { setLinkedSummary(null); return; }
+    setLoadingLinkedSummary(true);
+    fetchLatestDischargeSummary(patientId)
+      .then(setLinkedSummary)
+      .finally(() => setLoadingLinkedSummary(false));
+  }, [selectedPatient]);
 
   const [formData, setFormData] = useState({
     admission_date: patient?.dischargeData?.admission_date || new Date().toISOString().split('T')[0],
@@ -831,6 +904,44 @@ const DischargeModal = ({ patient, patients, onClose, onSave }) => {
             <div>
               <h3 className="font-bold text-gray-800 mb-4">Discharge Summary & Instructions</h3>
 
+              {/* Links to the rich clinical Discharge Summary (created via
+                  Patient Portal) instead of re-typing it here. */}
+              <div className="mb-5 p-4 rounded-lg border border-teal-200 bg-teal-50">
+                {loadingLinkedSummary ? (
+                  <p className="text-sm text-teal-700">Checking for an existing discharge summary…</p>
+                ) : linkedSummary ? (
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-teal-900">Discharge Summary on file</p>
+                      <p className="text-sm text-teal-800 mt-0.5">
+                        {linkedSummary.diagnosis || linkedSummary.provisional_diagnosis || 'No diagnosis recorded'}
+                      </p>
+                      {linkedSummary.saved_at && (
+                        <p className="text-xs text-teal-600 mt-0.5">
+                          Last saved {new Date(linkedSummary.saved_at).toLocaleDateString('en-IN')}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setShowLinkedSummaryModal(true)}
+                      className="shrink-0 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700"
+                    >
+                      Open Full Discharge Summary
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-sm text-teal-800">No discharge summary created yet for this patient.</p>
+                    <button
+                      onClick={() => setShowLinkedSummaryModal(true)}
+                      className="shrink-0 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700"
+                    >
+                      Create Discharge Summary
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Discharge Summary</label>
                 <textarea
@@ -892,6 +1003,19 @@ const DischargeModal = ({ patient, patients, onClose, onSave }) => {
           )}
         </div>
       </div>
+
+      {showLinkedSummaryModal && (
+        <DischargeSummaryModal
+          patient={selectedPatient}
+          existingSummary={linkedSummary}
+          onClose={() => setShowLinkedSummaryModal(false)}
+          onSave={() => {
+            setShowLinkedSummaryModal(false);
+            const patientId = selectedPatient?.firebaseId || selectedPatient?.id;
+            fetchLatestDischargeSummary(patientId).then(setLinkedSummary);
+          }}
+        />
+      )}
     </div>
   );
 };

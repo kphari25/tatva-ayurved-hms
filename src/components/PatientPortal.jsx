@@ -4,11 +4,12 @@ import {
   Phone, Mail, Calendar, MapPin, Activity,
   X, FileText, Download, Filter, CalendarPlus,
   Stethoscope, Clock, MessageSquare, CheckCircle, AlertCircle, Send,
-  ClipboardList, UserRound, BookOpen, Pill, BedDouble
+  ClipboardList, UserRound, BookOpen, Pill, BedDouble, LogOut
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc } from 'firebase/firestore';
 import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
+import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import DischargeSummaryModal from './DischargeSummaryModal';
 import IPDailyProgressModal from './IPDailyProgressModal';
 import IPCaseSheetModal from './IPCaseSheetModal';
@@ -24,12 +25,14 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGender, setFilterGender] = useState('all');
   const [filterPatientType, setFilterPatientType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('active');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
 
   // Discharge summary & daily progress state
   const [showDischargeSummary, setShowDischargeSummary] = useState(false);
   const [dischargeSummaryPatient, setDischargeSummaryPatient] = useState(null);
+  const [dischargeSummaryExisting, setDischargeSummaryExisting] = useState(null);
   const [showDailyProgress, setShowDailyProgress] = useState(false);
   const [dailyProgressPatient, setDailyProgressPatient] = useState(null);
   const [showCaseSheet, setShowCaseSheet] = useState(false);
@@ -279,6 +282,14 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     setShowDetails(true);
   };
 
+  // Resumes an already-started Discharge Summary instead of always opening a
+  // blank form (which used to create a brand-new duplicate doc on every save).
+  const openDischargeSummary = async (patient) => {
+    setDischargeSummaryPatient(patient);
+    setDischargeSummaryExisting(await fetchLatestDischargeSummary(patient.id));
+    setShowDischargeSummary(true);
+  };
+
   // Opens a specific patient's details when navigated here from elsewhere
   // (e.g. clicking an appointment on the Dashboard) — mirrors the App-level
   // 'navigate' custom-event pattern already used for cross-view jumps.
@@ -310,7 +321,13 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       filterPatientType === 'all' ||
       (patient.patient_type || 'OP') === filterPatientType;
 
-    return matchesSearch && matchesGender && matchesType;
+    // Discharged patients are hidden by default (same rule Dashboard's IP
+    // list already uses) so they don't linger in the active roster forever.
+    const matchesStatus =
+      filterStatus === 'all' ||
+      (filterStatus === 'discharged' ? patient.admission_status === 'discharged' : patient.admission_status !== 'discharged');
+
+    return matchesSearch && matchesGender && matchesType && matchesStatus;
   });
 
   const calculateAge = (dob) => {
@@ -447,6 +464,15 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
               <option value="all">All Types</option>
               <option value="IP">IP (In-Patient)</option>
               <option value="OP">OP (Out-Patient)</option>
+            </select>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+            >
+              <option value="active">Active Patients</option>
+              <option value="discharged">Discharged</option>
+              <option value="all">All Patients</option>
             </select>
           </div>
 
@@ -685,12 +711,22 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         )}
                         {/* Discharge Summary */}
                         <button
-                          onClick={() => { setDischargeSummaryPatient(patient); setShowDischargeSummary(true); }}
+                          onClick={() => openDischargeSummary(patient)}
                           className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                           title="Discharge Summary"
                         >
                           <ClipboardList className="w-4 h-4" />
                         </button>
+                        {/* Discharge — IP patients only, jumps to Discharge Management */}
+                        {(patient.patient_type === 'IP' || patient.ip_number) && patient.admission_status !== 'discharged' && (
+                          <button
+                            onClick={() => window.dispatchEvent(new CustomEvent('startDischarge', { detail: patient.id }))}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Discharge"
+                          >
+                            <LogOut className="w-4 h-4" />
+                          </button>
+                        )}
                         {/* Prescription */}
                         <button
                           onClick={() => { setPrescriptionPatient(patient); setShowPrescription(true); }}
@@ -1209,8 +1245,9 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       {showDischargeSummary && dischargeSummaryPatient && (
         <DischargeSummaryModal
           patient={dischargeSummaryPatient}
-          onClose={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); }}
-          onSave={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); }}
+          existingSummary={dischargeSummaryExisting}
+          onClose={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); setDischargeSummaryExisting(null); }}
+          onSave={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); setDischargeSummaryExisting(null); }}
         />
       )}
 
