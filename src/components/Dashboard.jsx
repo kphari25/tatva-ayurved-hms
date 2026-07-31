@@ -213,8 +213,11 @@ const Dashboard = () => {
       setTherapists(snap.docs.map(d => ({ id: d.id, name: d.data().name || d.data().email || 'Therapist' })));
     }).catch(() => {});
 
-    // Real-time listener for today's appointments
-    const today = new Date().toISOString().split('T')[0];
+    // Real-time listener for today's appointments — use the local calendar
+    // date (toDateStr), not toISOString's UTC date, which rolls over to
+    // tomorrow hours before local midnight in negative-UTC-offset zones and
+    // silently undercounts appointments booked for "today".
+    const today = toDateStr(new Date());
     const unsubscribe = onSnapshot(
       query(collection(db, 'appointments'), where('date', '==', today)),
       (snap) => {
@@ -595,12 +598,14 @@ const Dashboard = () => {
                         return (
                           <div
                             key={apt.id}
-                            className={`rounded-xl border-l-4 ${color.border} ${color.bg} p-3 shadow-sm hover:shadow-md transition-shadow`}
+                            onClick={apt.patient_id ? () => window.dispatchEvent(new CustomEvent('viewPatient', { detail: apt.patient_id })) : undefined}
+                            title={apt.patient_id ? 'View patient details' : undefined}
+                            className={`rounded-xl border-l-4 ${color.border} ${color.bg} p-3 shadow-sm hover:shadow-md transition-shadow ${apt.patient_id ? 'cursor-pointer' : ''}`}
                           >
                             <div className="flex items-start justify-between gap-2">
                               <p className={`text-base font-bold ${color.time}`}>{apt.time}</p>
                               <button
-                                onClick={() => deleteAppointment(apt.id)}
+                                onClick={(e) => { e.stopPropagation(); deleteAppointment(apt.id); }}
                                 className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                 title="Remove appointment"
                               >

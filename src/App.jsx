@@ -41,6 +41,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard');
   const [showRegistration, setShowRegistration] = useState(false);
+  const [initialPatientId, setInitialPatientId] = useState(null);
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
   useEffect(() => {
@@ -70,13 +71,23 @@ function App() {
     const handleOpenNewPatient = () => {
       setShowRegistration(true);
     };
-    
+
+    // Listen for "open this patient's details" trigger (e.g. clicking an
+    // appointment on the Dashboard that's linked to a patient record)
+    const handleViewPatient = (event) => {
+      setCurrentView('patients');
+      setShowRegistration(false);
+      setInitialPatientId(event.detail);
+    };
+
     window.addEventListener('navigate', handleNavigate);
     window.addEventListener('openNewPatient', handleOpenNewPatient);
+    window.addEventListener('viewPatient', handleViewPatient);
 
     return () => {
       window.removeEventListener('navigate', handleNavigate);
       window.removeEventListener('openNewPatient', handleOpenNewPatient);
+      window.removeEventListener('viewPatient', handleViewPatient);
     };
   }, []);
 
@@ -304,7 +315,11 @@ function App() {
       <div className="flex-1 overflow-auto">
         {currentView === 'dashboard' && <Dashboard />}
         {currentView === 'patients' && !showRegistration && (
-          <PatientPortal onAddPatient={() => setShowRegistration(true)} />
+          <PatientPortal
+            onAddPatient={() => setShowRegistration(true)}
+            initialPatientId={initialPatientId}
+            onInitialPatientHandled={() => setInitialPatientId(null)}
+          />
         )}
         
         {currentView === 'patients' && showRegistration && (

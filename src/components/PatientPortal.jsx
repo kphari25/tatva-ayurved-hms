@@ -16,7 +16,7 @@ import OPCaseSheetModal from './OPCaseSheetModal';
 import PrescriptionModal from './PrescriptionModal';
 import PatientRegistrationNew from './PatientRegistrationNew';
 
-const PatientPortal = ({ onAddPatient }) => {
+const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled }) => {
   console.log('🔵 PatientPortal rendered, onAddPatient prop:', typeof onAddPatient);
   
   const [patients, setPatients] = useState([]);
@@ -132,14 +132,23 @@ const PatientPortal = ({ onAddPatient }) => {
     }
     setApptSaving(true);
     try {
+      const patientDisplayName = `${appointmentPatient.first_name} ${appointmentPatient.last_name}`;
       const apptData = {
+        // Same `appointments` collection/schema the Dashboard and Scheduling
+        // module read from — this used to write to a separate
+        // `patient_appointments` collection that nothing else ever queried,
+        // so appointments booked here never showed up on the Dashboard.
+        patient: patientDisplayName,
         patient_id: appointmentPatient.id,
-        patient_name: `${appointmentPatient.first_name} ${appointmentPatient.last_name}`,
+        patient_name: patientDisplayName,
         patient_phone: appointmentPatient.phone || '',
         mrd_number: appointmentPatient.mrd_number || appointmentPatient.patient_number || '',
         ip_number: appointmentPatient.ip_number || '',
+        type: apptForm.appointment_type,
         appointment_type: apptForm.appointment_type,
+        doctorId: apptForm.doctor_id,
         doctor_id: apptForm.doctor_id,
+        doctorName: apptForm.doctor_name,
         doctor_name: apptForm.doctor_name,
         doctor_phone: apptForm.doctor_phone,
         date: apptForm.date,
@@ -147,9 +156,10 @@ const PatientPortal = ({ onAddPatient }) => {
         duration_minutes: apptForm.duration_minutes,
         notes: apptForm.notes,
         status: 'scheduled',
+        createdAt: new Date().toISOString(),
         created_at: new Date().toISOString(),
       };
-      const ref = await addDoc(collection(db, 'patient_appointments'), apptData);
+      const ref = await addDoc(collection(db, 'appointments'), apptData);
       setSavedAppt({ id: ref.id, ...apptData });
 
       // Send SMS
@@ -268,6 +278,16 @@ const PatientPortal = ({ onAddPatient }) => {
     setSelectedPatient(patient);
     setShowDetails(true);
   };
+
+  // Opens a specific patient's details when navigated here from elsewhere
+  // (e.g. clicking an appointment on the Dashboard) — mirrors the App-level
+  // 'navigate' custom-event pattern already used for cross-view jumps.
+  useEffect(() => {
+    if (!initialPatientId || patients.length === 0) return;
+    const patient = patients.find(p => p.id === initialPatientId);
+    if (patient) viewPatientDetails(patient);
+    onInitialPatientHandled && onInitialPatientHandled();
+  }, [initialPatientId, patients]);
 
   // Filter patients based on search and gender
   const filteredPatients = patients.filter(patient => {
