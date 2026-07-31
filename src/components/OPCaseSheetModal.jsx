@@ -10,6 +10,13 @@ import { summarizeMedicineItems } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
+import PrintSectionModal from './PrintSectionModal';
+
+const PRINT_SECTIONS = [
+  { id: 'assessment', label: 'Initial Assessment' },
+  { id: 'history', label: 'History & Examination' },
+  { id: 'visits', label: 'Visit Log' },
+];
 
 const TAB_SEQUENCE = ['assessment', 'history'];
 
@@ -143,7 +150,7 @@ const SectionTitle = ({ children }) => (
 const fmtDate = (d) => formatDateOnly(d);
 
 // ── Print HTML generator ────────────────────────────────────────────────
-const buildOPCaseSheetPrintHTML = (patient, form, visitNotes) => {
+const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all') => {
   const patientName = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim().toUpperCase();
   const age = patient?.age || '';
   const gender = patient?.gender?.[0]?.toUpperCase() || '';
@@ -161,83 +168,10 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes) => {
       <td>${v.signed_by || ''}</td>
     </tr>`).join('');
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>OP Case Sheet – ${patientName}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; }
-    @page { size: A4; margin: 15mm 12mm; }
-    @media print { body { -webkit-print-color-adjust: exact; } }
+  const sectionLabel = PRINT_SECTIONS.find(s => s.id === sectionId)?.label;
+  const titleText = sectionLabel ? `OP INITIAL ASSESSMENT — ${sectionLabel.toUpperCase()}` : 'OP INITIAL ASSESSMENT';
 
-    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 10px; }
-    .logo-block { background: #1a5f4e; color: #fff; padding: 10px 16px; border-radius: 4px; min-width: 160px; }
-    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
-    .logo-block .tagline { font-size: 9px; color: #a8d8c8; }
-    .contact-block { text-align: right; font-size: 10px; line-height: 1.6; }
-    .contact-block .reg { font-size: 9px; color: #555; }
-
-    .title { text-align: center; font-size: 15px; font-weight: bold; text-decoration: underline; margin: 8px 0 12px; letter-spacing: 1px; }
-
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 10px; }
-    .info-left, .info-right { padding: 0 6px; }
-    .info-row { display: flex; gap: 4px; margin-bottom: 4px; font-size: 11px; }
-    .info-label { font-weight: bold; min-width: 140px; }
-
-    .section-title { font-size: 12px; font-weight: bold; margin: 10px 0 5px; text-transform: uppercase; }
-    .page-break { page-break-before: always; }
-
-    table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
-    table.grid th, table.grid td { border: 1px solid #aaa; padding: 4px 8px; text-align: left; }
-    table.grid th { background: #f0f0f0; font-weight: bold; }
-
-    .footer { margin-top: 20px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
-    .sig-block { text-align: right; }
-    .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; }
-  </style>
-</head>
-<body>
-
-<div class="header">
-  <div class="logo-block">
-    <div class="brand">TATVA AYURVED</div>
-    <div class="tagline">Ayurveda for Health &amp; Happiness</div>
-  </div>
-  <div class="contact-block">
-    📍 ${HOSPITAL.address}<br>
-    📞 ${HOSPITAL.phone}<br>
-    ✉ ${HOSPITAL.email}<br>
-    🌐 ${HOSPITAL.website}<br>
-    <span class="reg">Reg No: ${HOSPITAL.regNo}</span>
-  </div>
-</div>
-
-<div class="title">OP INITIAL ASSESSMENT</div>
-
-<div class="info-grid">
-  <div class="info-left">
-    <div class="info-row"><span class="info-label">Name of Patient:</span> ${patientName}</div>
-    <div class="info-row"><span class="info-label">Age / Sex:</span> ${age} / ${gender}</div>
-    <div class="info-row"><span class="info-label">Address:</span> ${address}</div>
-    <div class="info-row"><span class="info-label">S/D/W/o:</span> ${form.s_d_w_o}</div>
-    <div class="info-row"><span class="info-label">Informant:</span> ${form.informant}</div>
-    <div class="info-row"><span class="info-label">Occupation:</span> ${form.occupation}</div>
-    <div class="info-row"><span class="info-label">Religion:</span> ${form.religion}</div>
-    <div class="info-row"><span class="info-label">Marital Status:</span> ${form.marital_status}</div>
-    <div class="info-row"><span class="info-label">Socio-Economic Status:</span> ${form.socio_economic_status}</div>
-  </div>
-  <div class="info-right">
-    <div class="info-row"><span class="info-label">MRD No:</span> ${patient?.mrd_number || ''}</div>
-    <div class="info-row"><span class="info-label">Phone:</span> ${patient?.phone || ''}</div>
-    <div class="info-row"><span class="info-label">Department:</span> ${form.department}</div>
-    <div class="info-row"><span class="info-label">Physician:</span> ${form.physician}</div>
-    <div class="info-row"><span class="info-label">Date:</span> ${fmtDate(form.case_date)}</div>
-    <div class="info-row"><span class="info-label">Diagnosis:</span> ${form.initial_diagnosis}</div>
-  </div>
-</div>
-
+  const assessmentHTML = `
 <div class="section-title">Vital Signs</div>
 <table class="grid">
   ${row2('Temperature', form.temperature, 'Pulse', `${form.pulse} ${form.pulse_regularity}`)}
@@ -260,10 +194,9 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes) => {
 <div class="section-title">Presenting Complaints with Duration</div>
 <p style="white-space:pre-line;">${form.presenting_complaints}</p>
 
-<p><strong>Pain Assessment:</strong> ${form.pain_assessment}</p>
+<p><strong>Pain Assessment:</strong> ${form.pain_assessment}</p>`;
 
-<div class="page-break"></div>
-
+  const historyHTML = `
 <div class="section-title">History of Present Illness</div>
 <p style="white-space:pre-line;">${form.history_present_illness}</p>
 
@@ -345,15 +278,100 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes) => {
 <p>${form.provisional_diagnosis}</p>
 
 <div class="section-title">Diagnosis</div>
-<p>${form.diagnosis}</p>
+<p>${form.diagnosis}</p>`;
 
-<div class="page-break"></div>
-
+  const visitsHTML = `
 <div class="section-title">Medication, Treatment &amp; Re-Assessment Log</div>
 <table class="grid">
   <thead><tr><th style="width:80px;">Date</th><th>Clinical Findings</th><th>Medication</th><th>Treatment</th><th style="width:60px;">Pain Score</th><th style="width:90px;">Next Follow-up</th><th>Signed By</th></tr></thead>
   <tbody>${visitRows || '<tr><td colspan="7" style="text-align:center;color:#888;">No records</td></tr>'}</tbody>
-</table>
+</table>`;
+
+  const availableSections = { assessment: assessmentHTML, history: historyHTML, visits: visitsHTML };
+  const orderedKeys = ['assessment', 'history', 'visits'];
+  const selectedKeys = sectionId === 'all' ? orderedKeys : orderedKeys.filter(k => k === sectionId);
+  const bodyHTML = selectedKeys
+    .map((k, i) => (i > 0 ? '<div class="page-break"></div>' : '') + availableSections[k])
+    .join('\n');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>OP Case Sheet – ${patientName}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; }
+    @page { size: A4; margin: 15mm 12mm; }
+    @media print { body { -webkit-print-color-adjust: exact; } }
+
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 10px; }
+    .logo-block { background: #1a5f4e; color: #fff; padding: 10px 16px; border-radius: 4px; min-width: 160px; }
+    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
+    .logo-block .tagline { font-size: 9px; color: #a8d8c8; }
+    .contact-block { text-align: right; font-size: 10px; line-height: 1.6; }
+    .contact-block .reg { font-size: 9px; color: #555; }
+
+    .title { text-align: center; font-size: 15px; font-weight: bold; text-decoration: underline; margin: 8px 0 12px; letter-spacing: 1px; }
+
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 10px; }
+    .info-left, .info-right { padding: 0 6px; }
+    .info-row { display: flex; gap: 4px; margin-bottom: 4px; font-size: 11px; }
+    .info-label { font-weight: bold; min-width: 140px; }
+
+    .section-title { font-size: 12px; font-weight: bold; margin: 10px 0 5px; text-transform: uppercase; }
+    .page-break { page-break-before: always; }
+
+    table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
+    table.grid th, table.grid td { border: 1px solid #aaa; padding: 4px 8px; text-align: left; }
+    table.grid th { background: #f0f0f0; font-weight: bold; }
+
+    .footer { margin-top: 20px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
+    .sig-block { text-align: right; }
+    .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo-block">
+    <div class="brand">TATVA AYURVED</div>
+    <div class="tagline">Ayurveda for Health &amp; Happiness</div>
+  </div>
+  <div class="contact-block">
+    📍 ${HOSPITAL.address}<br>
+    📞 ${HOSPITAL.phone}<br>
+    ✉ ${HOSPITAL.email}<br>
+    🌐 ${HOSPITAL.website}<br>
+    <span class="reg">Reg No: ${HOSPITAL.regNo}</span>
+  </div>
+</div>
+
+<div class="title">${titleText}</div>
+
+<div class="info-grid">
+  <div class="info-left">
+    <div class="info-row"><span class="info-label">Name of Patient:</span> ${patientName}</div>
+    <div class="info-row"><span class="info-label">Age / Sex:</span> ${age} / ${gender}</div>
+    <div class="info-row"><span class="info-label">Address:</span> ${address}</div>
+    <div class="info-row"><span class="info-label">S/D/W/o:</span> ${form.s_d_w_o}</div>
+    <div class="info-row"><span class="info-label">Informant:</span> ${form.informant}</div>
+    <div class="info-row"><span class="info-label">Occupation:</span> ${form.occupation}</div>
+    <div class="info-row"><span class="info-label">Religion:</span> ${form.religion}</div>
+    <div class="info-row"><span class="info-label">Marital Status:</span> ${form.marital_status}</div>
+    <div class="info-row"><span class="info-label">Socio-Economic Status:</span> ${form.socio_economic_status}</div>
+  </div>
+  <div class="info-right">
+    <div class="info-row"><span class="info-label">MRD No:</span> ${patient?.mrd_number || ''}</div>
+    <div class="info-row"><span class="info-label">Phone:</span> ${patient?.phone || ''}</div>
+    <div class="info-row"><span class="info-label">Department:</span> ${form.department}</div>
+    <div class="info-row"><span class="info-label">Physician:</span> ${form.physician}</div>
+    <div class="info-row"><span class="info-label">Date:</span> ${fmtDate(form.case_date)}</div>
+    <div class="info-row"><span class="info-label">Diagnosis:</span> ${form.initial_diagnosis}</div>
+  </div>
+</div>
+
+${bodyHTML}
 
 <div class="footer">
   <div></div>
@@ -381,6 +399,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
   const [savingVisit, setSavingVisit] = useState(false);
   const [editingVisitId, setEditingVisitId] = useState(null);
   const [doctors, setDoctors] = useState([]);
+  const [showPrintOptions, setShowPrintOptions] = useState(false);
   const tabContainerRef = useRef(null);
 
   useEffect(() => {
@@ -570,9 +589,10 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     }
   };
 
-  const handlePrint = () => {
-    const html = buildOPCaseSheetPrintHTML(patient, form, visitNotes);
+  const handlePrint = (sectionId = 'all') => {
+    const html = buildOPCaseSheetPrintHTML(patient, form, visitNotes, sectionId);
     const win = window.open('', '_blank');
+    if (!win) { alert('Please allow pop-ups for this site to print.'); return; }
     win.document.write(html);
     win.document.close();
     win.focus();
@@ -599,7 +619,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={handlePrint}
+              onClick={() => setShowPrintOptions(true)}
               className="flex items-center gap-2 px-4 py-2 bg-white text-teal-700 rounded-lg hover:bg-teal-50 font-medium text-sm"
             >
               <Printer className="w-4 h-4" /> Print
@@ -988,11 +1008,20 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
         {/* Bottom bar */}
         <div className="flex-shrink-0 border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
           <span>Fill in the sections then Save or Print directly.</span>
-          <button onClick={handlePrint} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
+          <button onClick={() => setShowPrintOptions(true)} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
             <Printer className="w-4 h-4" /> Print Case Sheet
           </button>
         </div>
       </div>
+
+      {showPrintOptions && (
+        <PrintSectionModal
+          title="Print OP Case Sheet"
+          sections={PRINT_SECTIONS}
+          onPrint={handlePrint}
+          onClose={() => setShowPrintOptions(false)}
+        />
+      )}
     </div>
   );
 };
