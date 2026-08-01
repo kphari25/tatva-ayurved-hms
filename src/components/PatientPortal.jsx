@@ -10,6 +10,7 @@ import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc } from 'firebase/firestore';
 import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
+import { addDaysToDateString, formatDateOnly } from '../lib/formatDate';
 import DischargeSummaryModal from './DischargeSummaryModal';
 import IPDailyProgressModal from './IPDailyProgressModal';
 import IPCaseSheetModal from './IPCaseSheetModal';
@@ -47,6 +48,13 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [assignDoctorPatient, setAssignDoctorPatient] = useState(null);
   const [assignDoctorName, setAssignDoctorName] = useState('');
   const [assignDoctorSaving, setAssignDoctorSaving] = useState(false);
+
+  // Admit / expected-stay state — captures admission date + expected length
+  // of stay so Dashboard can compute a live checkout date.
+  const [showAdmitModal, setShowAdmitModal] = useState(false);
+  const [admitPatientTarget, setAdmitPatientTarget] = useState(null);
+  const [admitForm, setAdmitForm] = useState({ admission_date: '', expected_stay_days: '' });
+  const [admitSaving, setAdmitSaving] = useState(false);
 
   // Appointment scheduling state
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
@@ -242,21 +250,39 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     }
   };
 
-  const handleAdmitPatient = async (patient) => {
-    if (!confirm(`Admit ${patient.first_name} ${patient.last_name} as an in-patient?`)) return;
+  // Opens the Admit / Edit Stay modal — same modal for first-time admission
+  // (sets admission_status too) and for adjusting an already-admitted
+  // patient's dates later (e.g. an extended stay), so there's one place
+  // that keeps admission_date + expected_stay_days consistent.
+  const openAdmitModal = (patient) => {
+    setAdmitPatientTarget(patient);
+    setAdmitForm({
+      admission_date: patient.admission_date || new Date().toISOString().split('T')[0],
+      expected_stay_days: patient.expected_stay_days != null ? String(patient.expected_stay_days) : '',
+    });
+    setShowAdmitModal(true);
+  };
+
+  const handleSaveAdmit = async () => {
+    if (!admitPatientTarget) return;
+    if (!admitForm.admission_date) { alert('Please select an admission date.'); return; }
+    setAdmitSaving(true);
     try {
-      const admissionDate = new Date().toISOString().split('T')[0];
-      await updateDoc(doc(db, 'patients', patient.id || patient.firebaseId), {
-        admission_status: 'admitted',
-        admission_date: admissionDate,
-      });
-      setPatients(prev => prev.map(p =>
-        (p.id || p.firebaseId) === (patient.id || patient.firebaseId)
-          ? { ...p, admission_status: 'admitted', admission_date: admissionDate }
-          : p
-      ));
+      const patientId = admitPatientTarget.id || admitPatientTarget.firebaseId;
+      const days = admitForm.expected_stay_days === '' ? null : Number(admitForm.expected_stay_days);
+      const update = {
+        admission_date: admitForm.admission_date,
+        ...(admitPatientTarget.admission_status === 'pending_admission' ? { admission_status: 'admitted' } : {}),
+        ...(days != null ? { expected_stay_days: days } : {}),
+      };
+      await updateDoc(doc(db, 'patients', patientId), update);
+      setPatients(prev => prev.map(p => (p.id || p.firebaseId) === patientId ? { ...p, ...update } : p));
+      setShowAdmitModal(false);
+      setAdmitPatientTarget(null);
     } catch (e) {
-      alert('Failed to admit patient: ' + e.message);
+      alert('Failed to save: ' + e.message);
+    } finally {
+      setAdmitSaving(false);
     }
   };
 
@@ -672,11 +698,21 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {/* Admit Patient — pending IP admissions only */}
                         {patient.admission_status === 'pending_admission' && (
                           <button
-                            onClick={() => handleAdmitPatient(patient)}
+                            onClick={() => openAdmitModal(patient)}
                             className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                             title="Admit Patient"
                           >
                             <BedDouble className="w-4 h-4" />
+                          </button>
+                        )}
+                        {/* Edit Expected Stay — already-admitted IP patients only */}
+                        {(patient.patient_type === 'IP' || patient.ip_number) && patient.admission_status === 'admitted' && (
+                          <button
+                            onClick={() => openAdmitModal(patient)}
+                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title={patient.expected_stay_days != null ? `Expected stay: ${patient.expected_stay_days} day(s) — edit` : 'Set expected stay / edit admission date'}
+                          >
+                            <Clock className="w-4 h-4" />
                           </button>
                         )}
                         {/* IP Case Sheet — IP patients only */}
@@ -1052,6 +1088,75 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                   className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-60"
                 >
                   {assignDoctorSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Admit / Edit Expected Stay Modal ── */}
+      {showAdmitModal && admitPatientTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">
+                  {admitPatientTarget.admission_status === 'pending_admission' ? 'Admit Patient' : 'Edit Admission / Expected Stay'}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {admitPatientTarget.first_name} {admitPatientTarget.last_name}
+                  {admitPatientTarget.mrd_number && <span className="ml-2 text-teal-600 font-mono">{admitPatientTarget.mrd_number}</span>}
+                </p>
+              </div>
+              <button onClick={() => setShowAdmitModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Admission Date</label>
+                <input
+                  type="date"
+                  value={admitForm.admission_date}
+                  onChange={e => setAdmitForm(f => ({ ...f, admission_date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Expected Stay (Days)</label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Optional — e.g. 5"
+                  value={admitForm.expected_stay_days}
+                  onChange={e => setAdmitForm(f => ({ ...f, expected_stay_days: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Drives the live Checkout Date shown on the Dashboard. Leave blank if not yet known — you can set or adjust it any time.
+                </p>
+              </div>
+              {admitForm.admission_date && admitForm.expected_stay_days !== '' && (
+                <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm text-teal-800">
+                  Expected checkout: <span className="font-semibold">{formatDateOnly(addDaysToDateString(admitForm.admission_date, Number(admitForm.expected_stay_days)))}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-1">
+                <button
+                  onClick={() => setShowAdmitModal(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveAdmit}
+                  disabled={admitSaving}
+                  className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-60"
+                >
+                  {admitSaving ? 'Saving...' : admitPatientTarget.admission_status === 'pending_admission' ? 'Admit' : 'Save'}
                 </button>
               </div>
             </div>

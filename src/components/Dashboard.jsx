@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { formatDateOnly } from '../lib/formatDate';
+import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -166,6 +166,11 @@ const Dashboard = () => {
   const [greeting, setGreeting] = useState(getGreeting());
   const [appointmentView, setAppointmentView] = useState('daily'); // daily | weekly | monthly
   const [panelAppointments, setPanelAppointments] = useState([]);
+  // Live patients snapshot (admission_date / expected_stay_days come from
+  // Patient Portal) — In-Patient Status and Discharges Today are derived
+  // from this in real time instead of a one-time fetch.
+  const [allPatients, setAllPatients] = useState([]);
+  const [ipCaseSheetsById, setIpCaseSheetsById] = useState({});
   const [dashboardData, setDashboardData] = useState({
     todayAppointments: [],
     ipPatients: [],
@@ -229,6 +234,84 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
+  // Real-time listener for patients — In-Patient Status / Discharges Today
+  // stay in sync the moment admission_date or expected_stay_days changes in
+  // Patient Portal, without needing a manual Dashboard refresh.
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'patients'), (snap) => {
+      setAllPatients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    getDocs(collection(db, 'ip_case_sheets')).then(snap => {
+      const byId = {};
+      snap.docs.forEach(d => { byId[d.id] = d.data(); });
+      setIpCaseSheetsById(byId);
+    }).catch(() => {});
+    return () => unsubscribe();
+  }, []);
+
+  // Recomputes In-Patient Status / Pending Admissions / Discharges Today
+  // whenever the live patients snapshot (or the once-loaded case sheet
+  // lookup) changes.
+  useEffect(() => {
+    if (allPatients.length === 0) return;
+    const today = toDateStr(new Date());
+
+    // Currently-admitted IP patients: real patient_type field, excluding
+    // ones still awaiting admission approval or already discharged.
+    // Patients registered before admission_status existed have neither
+    // value set — treat them as already-admitted rather than dropping
+    // them from the list.
+    const ipPatients = allPatients
+      .filter(p => p.patient_type === 'IP' && p.admission_status !== 'pending_admission' && p.admission_status !== 'discharged')
+      .map(p => {
+        const cs = ipCaseSheetsById[p.id] || {};
+        const admissionDate = p.admission_date || p.created_at;
+        const expectedStayDays = p.expected_stay_days != null ? Number(p.expected_stay_days) : null;
+        const checkoutDate = admissionDate && expectedStayDays != null
+          ? addDaysToDateString(admissionDate, expectedStayDays)
+          : null;
+        return {
+          id: p.id,
+          name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+          room: [cs.ward, cs.bed_no ? `Bed ${cs.bed_no}` : null].filter(Boolean).join(' · ') || '—',
+          admission: admissionDate,
+          diagnosis: cs.admin_diagnosis || '—',
+          daysAdmitted: admissionDate ? Math.max(0, Math.floor((Date.now() - new Date(admissionDate)) / (1000 * 60 * 60 * 24))) : null,
+          expectedStayDays,
+          checkoutDate,
+        };
+      });
+
+    // Pending admission requests — new IP registrations awaiting approval.
+    const pendingAdmissions = allPatients
+      .filter(p => p.patient_type === 'IP' && p.admission_status === 'pending_admission')
+      .map(p => ({
+        id: p.id,
+        patient: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+        mrd_number: p.mrd_number || p.patient_number || '',
+        requested_at: p.created_at,
+      }));
+
+    // Discharges Today — driven by each IP patient's own computed checkout
+    // date (admission_date + expected_stay_days), not a separately-tracked
+    // discharges collection that only reflects paperwork someone already
+    // started.
+    const todayDischarges = ipPatients.filter(p => p.checkoutDate === today);
+
+    setDashboardData(prev => ({
+      ...prev,
+      ipPatients,
+      pendingAdmissions,
+      todayDischarges,
+      stats: {
+        ...prev.stats,
+        ipPatientsCount: ipPatients.length,
+        pendingAdmissionsCount: pendingAdmissions.length,
+        todayDischargesCount: todayDischarges.length,
+      }
+    }));
+  }, [allPatients, ipCaseSheetsById]);
+
   // Therapist schedule — derived from the full roster + today's appointments,
   // so it stays correct regardless of which of those two loads/updates first
   // (previously this was clobbered by a separate effect that reset it to []).
@@ -287,31 +370,16 @@ const Dashboard = () => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const today = new Date().toISOString().split('T')[0];
 
-      // Load all necessary data (appointments handled by real-time listener)
-      const [patients, discharges, invoices, leads, ipCaseSheets] = await Promise.all([
-        getDocs(collection(db, 'patients')),
-        getDocs(collection(db, 'discharges')),
+      // Patients / IP case sheets are handled by the real-time listeners
+      // above; appointments by their own listener too.
+      const [invoices, leads] = await Promise.all([
         getDocs(collection(db, 'invoices')),
         getDocs(collection(db, 'leads')),
-        getDocs(collection(db, 'ip_case_sheets')),
       ]);
 
-      const patientsData = patients.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const dischargesData = discharges.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const invoicesData = invoices.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const leadsData = leads.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      // Keyed by patient id — bed/ward/diagnosis live on the IP case sheet,
-      // not on the patient document itself.
-      const ipCaseSheetsById = {};
-      ipCaseSheets.docs.forEach(d => { ipCaseSheetsById[d.id] = d.data(); });
-
-      // Filter today's discharges
-      const todayDischarges = dischargesData.filter(d =>
-        d.discharge_date && d.discharge_date.startsWith(today) && d.status !== 'completed'
-      );
 
       // Calculate outstanding payments
       const outstanding = invoicesData
@@ -335,48 +403,12 @@ const Dashboard = () => {
         ? ((convertedLeads.length / leadsData.length) * 100).toFixed(1)
         : 0;
 
-      // Currently-admitted IP patients: real patient_type field, excluding
-      // ones still awaiting admission approval or already discharged.
-      // Patients registered before admission_status existed have neither
-      // value set — treat them as already-admitted rather than dropping
-      // them from the list.
-      const ipPatients = patientsData
-        .filter(p => p.patient_type === 'IP' && p.admission_status !== 'pending_admission' && p.admission_status !== 'discharged')
-        .map(p => {
-          const cs = ipCaseSheetsById[p.id] || {};
-          const admissionDate = p.admission_date || p.created_at;
-          return {
-            id: p.id,
-            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-            room: [cs.ward, cs.bed_no ? `Bed ${cs.bed_no}` : null].filter(Boolean).join(' · ') || '—',
-            admission: admissionDate,
-            diagnosis: cs.admin_diagnosis || '—',
-            daysAdmitted: admissionDate ? Math.max(0, Math.floor((Date.now() - new Date(admissionDate)) / (1000 * 60 * 60 * 24))) : null,
-          };
-        });
-
-      // Pending admission requests — new IP registrations awaiting approval.
-      const pendingAdmissions = patientsData
-        .filter(p => p.patient_type === 'IP' && p.admission_status === 'pending_admission')
-        .map(p => ({
-          id: p.id,
-          patient: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-          mrd_number: p.mrd_number || p.patient_number || '',
-          requested_at: p.created_at,
-        }));
-
       setDashboardData(prev => ({
         ...prev,
-        ipPatients,
-        pendingAdmissions,
-        todayDischarges,
         outstandingPayments: invoicesData.filter(inv => inv.status !== 'paid'),
         leads: pendingFollowups,
         stats: {
           ...prev.stats,
-          ipPatientsCount: ipPatients.length,
-          pendingAdmissionsCount: pendingAdmissions.length,
-          todayDischargesCount: todayDischarges.length,
           outstandingAmount: outstanding,
           hotLeads: hotLeads.length,
           pendingFollowups: pendingFollowups.length,
@@ -433,11 +465,12 @@ const Dashboard = () => {
   const admitPatient = async (patient) => {
     if (!window.confirm(`Admit ${patient.patient}?`)) return;
     try {
+      // The patients onSnapshot listener picks this up automatically —
+      // no manual reload needed.
       await updateDoc(doc(db, 'patients', patient.id), {
         admission_status: 'admitted',
         admission_date: new Date().toISOString().split('T')[0],
       });
-      await loadDashboardData();
     } catch (error) {
       console.error('Error admitting patient:', error);
       alert('Failed to admit patient. Please try again.');
@@ -667,28 +700,41 @@ const Dashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Patient</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Room</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admission</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Checkout Date</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Diagnosis</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {dashboardData.ipPatients.length === 0 ? (
-                    <tr><td colSpan="5" className="px-6 py-8 text-center text-sm text-gray-400">No patients currently admitted</td></tr>
-                  ) : dashboardData.ipPatients.map(patient => (
-                    <tr key={patient.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{patient.name}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{patient.room}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">
-                        {patient.admission ? formatDateOnly(patient.admission) : '—'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{patient.diagnosis}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                          {patient.daysAdmitted !== null ? `Day ${patient.daysAdmitted + 1}` : '—'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                    <tr><td colSpan="6" className="px-6 py-8 text-center text-sm text-gray-400">No patients currently admitted</td></tr>
+                  ) : dashboardData.ipPatients.map(patient => {
+                    const checkoutIsToday = patient.checkoutDate === toDateStr(new Date());
+                    return (
+                      <tr key={patient.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{patient.name}</td>
+                        <td className="px-6 py-4 text-sm text-gray-700">{patient.room}</td>
+                        <td className="px-6 py-4 text-sm text-gray-700">
+                          {patient.admission ? formatDateOnly(patient.admission) : '—'}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {patient.checkoutDate ? (
+                            <span className={checkoutIsToday ? 'font-semibold text-green-700' : 'text-gray-700'}>
+                              {formatDateOnly(patient.checkoutDate)}{checkoutIsToday ? ' · Today' : ''}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-700">{patient.diagnosis}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                            {patient.daysAdmitted !== null ? `Day ${patient.daysAdmitted + 1}` : '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -768,17 +814,17 @@ const Dashboard = () => {
               {dashboardData.todayDischarges.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-4">No discharges scheduled</p>
               ) : (
-                dashboardData.todayDischarges.map(discharge => (
-                  <div key={discharge.id} className="p-3 bg-green-50 rounded-lg border border-green-200">
-                    <p className="font-semibold text-gray-900 text-sm">{discharge.patient_name}</p>
+                dashboardData.todayDischarges.map(patient => (
+                  <div key={patient.id} className="p-3 bg-green-50 rounded-lg border border-green-200">
+                    <p className="font-semibold text-gray-900 text-sm">{patient.name}</p>
                     <p className="text-xs text-gray-600 mt-1">
-                      Pending: ₹{discharge.pending_amount?.toLocaleString() || 0}
+                      {patient.expectedStayDays} day{patient.expectedStayDays === 1 ? '' : 's'} · Admitted {patient.admission ? formatDateOnly(patient.admission) : '—'}
                     </p>
                     <button
-                      onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'discharge' }))}
+                      onClick={() => window.dispatchEvent(new CustomEvent('startDischarge', { detail: patient.id }))}
                       className="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 w-full"
                     >
-                      Complete Discharge
+                      Start Discharge
                     </button>
                   </div>
                 ))
