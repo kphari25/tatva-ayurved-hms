@@ -33,23 +33,17 @@ const getMonthRange = (d) => [
   new Date(d.getFullYear(), d.getMonth() + 1, 0)
 ];
 
-const CARD_PALETTE = [
-  { border: 'border-blue-400', bg: 'bg-blue-50', time: 'text-blue-700', badge: 'bg-blue-100 text-blue-800' },
-  { border: 'border-purple-400', bg: 'bg-purple-50', time: 'text-purple-700', badge: 'bg-purple-100 text-purple-800' },
-  { border: 'border-pink-400', bg: 'bg-pink-50', time: 'text-pink-700', badge: 'bg-pink-100 text-pink-800' },
-  { border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
-  { border: 'border-amber-400', bg: 'bg-amber-50', time: 'text-amber-700', badge: 'bg-amber-100 text-amber-800' },
-  { border: 'border-cyan-400', bg: 'bg-cyan-50', time: 'text-cyan-700', badge: 'bg-cyan-100 text-cyan-800' },
-  { border: 'border-rose-400', bg: 'bg-rose-50', time: 'text-rose-700', badge: 'bg-rose-100 text-rose-800' },
-  { border: 'border-indigo-400', bg: 'bg-indigo-50', time: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-800' }
-];
-
-const colorForAppointment = (apt) => {
-  const key = apt.type || apt.patient || 'default';
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return CARD_PALETTE[hash % CARD_PALETTE.length];
+// Colors are keyed to the exact three Appointment Type options in Patient
+// Portal's "Schedule Appointment" form — one fixed color per type everywhere
+// an appointment is shown, instead of an arbitrary per-string hash.
+const APPOINTMENT_TYPE_COLORS = {
+  'Follow-up Treatment': { border: 'border-blue-400', bg: 'bg-blue-50', time: 'text-blue-700', badge: 'bg-blue-100 text-blue-800', dot: 'bg-blue-400' },
+  'Doctor Consultation': { border: 'border-purple-400', bg: 'bg-purple-50', time: 'text-purple-700', badge: 'bg-purple-100 text-purple-800', dot: 'bg-purple-400' },
+  'Ayurvedic Therapy': { border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-400' },
 };
+const DEFAULT_APPOINTMENT_COLOR = { border: 'border-gray-300', bg: 'bg-gray-50', time: 'text-gray-700', badge: 'bg-gray-100 text-gray-700', dot: 'bg-gray-400' };
+
+const colorForAppointment = (apt) => APPOINTMENT_TYPE_COLORS[apt.type] || DEFAULT_APPOINTMENT_COLOR;
 
 const formatGroupDate = (dateStr) => {
   const today = toDateStr(new Date());
@@ -568,6 +562,14 @@ const Dashboard = () => {
                   >
                     {tab.label}
                   </button>
+                ))}
+              </div>
+              <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-blue-100">
+                {Object.entries(APPOINTMENT_TYPE_COLORS).map(([type, color]) => (
+                  <span key={type} className="flex items-center gap-1.5">
+                    <span className={`w-2.5 h-2.5 rounded-full ${color.dot}`}></span>
+                    {type}
+                  </span>
                 ))}
               </div>
             </div>

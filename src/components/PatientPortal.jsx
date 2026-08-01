@@ -832,12 +832,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                     >
                       <option>Follow-up Treatment</option>
                       <option>Doctor Consultation</option>
-                      <option>Panchakarma Session</option>
                       <option>Ayurvedic Therapy</option>
-                      <option>Diet Consultation</option>
-                      <option>Yoga Session</option>
-                      <option>General Check-up</option>
-                      <option>Discharge Follow-up</option>
                     </select>
                   </div>
 
