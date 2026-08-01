@@ -7,7 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import InvoiceModal from './InvoiceModal';
 import MedicineSaleModal from './MedicineSaleModal';
 
-const InvoicesManagement = () => {
+const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [invoices, setInvoices] = useState([]);
   const [filteredInvoices, setFilteredInvoices] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -40,6 +40,19 @@ const InvoicesManagement = () => {
   useEffect(() => {
     calculateStats();
   }, [filteredInvoices]);
+
+  // Jump straight to a pre-filled invoice for a specific patient when
+  // navigated here from Patient Portal's "Discharge" button or Dashboard's
+  // "Start Discharge" action, skipping the Select Patient grid.
+  useEffect(() => {
+    if (!initialPatientId || patients.length === 0) return;
+    const patient = patients.find(p => p.id === initialPatientId);
+    if (patient) {
+      setSelectedPatient(patient);
+      setShowInvoiceModal(true);
+    }
+    onInitialPatientHandled && onInitialPatientHandled();
+  }, [initialPatientId, patients]);
 
   const loadPatients = async () => {
     try {

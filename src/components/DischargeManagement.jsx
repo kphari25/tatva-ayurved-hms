@@ -5,7 +5,7 @@ import { db } from '../lib/firebase';
 import DischargeSummaryModal from './DischargeSummaryModal';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 
-const DischargeManagement = ({ initialDischargePatientId, onInitialDischargePatientHandled }) => {
+const DischargeManagement = () => {
   const [patients, setPatients] = useState([]);
   const [ipPatients, setIpPatients] = useState([]);
   const [discharges, setDischarges] = useState([]);
@@ -73,16 +73,6 @@ const DischargeManagement = ({ initialDischargePatientId, onInitialDischargePati
     setSelectedPatient(patient);
     setShowDischargeModal(true);
   };
-
-  // Jump straight into the wizard for a specific patient when navigated here
-  // from Patient Portal's "Discharge" button (mirrors the 'viewPatient'
-  // cross-view event pattern used for Dashboard → Patient Portal).
-  useEffect(() => {
-    if (!initialDischargePatientId || patients.length === 0) return;
-    const patient = patients.find(p => p.id === initialDischargePatientId);
-    if (patient) handleStartDischarge(patient);
-    onInitialDischargePatientHandled && onInitialDischargePatientHandled();
-  }, [initialDischargePatientId, patients]);
 
   // Resumes an already-started Discharge Summary instead of always opening a
   // blank form (which used to create a brand-new duplicate doc on every save).

@@ -42,7 +42,7 @@ function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [showRegistration, setShowRegistration] = useState(false);
   const [initialPatientId, setInitialPatientId] = useState(null);
-  const [initialDischargePatientId, setInitialDischargePatientId] = useState(null);
+  const [initialInvoicePatientId, setInitialInvoicePatientId] = useState(null);
   const [leadPrefillData, setLeadPrefillData] = useState(null);
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
@@ -84,11 +84,13 @@ function App() {
     };
 
     // Listen for "start a discharge for this patient" trigger (Patient
-    // Portal's Discharge button)
+    // Portal's Discharge button, Dashboard's Discharges Today card) —
+    // jumps straight to a pre-filled invoice for that patient rather than
+    // the Discharge Management wizard.
     const handleStartDischarge = (event) => {
-      setCurrentView('discharge');
+      setCurrentView('invoices');
       setShowRegistration(false);
-      setInitialDischargePatientId(event.detail);
+      setInitialInvoicePatientId(event.detail);
     };
 
     // Listen for "convert this lead to a patient" trigger (Lead Management's
@@ -362,13 +364,13 @@ function App() {
         {currentView === 'mess-expense' && <MessExpenseTracker />}
         {currentView === 'diet-module' && <DietModule />}
         {currentView === 'analytics' && <InventoryAnalytics />}
-        {currentView === 'invoices' && <InvoicesManagement />}
-        {currentView === 'discharge' && (
-          <DischargeManagement
-            initialDischargePatientId={initialDischargePatientId}
-            onInitialDischargePatientHandled={() => setInitialDischargePatientId(null)}
+        {currentView === 'invoices' && (
+          <InvoicesManagement
+            initialPatientId={initialInvoicePatientId}
+            onInitialPatientHandled={() => setInitialInvoicePatientId(null)}
           />
         )}
+        {currentView === 'discharge' && <DischargeManagement />}
         
         {currentView === 'prescriptions' && (
           <div className="p-6">
