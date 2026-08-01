@@ -15,35 +15,41 @@ const FIELD_ORDER = [
   'allergies', 'chronic_conditions', 'current_medications', 'medical_history', 'notes'
 ];
 
-const PatientRegistrationNew = ({ patient, onClose, onSuccess }) => {
+const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) => {
   const isEditMode = !!patient;
   const [loading, setLoading] = useState(false);
   const [sendWelcomeSMS, setSendWelcomeSMS] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [savedPatient, setSavedPatient] = useState(null);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
-  const [formData, setFormData] = useState(() => ({
-    first_name: patient?.first_name || '',
-    last_name: patient?.last_name || '',
-    age: patient?.age || '',
-    gender: patient?.gender || '',
-    patient_type: patient?.patient_type || 'OP',
-    phone: patient?.phone || '',
-    email: patient?.email || '',
-    address: patient?.address || '',
-    city: patient?.city || '',
-    state: patient?.state || '',
-    pincode: patient?.pincode || '',
-    emergency_contact_name: patient?.emergency_contact_name || '',
-    emergency_contact_phone: patient?.emergency_contact_phone || '',
-    blood_group: patient?.blood_group || '',
-    allergies: patient?.allergies || '',
-    chronic_conditions: patient?.chronic_conditions || '',
-    current_medications: patient?.current_medications || '',
-    medical_history: patient?.medical_history || '',
-    notes: patient?.notes || '',
-    registration_fee: patient?.registration_fee || ''
-  }));
+  const [formData, setFormData] = useState(() => {
+    // Pre-fill from a lead being converted — only applies to a brand-new
+    // registration, never alongside editing an existing patient.
+    const lead = !patient ? prefillData : null;
+    const [leadFirst, ...leadRest] = (lead?.name || '').trim().split(/\s+/);
+    return {
+      first_name: patient?.first_name || leadFirst || '',
+      last_name: patient?.last_name || leadRest.join(' ') || '',
+      age: patient?.age || '',
+      gender: patient?.gender || '',
+      patient_type: patient?.patient_type || 'OP',
+      phone: patient?.phone || lead?.phone || '',
+      email: patient?.email || lead?.email || '',
+      address: patient?.address || '',
+      city: patient?.city || '',
+      state: patient?.state || '',
+      pincode: patient?.pincode || '',
+      emergency_contact_name: patient?.emergency_contact_name || '',
+      emergency_contact_phone: patient?.emergency_contact_phone || '',
+      blood_group: patient?.blood_group || '',
+      allergies: patient?.allergies || '',
+      chronic_conditions: patient?.chronic_conditions || '',
+      current_medications: patient?.current_medications || '',
+      medical_history: patient?.medical_history || '',
+      notes: patient?.notes || [lead?.interest ? `Inquiry: ${lead.interest}` : '', lead?.notes || ''].filter(Boolean).join('\n'),
+      registration_fee: patient?.registration_fee || ''
+    };
+  });
 
   // Refs for every field, keyed by name, so Enter can jump to the next one.
   const fieldRefs = useRef({});
@@ -186,6 +192,19 @@ const PatientRegistrationNew = ({ patient, onClose, onSuccess }) => {
 
       console.log('✅ Patient created successfully:', docRef.id);
 
+      // Link the originating lead to the new patient record — its status
+      // was already set to 'converted' when this flow was triggered.
+      if (!isEditMode && prefillData?.leadId) {
+        try {
+          await updateDoc(doc(db, 'leads', prefillData.leadId), {
+            patient_number: patientNumber,
+            mrd_number: mrdNumber,
+          });
+        } catch (linkError) {
+          console.error('⚠️ Failed to link lead to new patient:', linkError);
+        }
+      }
+
       // Send Welcome SMS if enabled
       let smsSent = false;
       if (sendWelcomeSMS && formData.phone) {
@@ -310,6 +329,11 @@ const PatientRegistrationNew = ({ patient, onClose, onSuccess }) => {
               <div>
                 <h1 className="text-2xl font-bold text-gray-800">{isEditMode ? 'Edit Patient' : 'New Patient Registration'}</h1>
                 <p className="text-gray-600 text-sm">{isEditMode ? 'Update patient details and medical history' : 'Complete medical history and information'}</p>
+                {!isEditMode && prefillData && (
+                  <p className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2.5 py-0.5 mt-1.5 inline-block">
+                    Converting lead: {prefillData.name}
+                  </p>
+                )}
               </div>
             </div>
             {onClose && (

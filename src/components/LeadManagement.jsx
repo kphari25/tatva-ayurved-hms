@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, MessageSquare, Users, TrendingUp, Calendar, Plus, Search, Filter, CheckCircle, Clock, X, AlertCircle, Send, XCircle } from 'lucide-react';
-import { collection, getDocs, addDoc, updateDoc, doc, query, orderBy, where } from 'firebase/firestore';
+import { Phone, MessageSquare, Users, TrendingUp, Plus, Search, Filter, CheckCircle, Clock, X, Send, XCircle, Trash2, Pencil } from 'lucide-react';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+
+const STATUS_OPTIONS = [
+  { value: 'new', label: 'New' },
+  { value: 'contacted', label: 'Contacted' },
+  { value: 'followup', label: 'Follow Up' },
+  { value: 'converted', label: 'Converted' },
+  { value: 'lost', label: 'Lost' },
+];
 
 const LeadManagement = () => {
   const [leads, setLeads] = useState([]);
@@ -10,8 +18,7 @@ const LeadManagement = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterSource, setFilterSource] = useState('all');
   const [showAddLeadModal, setShowAddLeadModal] = useState(false);
-  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
-  const [selectedLead, setSelectedLead] = useState(null);
+  const [editingLead, setEditingLead] = useState(null);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [whatsAppLead, setWhatsAppLead] = useState(null);
 
@@ -42,19 +49,13 @@ const LeadManagement = () => {
     }
   };
 
-  const getStats = () => {
-    const today = new Date().toDateString();
-    
-    return {
-      totalLeads: leads.length,
-      newToday: leads.filter(l => new Date(l.created_at).toDateString() === today).length,
-      hot: leads.filter(l => l.priority === 'hot').length,
-      converted: leads.filter(l => l.status === 'converted').length,
-      lost: leads.filter(l => l.status === 'lost').length,
-      conversionRate: leads.length > 0 ? ((leads.filter(l => l.status === 'converted').length / leads.length) * 100).toFixed(1) : 0,
-      pendingFollowup: leads.filter(l => l.next_followup && new Date(l.next_followup) <= new Date() && l.status !== 'converted').length
-    };
-  };
+  const getStats = () => ({
+    new: leads.filter(l => (l.status || 'new') === 'new').length,
+    contacted: leads.filter(l => l.status === 'contacted').length,
+    followup: leads.filter(l => l.status === 'followup').length,
+    converted: leads.filter(l => l.status === 'converted').length,
+    lost: leads.filter(l => l.status === 'lost').length,
+  });
 
   const getFilteredLeads = () => {
     return leads.filter(lead => {
@@ -70,58 +71,68 @@ const LeadManagement = () => {
     });
   };
 
-  const handleConvertToPatient = async (lead) => {
-    if (!confirm(`Convert ${lead.name} to patient?`)) return;
+  // Single entry point for every status transition, driven by the inline
+  // per-row dropdown. "Converted" doesn't write a patient record directly —
+  // it hands off to the real Register New Patient flow (pre-filled), so the
+  // patient gets a proper MRD number and the rest of the intake fields.
+  const handleStatusChange = async (lead, newStatus) => {
+    if (newStatus === lead.status) return;
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+
+    if (newStatus === 'converted') {
+      if (!confirm(`Convert ${lead.name} to a patient? This opens New Patient Registration pre-filled with their details.`)) return;
+      try {
+        await updateDoc(doc(db, 'leads', lead.id), {
+          status: 'converted',
+          converted_at: new Date().toISOString(),
+          updated_by: currentUser.email,
+        });
+        setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: 'converted' } : l));
+        window.dispatchEvent(new CustomEvent('convertLeadToPatient', {
+          detail: { leadId: lead.id, name: lead.name, phone: lead.phone, email: lead.email, interest: lead.interest, notes: lead.notes },
+        }));
+      } catch (error) {
+        console.error('Error converting lead:', error);
+        alert('Failed to update lead: ' + error.message);
+      }
+      return;
+    }
+
+    if (newStatus === 'lost') {
+      if (!confirm(`Mark ${lead.name} as lost? This means they made contact but did not take any treatment.`)) return;
+      const reason = prompt('Reason (optional) — e.g. unreachable, chose another clinic, price…') || '';
+      try {
+        await updateDoc(doc(db, 'leads', lead.id), {
+          status: 'lost',
+          lost_at: new Date().toISOString(),
+          lost_reason: reason,
+          updated_by: currentUser.email,
+        });
+        setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: 'lost', lost_reason: reason } : l));
+      } catch (error) {
+        console.error('Error marking lead as lost:', error);
+        alert('Failed to update: ' + error.message);
+      }
+      return;
+    }
 
     try {
-      // Create patient record
-      const patientData = {
-        first_name: lead.name.split(' ')[0],
-        last_name: lead.name.split(' ').slice(1).join(' ') || '',
-        phone: lead.phone,
-        email: lead.email || '',
-        address: lead.address || '',
-        patient_number: `PAT-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
-        created_at: new Date().toISOString(),
-        source: 'lead_conversion',
-        lead_id: lead.id
-      };
-
-      await addDoc(collection(db, 'patients'), patientData);
-
-      // Update lead status
-      await updateDoc(doc(db, 'leads', lead.id), {
-        status: 'converted',
-        converted_at: new Date().toISOString(),
-        patient_number: patientData.patient_number
-      });
-
-      alert(`✅ Lead converted to patient!\nPatient Number: ${patientData.patient_number}`);
-      loadLeads();
-
+      await updateDoc(doc(db, 'leads', lead.id), { status: newStatus, updated_by: currentUser.email });
+      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: newStatus } : l));
     } catch (error) {
-      console.error('Error converting lead:', error);
-      alert('Failed to convert lead: ' + error.message);
+      console.error('Error updating lead status:', error);
+      alert('Failed to update: ' + error.message);
     }
   };
 
-  // A lead is "lost" when it made first contact but never went on to take any
-  // treatment — i.e. it won't be converted into a patient.
-  const handleMarkAsLost = async (lead) => {
-    if (!confirm(`Mark ${lead.name} as lost? This means they made contact but did not take any treatment.`)) return;
-    const reason = prompt('Reason (optional) — e.g. unreachable, chose another clinic, price…') || '';
-
+  const handleDeleteLead = async (lead) => {
+    if (!confirm(`Delete the lead for ${lead.name}? This cannot be undone.`)) return;
     try {
-      await updateDoc(doc(db, 'leads', lead.id), {
-        status: 'lost',
-        lost_at: new Date().toISOString(),
-        lost_reason: reason,
-        updated_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email
-      });
-      loadLeads();
+      await deleteDoc(doc(db, 'leads', lead.id));
+      setLeads(prev => prev.filter(l => l.id !== lead.id));
     } catch (error) {
-      console.error('Error marking lead as lost:', error);
-      alert('Failed to update: ' + error.message);
+      console.error('Error deleting lead:', error);
+      alert('Failed to delete: ' + error.message);
     }
   };
 
@@ -167,48 +178,40 @@ const LeadManagement = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-6">
         <StatCard
-          title="Total Leads"
-          value={stats.totalLeads}
-          icon={Users}
-          color="#8b5cf6"
-          subtitle="All time"
-        />
-        <StatCard
-          title="New Today"
-          value={stats.newToday}
+          title="New"
+          value={stats.new}
           icon={Plus}
-          color="#10b981"
-          subtitle="Fresh inquiries"
+          color="#3b82f6"
+          onClick={() => setFilterStatus('new')}
         />
         <StatCard
-          title="Hot Leads"
-          value={stats.hot}
-          icon={AlertCircle}
+          title="Contacted"
+          value={stats.contacted}
+          icon={Phone}
           color="#f59e0b"
-          subtitle="High priority"
+          onClick={() => setFilterStatus('contacted')}
+        />
+        <StatCard
+          title="Follow Up"
+          value={stats.followup}
+          icon={Clock}
+          color="#8b5cf6"
+          onClick={() => setFilterStatus('followup')}
         />
         <StatCard
           title="Converted"
           value={stats.converted}
           icon={CheckCircle}
-          color="#3b82f6"
-          subtitle={`${stats.conversionRate}% rate`}
-        />
-        <StatCard
-          title="Follow-ups Due"
-          value={stats.pendingFollowup}
-          icon={Clock}
-          color="#ef4444"
-          subtitle="Action needed"
+          color="#10b981"
+          onClick={() => setFilterStatus('converted')}
         />
         <StatCard
           title="Lost"
           value={stats.lost}
           icon={XCircle}
-          color="#6b7280"
-          subtitle="No treatment taken"
+          color="#ef4444"
           onClick={() => setFilterStatus('lost')}
         />
       </div>
@@ -348,44 +351,40 @@ const LeadManagement = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => {
-                            setSelectedLead(lead);
-                            setShowFollowUpModal(true);
-                          }}
-                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                          title="Follow-up"
+                        <select
+                          value={lead.status || 'new'}
+                          onChange={(e) => handleStatusChange(lead, e.target.value)}
+                          className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                          title="Change status"
                         >
-                          <Calendar className="w-4 h-4" />
-                        </button>
-                        {lead.status !== 'converted' && (
-                          <button
-                            onClick={() => handleConvertToPatient(lead)}
-                            className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                            title="Convert to Patient"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </button>
-                        )}
+                          {STATUS_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                         <button
                           onClick={() => {
                             setWhatsAppLead(lead);
                             setShowWhatsAppModal(true);
                           }}
-                          className="px-3 py-1 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700"
+                          className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                           title="WhatsApp Follow-up"
                         >
                           <MessageSquare className="w-4 h-4" />
                         </button>
-                        {lead.status !== 'converted' && lead.status !== 'lost' && (
-                          <button
-                            onClick={() => handleMarkAsLost(lead)}
-                            className="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600"
-                            title="Mark as Lost"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => { setEditingLead(lead); setShowAddLeadModal(true); }}
+                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          title="Edit Lead"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLead(lead)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Lead"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -396,28 +395,14 @@ const LeadManagement = () => {
         )}
       </div>
 
-      {/* Add Lead Modal */}
+      {/* Add / Edit Lead Modal */}
       {showAddLeadModal && (
         <AddLeadModal
-          onClose={() => setShowAddLeadModal(false)}
+          lead={editingLead}
+          onClose={() => { setShowAddLeadModal(false); setEditingLead(null); }}
           onSave={() => {
             setShowAddLeadModal(false);
-            loadLeads();
-          }}
-        />
-      )}
-
-      {/* Follow-up Modal */}
-      {showFollowUpModal && selectedLead && (
-        <FollowUpModal
-          lead={selectedLead}
-          onClose={() => {
-            setShowFollowUpModal(false);
-            setSelectedLead(null);
-          }}
-          onSave={() => {
-            setShowFollowUpModal(false);
-            setSelectedLead(null);
+            setEditingLead(null);
             loadLeads();
           }}
         />
@@ -437,18 +422,21 @@ const LeadManagement = () => {
   );
 };
 
-// Add Lead Modal
-const AddLeadModal = ({ onClose, onSave }) => {
+// Add / Edit Lead Modal — also covers what the old separate Follow-up modal
+// used to do (notes, next follow-up date, priority), since those are just
+// regular fields on the lead now that status has its own inline dropdown.
+const AddLeadModal = ({ lead, onClose, onSave }) => {
+  const isEditMode = !!lead;
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    email: '',
-    source: 'phone',
-    interest: '',
-    priority: 'warm',
-    notes: '',
-    next_followup: ''
+    name: lead?.name || '',
+    phone: lead?.phone || '',
+    email: lead?.email || '',
+    source: lead?.source || 'phone',
+    interest: lead?.interest || '',
+    priority: lead?.priority || 'warm',
+    notes: lead?.notes || '',
+    next_followup: lead?.next_followup || ''
   });
 
   const handleSave = async () => {
@@ -459,20 +447,24 @@ const AddLeadModal = ({ onClose, onSave }) => {
 
     try {
       setSaving(true);
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
 
-      await addDoc(collection(db, 'leads'), {
-        ...formData,
-        status: 'new',
-        created_at: new Date().toISOString(),
-        created_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email
-      });
-
-      alert('✅ Lead added successfully!');
+      if (isEditMode) {
+        await updateDoc(doc(db, 'leads', lead.id), { ...formData, updated_by: currentUser.email });
+      } else {
+        await addDoc(collection(db, 'leads'), {
+          ...formData,
+          status: 'new',
+          created_at: new Date().toISOString(),
+          created_by: currentUser.email
+        });
+        alert('✅ Lead added successfully!');
+      }
       if (onSave) onSave();
 
     } catch (error) {
-      console.error('Error adding lead:', error);
-      alert('Failed to add lead: ' + error.message);
+      console.error('Error saving lead:', error);
+      alert('Failed to save lead: ' + error.message);
     } finally {
       setSaving(false);
     }
@@ -482,7 +474,7 @@ const AddLeadModal = ({ onClose, onSave }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-purple-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
-          <h2 className="text-2xl font-bold">Add New Lead</h2>
+          <h2 className="text-2xl font-bold">{isEditMode ? 'Edit Lead' : 'Add New Lead'}</h2>
           <button onClick={onClose} className="hover:bg-purple-700 p-2 rounded">
             <X className="w-6 h-6" />
           </button>
@@ -596,106 +588,7 @@ const AddLeadModal = ({ onClose, onSave }) => {
               disabled={saving}
               className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save Lead'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Follow-up Modal
-const FollowUpModal = ({ lead, onClose, onSave }) => {
-  const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({
-    notes: '',
-    next_followup: lead.next_followup || '',
-    status: lead.status || 'followup'
-  });
-
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-
-      await updateDoc(doc(db, 'leads', lead.id), {
-        ...formData,
-        last_followup: new Date().toISOString(),
-        updated_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email
-      });
-
-      alert('✅ Follow-up updated!');
-      if (onSave) onSave();
-
-    } catch (error) {
-      console.error('Error updating follow-up:', error);
-      alert('Failed to update: ' + error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-        <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
-          <h2 className="text-xl font-bold">Follow-up: {lead.name}</h2>
-          <button onClick={onClose} className="hover:bg-blue-700 p-2 rounded">
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="p-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Follow-up Notes</label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows="3"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                placeholder="What was discussed..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Next Follow-up Date</label>
-              <input
-                type="date"
-                value={formData.next_followup}
-                onChange={(e) => setFormData({ ...formData, next_followup: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="new">New</option>
-                <option value="contacted">Contacted</option>
-                <option value="followup">Follow-up</option>
-                <option value="lost">Lost</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 mt-6">
-            <button
-              onClick={onClose}
-              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Save Lead'}
             </button>
           </div>
         </div>

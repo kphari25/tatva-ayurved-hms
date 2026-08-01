@@ -43,6 +43,7 @@ function App() {
   const [showRegistration, setShowRegistration] = useState(false);
   const [initialPatientId, setInitialPatientId] = useState(null);
   const [initialDischargePatientId, setInitialDischargePatientId] = useState(null);
+  const [leadPrefillData, setLeadPrefillData] = useState(null);
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
   useEffect(() => {
@@ -70,6 +71,7 @@ function App() {
     
     // Listen for new patient registration trigger
     const handleOpenNewPatient = () => {
+      setLeadPrefillData(null);
       setShowRegistration(true);
     };
 
@@ -89,16 +91,27 @@ function App() {
       setInitialDischargePatientId(event.detail);
     };
 
+    // Listen for "convert this lead to a patient" trigger (Lead Management's
+    // status dropdown) — opens the real registration form pre-filled with
+    // the lead's details, instead of silently writing a bare patient record.
+    const handleConvertLead = (event) => {
+      setCurrentView('patients');
+      setLeadPrefillData(event.detail);
+      setShowRegistration(true);
+    };
+
     window.addEventListener('navigate', handleNavigate);
     window.addEventListener('openNewPatient', handleOpenNewPatient);
     window.addEventListener('viewPatient', handleViewPatient);
     window.addEventListener('startDischarge', handleStartDischarge);
+    window.addEventListener('convertLeadToPatient', handleConvertLead);
 
     return () => {
       window.removeEventListener('navigate', handleNavigate);
       window.removeEventListener('openNewPatient', handleOpenNewPatient);
       window.removeEventListener('viewPatient', handleViewPatient);
       window.removeEventListener('startDischarge', handleStartDischarge);
+      window.removeEventListener('convertLeadToPatient', handleConvertLead);
     };
   }, []);
 
@@ -334,8 +347,10 @@ function App() {
         )}
         
         {currentView === 'patients' && showRegistration && (
-          <PatientRegistrationNew 
-            onClose={() => setShowRegistration(false)}
+          <PatientRegistrationNew
+            prefillData={leadPrefillData}
+            onClose={() => { setShowRegistration(false); setLeadPrefillData(null); }}
+            onSuccess={() => setLeadPrefillData(null)}
           />
         )}
         {currentView === 'leads' && <LeadManagement />}

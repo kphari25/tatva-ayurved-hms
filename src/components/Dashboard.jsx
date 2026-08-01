@@ -744,7 +744,11 @@ const Dashboard = () => {
         {/* Right Column - 1/3 width */}
         <div className="space-y-6">
           {/* Lead Conversion Snapshot */}
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <div
+            onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'leads' }))}
+            className="bg-white rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+            title="Open Lead Management"
+          >
             <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4">
               <div className="flex items-center gap-3">
                 <Phone className="w-5 h-5 text-white" />
