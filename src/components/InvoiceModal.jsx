@@ -3,6 +3,8 @@ import { X, Printer, Save, FileText, MessageSquare, Plus } from 'lucide-react';
 import { collection, addDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
+import { getRoomInfo } from '../lib/rooms';
+import { addDaysToDateString } from '../lib/formatDate';
 
 const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
   const isRegistrationInvoice = registrationFee > 0;
@@ -100,6 +102,38 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     }
     setFormData(updated);
   };
+
+  // Pre-fill room + stay dates from the IP Case Sheet the moment this opens
+  // for an IP patient, so staff don't have to re-enter what was already
+  // recorded at admission. Runs once on open — later manual edits here are
+  // left alone rather than being overwritten.
+  useEffect(() => {
+    const patientId = patient?.firebaseId || patient?.id;
+    if (invoiceType !== 'IP' || !patientId) return;
+    getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
+      if (!snap.exists()) return;
+      const cs = snap.data();
+      const room = getRoomInfo(cs.room_number);
+      const dischargeDate = cs.discharge_date
+        || (patient?.admission_date && patient?.expected_stay_days != null
+          ? addDaysToDateString(patient.admission_date, Number(patient.expected_stay_days))
+          : '');
+      setFormData(prev => {
+        const updated = {
+          ...prev,
+          ...(room ? { room_number: room.number, room_type: room.type, room_rent: room.rate } : {}),
+          ...(dischargeDate ? { discharge_date: dischargeDate } : {}),
+        };
+        const stayDays = calcStayDays(updated.admission_date, updated.discharge_date);
+        if (stayDays !== null) {
+          updated.days = stayDays;
+          updated.mess_days = stayDays;
+        }
+        return updated;
+      });
+    }).catch(e => console.error('Error pre-filling room/stay info:', e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Gross = every line item including registration fee
   const calculateGross = () => {

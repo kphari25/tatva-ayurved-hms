@@ -273,7 +273,7 @@ const Dashboard = () => {
         return {
           id: p.id,
           name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-          room: [cs.ward, cs.bed_no ? `Bed ${cs.bed_no}` : null].filter(Boolean).join(' · ') || '—',
+          room: cs.room_number ? `Room ${cs.room_number}` : [cs.ward, cs.bed_no ? `Bed ${cs.bed_no}` : null].filter(Boolean).join(' · ') || '—',
           admission: admissionDate,
           diagnosis: cs.admin_diagnosis || '—',
           daysAdmitted: admissionDate ? Math.max(0, Math.floor((Date.now() - new Date(admissionDate)) / (1000 * 60 * 60 * 24))) : null,

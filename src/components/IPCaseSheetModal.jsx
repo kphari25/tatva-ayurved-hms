@@ -11,6 +11,7 @@ import { summarizeMedicineItems } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
+import { ROOMS } from '../lib/rooms';
 
 const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
 
@@ -71,8 +72,7 @@ const emptyForm = () => ({
   marital_status: '',
   caste: '',
 
-  bed_no: '',
-  ward: '',
+  room_number: '',
   admission_date: '',
   discharge_date: '',
   admin_diagnosis: '',
@@ -332,7 +332,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
   <div class="info-right">
     <div class="info-row"><span class="info-label">MRD No:</span> ${patient?.mrd_number || ''}</div>
     <div class="info-row"><span class="info-label">IP No:</span> ${patient?.ip_number || ''}</div>
-    <div class="info-row"><span class="info-label">Bed No / Ward:</span> ${form.bed_no} / ${form.ward}</div>
+    <div class="info-row"><span class="info-label">Room No:</span> ${form.room_number}</div>
     <div class="info-row"><span class="info-label">Department:</span> ${form.department}</div>
     <div class="info-row"><span class="info-label">Physician:</span> ${form.physician_name}</div>
     <div class="info-row"><span class="info-label">Date of Admission:</span> ${fmtDate(form.admission_date)}</div>
@@ -370,13 +370,37 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
   const [editingDailyId, setEditingDailyId] = useState(null);
   const [doctors, setDoctors] = useState([]);
   const [showPrintOptions, setShowPrintOptions] = useState(false);
+  const [occupiedRooms, setOccupiedRooms] = useState(new Set());
   const tabContainerRef = useRef(null);
 
   useEffect(() => {
     loadCaseSheet();
     loadDailyProgress();
     loadDoctors().then(setDoctors);
+    loadOccupiedRooms();
   }, []);
+
+  // Rooms held by every OTHER currently-admitted IP patient — so the
+  // dropdown only ever offers rooms that are actually free right now.
+  const loadOccupiedRooms = async () => {
+    try {
+      const patientsSnap = await getDocs(query(collection(db, 'patients'), where('patient_type', '==', 'IP')));
+      const activeOtherIds = patientsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => p.id !== patientId && p.admission_status !== 'pending_admission' && p.admission_status !== 'discharged')
+        .map(p => p.id);
+      if (activeOtherIds.length === 0) { setOccupiedRooms(new Set()); return; }
+
+      const caseSheetsSnap = await getDocs(collection(db, 'ip_case_sheets'));
+      const occupied = new Set();
+      caseSheetsSnap.docs.forEach(d => {
+        if (activeOtherIds.includes(d.id) && d.data().room_number) occupied.add(d.data().room_number);
+      });
+      setOccupiedRooms(occupied);
+    } catch (e) {
+      console.error('Error loading room occupancy:', e);
+    }
+  };
 
   useEffect(() => {
     if (!loading) focusFirstField(tabContainerRef.current);
@@ -652,8 +676,24 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
 
                   <SectionTitle>Admission Details</SectionTitle>
                   <div className="grid grid-cols-3 gap-4">
-                    <Field label="Bed No" value={form.bed_no} onChange={v => set('bed_no', v)} />
-                    <Field label="Ward" value={form.ward} onChange={v => set('ward', v)} />
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Room Number</label>
+                      <select
+                        value={form.room_number}
+                        onChange={e => set('room_number', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                      >
+                        <option value="">Select Room</option>
+                        {ROOMS.filter(r => !occupiedRooms.has(r.number) || r.number === form.room_number).map(r => (
+                          <option key={r.number} value={r.number}>
+                            Room {r.number} ({r.type} — ₹{r.rate}/day)
+                          </option>
+                        ))}
+                      </select>
+                      {ROOMS.every(r => occupiedRooms.has(r.number) && r.number !== form.room_number) && (
+                        <p className="text-xs text-red-600 mt-1">All rooms are currently occupied.</p>
+                      )}
+                    </div>
                     <Field label="Date of Admission" type="date" value={form.admission_date} onChange={v => set('admission_date', v)} />
                     <Field label="Date of Discharge" type="date" value={form.discharge_date} onChange={v => set('discharge_date', v)} />
                     <Field label="Diagnosis" value={form.admin_diagnosis} onChange={v => set('admin_diagnosis', v)} />
