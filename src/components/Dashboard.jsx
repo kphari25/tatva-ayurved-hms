@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X } from 'lucide-react';
+import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
@@ -56,8 +56,17 @@ const formatGroupDate = (dateStr) => {
   return new Date(y, m - 1, day).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 };
 
-const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
-  const [formData, setFormData] = useState({ patient: '', phone: '', time: '', type: '', doctorId: '', doctorName: '', sendSms: false });
+const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [] }) => {
+  const isEditMode = !!appointment;
+  const [formData, setFormData] = useState({
+    patient: appointment?.patient || '',
+    phone: appointment?.phone || '',
+    time: appointment?.time || '',
+    type: appointment?.type || '',
+    doctorId: appointment?.doctorId || '',
+    doctorName: appointment?.doctorName || '',
+    sendSms: false,
+  });
   const [error, setError] = useState('');
 
   const handleDoctorChange = (e) => {
@@ -86,7 +95,7 @@ const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-bold text-gray-900">Add Today's Appointment</h3>
+          <h3 className="text-lg font-bold text-gray-900">{isEditMode ? 'Edit Appointment' : "Add Today's Appointment"}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
@@ -156,7 +165,7 @@ const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
               onChange={(e) => setFormData({ ...formData, sendSms: e.target.checked })}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            Send SMS confirmation to patient
+            {isEditMode ? 'Send updated SMS to patient' : 'Send SMS confirmation to patient'}
           </label>
           <div className="flex gap-3 pt-2">
             <button
@@ -171,7 +180,7 @@ const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
               disabled={saving}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save Appointment'}
+              {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Save Appointment'}
             </button>
           </div>
         </form>
@@ -183,6 +192,7 @@ const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showAddAppointment, setShowAddAppointment] = useState(false);
+  const [editingAppointment, setEditingAppointment] = useState(null);
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [doctors, setDoctors] = useState([]);
   const [therapists, setTherapists] = useState([]);
@@ -463,21 +473,34 @@ const Dashboard = () => {
   };
 
   const saveAppointment = async (formData) => {
+    const isEditMode = !!editingAppointment;
     try {
       setSavingAppointment(true);
       const today = toDateStr(new Date());
-      await addDoc(collection(db, 'appointments'), {
-        patient: formData.patient,
-        phone: formData.phone || '',
-        time: formData.time,
-        type: formData.type,
-        status: 'scheduled',
-        contact_status: 'called_in',
-        date: today,
-        doctorId: formData.doctorId || '',
-        doctorName: formData.doctorName || '',
-        createdAt: new Date().toISOString()
-      });
+
+      if (isEditMode) {
+        await updateDoc(doc(db, 'appointments', editingAppointment.id), {
+          patient: formData.patient,
+          phone: formData.phone || '',
+          time: formData.time,
+          type: formData.type,
+          doctorId: formData.doctorId || '',
+          doctorName: formData.doctorName || '',
+        });
+      } else {
+        await addDoc(collection(db, 'appointments'), {
+          patient: formData.patient,
+          phone: formData.phone || '',
+          time: formData.time,
+          type: formData.type,
+          status: 'scheduled',
+          contact_status: 'called_in',
+          date: today,
+          doctorId: formData.doctorId || '',
+          doctorName: formData.doctorName || '',
+          createdAt: new Date().toISOString()
+        });
+      }
 
       if (formData.sendSms && formData.phone) {
         try {
@@ -494,10 +517,11 @@ const Dashboard = () => {
       }
 
       setShowAddAppointment(false);
+      setEditingAppointment(null);
       await loadDashboardData();
     } catch (error) {
-      console.error('Error adding appointment:', error);
-      alert('Failed to add appointment. Please try again.');
+      console.error('Error saving appointment:', error);
+      alert('Failed to save appointment. Please try again.');
     } finally {
       setSavingAppointment(false);
     }
@@ -705,13 +729,22 @@ const Dashboard = () => {
                           >
                             <div className="flex items-start justify-between gap-2">
                               <p className={`text-base font-bold ${color.time}`}>{apt.time}</p>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteAppointment(apt.id); }}
-                                className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Remove appointment"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setEditingAppointment(apt); }}
+                                  className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Edit appointment"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); deleteAppointment(apt.id); }}
+                                  className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Remove appointment"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                             <p className="font-semibold text-gray-900 mt-1">{apt.patient}</p>
                             {apt.type && (
@@ -1004,9 +1037,10 @@ const Dashboard = () => {
         </div>
       )}
 
-      {showAddAppointment && (
+      {(showAddAppointment || editingAppointment) && (
         <AddAppointmentModal
-          onClose={() => setShowAddAppointment(false)}
+          appointment={editingAppointment}
+          onClose={() => { setShowAddAppointment(false); setEditingAppointment(null); }}
           onSave={saveAppointment}
           saving={savingAppointment}
           doctors={doctors}
