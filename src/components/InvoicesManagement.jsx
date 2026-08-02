@@ -239,6 +239,8 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
             <h3>Invoice Details:</h3>
             <p><strong>Date:</strong> ${new Date(invoice.invoice_date).toLocaleDateString()}</p>
             <p><strong>Invoice Type:</strong> ${invoice.invoice_type}</p>
+            ${invoice.invoice_type === 'IP' && invoice.admission_date ? `<p><strong>Admission Date:</strong> ${new Date(invoice.admission_date).toLocaleDateString()}</p>` : ''}
+            ${invoice.invoice_type === 'IP' && invoice.discharge_date ? `<p><strong>Discharge Date:</strong> ${new Date(invoice.discharge_date).toLocaleDateString()}</p>` : ''}
             <p><strong>Payment Mode:</strong> ${invoice.payment_mode}</p>
           </div>
         </div>

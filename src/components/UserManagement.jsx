@@ -79,6 +79,7 @@ const MODULES = {
   discharge: { label: 'Discharge', icon: UserCheck, description: 'Patient discharge management' },
   analytics: { label: 'Analytics', icon: TrendingUp, description: 'Reports and analytics dashboards' },
   'ai-assist': { label: 'AI Assist', icon: BarChart3, description: 'AI-powered health assistance' },
+  'mess-management': { label: 'Mess Management', icon: Utensils, description: 'Assign patient meals and set meal prices' },
   'mess-expense': { label: 'Mess Expense', icon: Utensils, description: 'Kitchen expense tracking' },
   'diet-module': { label: 'Diet Plans', icon: Utensils, description: 'Patient diet plan management' },
   'profit-loss': { label: 'P&L Statement', icon: Receipt, description: 'Profit and loss reporting' },
@@ -93,9 +94,9 @@ const DEFAULT_PERMISSIONS = {
   system_admin: Object.keys(MODULES), // All modules
   doctor: ['dashboard', 'patients', 'scheduling', 'prescriptions', 'packages', 'treatment-charges', 'discharge', 'analytics', 'ai-assist'],
   therapist: ['dashboard', 'patients', 'scheduling', 'treatment-charges'],
-  front_office: ['dashboard', 'patients', 'scheduling', 'leads', 'invoices', 'packages', 'treatment-charges', 'discharge'],
+  front_office: ['dashboard', 'patients', 'scheduling', 'leads', 'invoices', 'packages', 'treatment-charges', 'discharge', 'mess-management'],
   store_admin: ['dashboard', 'inventory', 'purchase'],
-  kitchen_staff: ['dashboard', 'mess-expense', 'diet-module'],
+  kitchen_staff: ['dashboard', 'mess-management', 'mess-expense', 'diet-module'],
   accountant: ['dashboard', 'invoices', 'profit-loss', 'financials', 'analytics', 'purchase', 'treatment-charges']
 };
 

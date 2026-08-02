@@ -121,6 +121,10 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       setFormData(prev => {
         const updated = {
           ...prev,
+          // Patient record's own admission_date takes priority; the IP Case
+          // Sheet's admission_date (entered separately by the ward) is only
+          // used to fill the gap when the patient record never got one.
+          ...(!prev.admission_date && cs.admission_date ? { admission_date: cs.admission_date } : {}),
           ...(room ? { room_number: room.number, room_type: room.type, room_rent: room.rate } : {}),
           ...(dischargeDate ? { discharge_date: dischargeDate } : {}),
         };
@@ -134,6 +138,27 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     }).catch(e => console.error('Error pre-filling room/stay info:', e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Default the per-day meal rates from Mess Management's Set Prices, so
+  // staff aren't re-typing ₹80/₹120/etc. on every invoice — still fully
+  // editable below for a one-off adjustment.
+  useEffect(() => {
+    if (invoiceType !== 'IP') return;
+    getDoc(doc(db, 'meal_prices', 'default')).then(snap => {
+      if (!snap.exists()) return;
+      const prices = snap.data();
+      setFormData(prev => ({
+        ...prev,
+        patient_meals: {
+          breakfast: prev.patient_meals.breakfast || prices.breakfast || 0,
+          lunch: prev.patient_meals.lunch || prices.lunch || 0,
+          dinner: prev.patient_meals.dinner || prices.dinner || 0,
+          snacks: prev.patient_meals.snacks || prices.snacks || 0,
+        },
+      }));
+    }).catch(e => console.error('Error loading meal prices:', e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceType]);
 
   // Gross = every line item including registration fee
   const calculateGross = () => {

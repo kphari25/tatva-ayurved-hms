@@ -18,6 +18,7 @@ import PatientPortal from './components/PatientPortal';
 import PatientRegistrationNew from './components/PatientRegistrationNew';
 import InventoryManagement from './components/InventoryManagement';
 import MessExpenseTracker from './components/MessExpenseTracker';
+import MessManagement from './components/MessManagement';
 import DietModule from './components/DietModule';
 import InventoryAnalytics from './components/InventoryAnalytics';
 import MedicineOrderingTable from './components/MedicineOrderingTable';
@@ -237,6 +238,7 @@ function App() {
     
     // Kitchen Module Section
     { id: 'kitchen-section', label: 'Kitchen', icon: null, isSectionHeader: true },
+    { id: 'mess-management', label: 'Mess Management', icon: Utensils, moduleId: 'mess-management' },
     { id: 'mess-expense', label: 'Mess Expense', icon: ShoppingCart, moduleId: 'mess-expense' },
     { id: 'diet-module', label: 'Diet Plans', icon: Utensils, moduleId: 'diet-module' },
     
@@ -373,6 +375,7 @@ function App() {
         {currentView === 'treatment-charges' && <TreatmentCharges />}
         {currentView === 'purchase' && <PurchaseManagement />}
         {currentView === 'ai-assist' && <AIAssist />}
+        {currentView === 'mess-management' && <MessManagement />}
         {currentView === 'mess-expense' && <MessExpenseTracker />}
         {currentView === 'diet-module' && <DietModule />}
         {currentView === 'analytics' && <InventoryAnalytics />}
