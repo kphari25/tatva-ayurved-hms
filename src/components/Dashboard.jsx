@@ -472,6 +472,31 @@ const Dashboard = () => {
     }
   };
 
+  // Mirrors a phone call-in appointment into Lead Management, linked via
+  // lead_id/appointment_id on each doc, so front desk call volume and
+  // conversion rate show up there too instead of living only on the
+  // Dashboard. Also used to lazily backfill a lead for an appointment that
+  // was created before this link existed.
+  const createLinkedLead = async (appointmentId, { patient, phone, type }, status) => {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const leadRef = await addDoc(collection(db, 'leads'), {
+      name: patient,
+      phone: phone || '',
+      email: '',
+      source: 'phone',
+      interest: type || '',
+      priority: 'warm',
+      status,
+      notes: 'Auto-created from Dashboard appointment',
+      appointment_id: appointmentId,
+      created_at: new Date().toISOString(),
+      created_by: currentUser.email || '',
+      ...(status === 'converted' ? { converted_at: new Date().toISOString() } : {}),
+    });
+    await updateDoc(doc(db, 'appointments', appointmentId), { lead_id: leadRef.id });
+    return leadRef.id;
+  };
+
   const saveAppointment = async (formData) => {
     const isEditMode = !!editingAppointment;
     try {
@@ -487,8 +512,20 @@ const Dashboard = () => {
           doctorId: formData.doctorId || '',
           doctorName: formData.doctorName || '',
         });
+
+        if (editingAppointment.lead_id) {
+          try {
+            await updateDoc(doc(db, 'leads', editingAppointment.lead_id), {
+              name: formData.patient,
+              phone: formData.phone || '',
+              interest: formData.type || '',
+            });
+          } catch (leadError) {
+            console.error('⚠️ Failed to sync linked lead:', leadError);
+          }
+        }
       } else {
-        await addDoc(collection(db, 'appointments'), {
+        const apptRef = await addDoc(collection(db, 'appointments'), {
           patient: formData.patient,
           phone: formData.phone || '',
           time: formData.time,
@@ -500,6 +537,12 @@ const Dashboard = () => {
           doctorName: formData.doctorName || '',
           createdAt: new Date().toISOString()
         });
+
+        try {
+          await createLinkedLead(apptRef.id, { patient: formData.patient, phone: formData.phone, type: formData.type }, 'new');
+        } catch (leadError) {
+          console.error('⚠️ Failed to create linked lead:', leadError);
+        }
       }
 
       if (formData.sendSms && formData.phone) {
@@ -528,24 +571,40 @@ const Dashboard = () => {
   };
 
   // Front desk marks a phone-booked (not-yet-registered) appointment as
-  // "In the Office" once the caller physically arrives — persists the status
-  // and jumps straight into Patient Portal's registration form, prefilled,
-  // so the front desk isn't re-typing name/phone. The appointment itself is
-  // deleted once that registration is actually saved (see
-  // PatientRegistrationNew's appointmentId handling), not here, since the
-  // front desk may cancel out of the registration form without finishing.
+  // "In the Office" once the caller physically arrives — persists the status,
+  // flips the linked lead to "Converted" (matching Lead Management's own
+  // Converted transition), and jumps straight into Patient Portal's
+  // registration form, prefilled, so the front desk isn't re-typing
+  // name/phone. The appointment itself is deleted once that registration is
+  // actually saved (see PatientRegistrationNew's appointmentId handling),
+  // not here, since the front desk may cancel out without finishing.
   const handleContactStatusChange = async (apt, newStatus) => {
     try {
       await updateDoc(doc(db, 'appointments', apt.id), { contact_status: newStatus });
     } catch (error) {
       console.error('Error updating appointment status:', error);
     }
+
+    let leadId = apt.lead_id || null;
+
     if (newStatus === 'in_office') {
+      try {
+        if (leadId) {
+          await updateDoc(doc(db, 'leads', leadId), { status: 'converted', converted_at: new Date().toISOString() });
+        } else {
+          // Backfill: this appointment predates the Lead Management link.
+          leadId = await createLinkedLead(apt.id, { patient: apt.patient, phone: apt.phone, type: apt.type }, 'converted');
+        }
+      } catch (leadError) {
+        console.error('⚠️ Failed to update linked lead status:', leadError);
+      }
+
       window.dispatchEvent(new CustomEvent('convertAppointmentToPatient', {
         detail: {
           name: apt.patient,
           phone: apt.phone || '',
           appointmentId: apt.id,
+          leadId: leadId || undefined,
           notes: apt.type ? `Walk-in from appointment: ${apt.type}` : '',
         }
       }));
