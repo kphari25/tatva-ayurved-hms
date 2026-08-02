@@ -3,6 +3,7 @@ import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, T
 import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
+import { sendAppointmentSMSToPatient } from '../lib/sms';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -56,7 +57,7 @@ const formatGroupDate = (dateStr) => {
 };
 
 const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
-  const [formData, setFormData] = useState({ patient: '', time: '', type: '', doctorId: '', doctorName: '' });
+  const [formData, setFormData] = useState({ patient: '', phone: '', time: '', type: '', doctorId: '', doctorName: '', sendSms: false });
   const [error, setError] = useState('');
 
   const handleDoctorChange = (e) => {
@@ -72,6 +73,10 @@ const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
     e.preventDefault();
     if (!formData.patient.trim() || !formData.time) {
       setError('Patient name and time are required.');
+      return;
+    }
+    if (formData.sendSms && !formData.phone.trim()) {
+      setError('Phone number is required to send an SMS confirmation.');
       return;
     }
     onSave(formData);
@@ -100,6 +105,16 @@ const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
               onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g. Anjali Menon"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+            <input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. 9876543210"
             />
           </div>
           <div>
@@ -134,6 +149,15 @@ const AddAppointmentModal = ({ onClose, onSave, saving, doctors = [] }) => {
               ))}
             </select>
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={formData.sendSms}
+              onChange={(e) => setFormData({ ...formData, sendSms: e.target.checked })}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Send SMS confirmation to patient
+          </label>
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -441,17 +465,34 @@ const Dashboard = () => {
   const saveAppointment = async (formData) => {
     try {
       setSavingAppointment(true);
-      const today = new Date().toISOString().split('T')[0];
+      const today = toDateStr(new Date());
       await addDoc(collection(db, 'appointments'), {
         patient: formData.patient,
+        phone: formData.phone || '',
         time: formData.time,
         type: formData.type,
         status: 'scheduled',
+        contact_status: 'called_in',
         date: today,
         doctorId: formData.doctorId || '',
         doctorName: formData.doctorName || '',
         createdAt: new Date().toISOString()
       });
+
+      if (formData.sendSms && formData.phone) {
+        try {
+          const result = await sendAppointmentSMSToPatient(formData.phone, formData.patient, {
+            appointmentType: formData.type || 'appointment',
+            doctorName: formData.doctorName || 'our team',
+            date: today,
+            time: formData.time,
+          });
+          if (!result.success) console.warn('Appointment SMS not sent:', result.error);
+        } catch (smsError) {
+          console.error('⚠️ Failed to send appointment SMS:', smsError);
+        }
+      }
+
       setShowAddAppointment(false);
       await loadDashboardData();
     } catch (error) {
@@ -459,6 +500,31 @@ const Dashboard = () => {
       alert('Failed to add appointment. Please try again.');
     } finally {
       setSavingAppointment(false);
+    }
+  };
+
+  // Front desk marks a phone-booked (not-yet-registered) appointment as
+  // "In the Office" once the caller physically arrives — persists the status
+  // and jumps straight into Patient Portal's registration form, prefilled,
+  // so the front desk isn't re-typing name/phone. The appointment itself is
+  // deleted once that registration is actually saved (see
+  // PatientRegistrationNew's appointmentId handling), not here, since the
+  // front desk may cancel out of the registration form without finishing.
+  const handleContactStatusChange = async (apt, newStatus) => {
+    try {
+      await updateDoc(doc(db, 'appointments', apt.id), { contact_status: newStatus });
+    } catch (error) {
+      console.error('Error updating appointment status:', error);
+    }
+    if (newStatus === 'in_office') {
+      window.dispatchEvent(new CustomEvent('convertAppointmentToPatient', {
+        detail: {
+          name: apt.patient,
+          phone: apt.phone || '',
+          appointmentId: apt.id,
+          notes: apt.type ? `Walk-in from appointment: ${apt.type}` : '',
+        }
+      }));
     }
   };
 
@@ -663,13 +729,30 @@ const Dashboard = () => {
                                 👤 {apt.therapistName}
                               </p>
                             )}
-                            <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                              apt.status === 'in-progress'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
-                            </span>
+                            {apt.patient_id ? (
+                              <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                apt.status === 'in-progress'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
+                              </span>
+                            ) : (
+                              <select
+                                value={apt.contact_status || 'called_in'}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => handleContactStatusChange(apt, e.target.value)}
+                                title="Front desk contact status"
+                                className={`mt-2 text-xs font-semibold rounded-full border-0 pl-2 pr-6 py-0.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                                  apt.contact_status === 'in_office'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                <option value="called_in">📞 Called In</option>
+                                <option value="in_office">🏥 In the Office</option>
+                              </select>
+                            )}
                           </div>
                         );
                       })}

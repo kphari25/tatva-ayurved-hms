@@ -43,7 +43,7 @@ function App() {
   const [showRegistration, setShowRegistration] = useState(false);
   const [initialPatientId, setInitialPatientId] = useState(null);
   const [initialInvoicePatientId, setInitialInvoicePatientId] = useState(null);
-  const [leadPrefillData, setLeadPrefillData] = useState(null);
+  const [registrationPrefillData, setRegistrationPrefillData] = useState(null);
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ function App() {
     
     // Listen for new patient registration trigger
     const handleOpenNewPatient = () => {
-      setLeadPrefillData(null);
+      setRegistrationPrefillData(null);
       setShowRegistration(true);
     };
 
@@ -98,7 +98,17 @@ function App() {
     // the lead's details, instead of silently writing a bare patient record.
     const handleConvertLead = (event) => {
       setCurrentView('patients');
-      setLeadPrefillData(event.detail);
+      setRegistrationPrefillData(event.detail);
+      setShowRegistration(true);
+    };
+
+    // Listen for "register this walk-in" trigger (Dashboard's Called In /
+    // In the Office status on a phone-booked appointment) — opens the real
+    // registration form pre-filled with the caller's name/phone; the
+    // appointment itself is removed once that registration is saved.
+    const handleConvertAppointment = (event) => {
+      setCurrentView('patients');
+      setRegistrationPrefillData(event.detail);
       setShowRegistration(true);
     };
 
@@ -107,6 +117,7 @@ function App() {
     window.addEventListener('viewPatient', handleViewPatient);
     window.addEventListener('startDischarge', handleStartDischarge);
     window.addEventListener('convertLeadToPatient', handleConvertLead);
+    window.addEventListener('convertAppointmentToPatient', handleConvertAppointment);
 
     return () => {
       window.removeEventListener('navigate', handleNavigate);
@@ -114,6 +125,7 @@ function App() {
       window.removeEventListener('viewPatient', handleViewPatient);
       window.removeEventListener('startDischarge', handleStartDischarge);
       window.removeEventListener('convertLeadToPatient', handleConvertLead);
+      window.removeEventListener('convertAppointmentToPatient', handleConvertAppointment);
     };
   }, []);
 
@@ -350,9 +362,9 @@ function App() {
         
         {currentView === 'patients' && showRegistration && (
           <PatientRegistrationNew
-            prefillData={leadPrefillData}
-            onClose={() => { setShowRegistration(false); setLeadPrefillData(null); }}
-            onSuccess={() => setLeadPrefillData(null)}
+            prefillData={registrationPrefillData}
+            onClose={() => { setShowRegistration(false); setRegistrationPrefillData(null); }}
+            onSuccess={() => setRegistrationPrefillData(null)}
           />
         )}
         {currentView === 'leads' && <LeadManagement />}

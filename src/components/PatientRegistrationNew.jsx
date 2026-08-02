@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { UserPlus, Save, X, Receipt, CheckCircle, FileText, UserCheck } from 'lucide-react';
-import { collection, addDoc, updateDoc, doc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
 import InvoiceModal from './InvoiceModal';
@@ -205,6 +205,16 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
         }
       }
 
+      // Remove the phone-booked appointment this walk-in registration came
+      // from — it's done its job of getting the caller's details here.
+      if (!isEditMode && prefillData?.appointmentId) {
+        try {
+          await deleteDoc(doc(db, 'appointments', prefillData.appointmentId));
+        } catch (deleteError) {
+          console.error('⚠️ Failed to remove originating appointment:', deleteError);
+        }
+      }
+
       // Send Welcome SMS if enabled
       let smsSent = false;
       if (sendWelcomeSMS && formData.phone) {
@@ -331,7 +341,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
                 <p className="text-gray-600 text-sm">{isEditMode ? 'Update patient details and medical history' : 'Complete medical history and information'}</p>
                 {!isEditMode && prefillData && (
                   <p className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2.5 py-0.5 mt-1.5 inline-block">
-                    Converting lead: {prefillData.name}
+                    {prefillData.appointmentId ? 'Registering walk-in from appointment' : 'Converting lead'}: {prefillData.name}
                   </p>
                 )}
               </div>
