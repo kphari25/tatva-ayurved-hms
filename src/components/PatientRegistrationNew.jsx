@@ -157,6 +157,12 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
         if (formData.patient_type === 'IP' && !patient.ip_number) {
           updateData.ip_number = await generateIPNumber();
         }
+        // Backfill an MRD number for older patients registered before this
+        // field existed — every printed document (prescriptions, invoices,
+        // case sheets) falls back to the PAT- number until this is set.
+        if (!patient.mrd_number) {
+          updateData.mrd_number = await generateMRDNumber();
+        }
         await updateDoc(doc(db, 'patients', patient.id), updateData);
         alert(`✅ Patient updated successfully!\n\n${formData.first_name} ${formData.last_name}`);
         if (onSuccess) onSuccess();
@@ -474,7 +480,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
                 </label>
                 <div className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-teal-50 text-teal-700 font-semibold text-sm flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-teal-400 inline-block"></span>
-                  {isEditMode ? (patient.mrd_number || '—') : 'Will be assigned on save (MRD-1001+)'}
+                  {isEditMode ? (patient.mrd_number || 'Will be assigned on save (MRD-1001+)') : 'Will be assigned on save (MRD-1001+)'}
                 </div>
               </div>
 
