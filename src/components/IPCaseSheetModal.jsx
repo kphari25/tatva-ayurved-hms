@@ -7,7 +7,7 @@ import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
 import PrintSectionModal from './PrintSectionModal';
-import { summarizeMedicineItems } from '../lib/medicineSummary';
+import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
@@ -152,7 +152,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
     .map(e => `<tr><td>${fmtDate(e.date)}</td><td>${e.bp_morning || ''}</td><td>${e.bp_evening || ''}</td><td>${e.temperature || ''}</td><td>${e.pulse || ''}</td><td>${e.spo2 || ''}</td><td>${e.weight || ''}</td></tr>`).join('');
 
   const treatmentRows = dailyProgress.filter(e => e.treatment_performed || e.medicines_given)
-    .map(e => `<tr><td>${fmtDate(e.date)}</td><td>${e.treatment_performed || ''}</td><td>${e.medicines_given || ''}</td></tr>`).join('');
+    .map(e => `<tr><td>${fmtDate(e.date)}</td><td>${e.treatment_performed || ''}</td><td>${buildMedicineItemsTableHTML(e.medicine_items) || e.medicines_given || ''}</td></tr>`).join('');
 
   const dailyReportRows = dailyProgress.filter(e => e.doctors_notes)
     .map(e => `<tr><td>${fmtDate(e.date)}</td><td>${e.doctors_notes || ''}</td><td>${e.created_by || ''}</td></tr>`).join('');
@@ -293,6 +293,10 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
     table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
     table.grid th, table.grid td { border: 1px solid #aaa; padding: 4px 8px; text-align: left; }
     table.grid th { background: #f0f0f0; font-weight: bold; }
+
+    table.med-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    table.med-table th, table.med-table td { border: 1px solid #ccc; padding: 2px 4px; text-align: left; }
+    table.med-table th { background: #f5f5f5; font-weight: 600; }
 
     .footer { margin-top: 20px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
     .sig-block { text-align: right; }

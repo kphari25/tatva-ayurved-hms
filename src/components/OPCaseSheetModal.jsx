@@ -6,7 +6,7 @@ import TreatmentPickerButton from './TreatmentPickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
 import InvestigationAttachments from './InvestigationAttachments';
-import { summarizeMedicineItems } from '../lib/medicineSummary';
+import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
@@ -161,7 +161,7 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all')
   const visitRows = visitNotes.map(v => `<tr>
       <td>${fmtDate(v.date)}</td>
       <td>${v.clinical_findings || ''}</td>
-      <td>${v.medication_notes || ''}</td>
+      <td>${buildMedicineItemsTableHTML(v.medicine_items) || v.medication_notes || ''}</td>
       <td>${v.treatment_notes || v.medicines_procedures || ''}</td>
       <td>${v.pain_intensity_score || ''}</td>
       <td>${fmtDate(v.next_followup_date)}</td>
@@ -325,6 +325,10 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all')
     table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
     table.grid th, table.grid td { border: 1px solid #aaa; padding: 4px 8px; text-align: left; }
     table.grid th { background: #f0f0f0; font-weight: bold; }
+
+    table.med-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    table.med-table th, table.med-table td { border: 1px solid #ccc; padding: 2px 4px; text-align: left; }
+    table.med-table th { background: #f5f5f5; font-weight: 600; }
 
     .footer { margin-top: 20px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
     .sig-block { text-align: right; }
