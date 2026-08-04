@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, Plus, Trash2 } from 'lucide-react';
+import { X, Printer, Save, Plus, Trash2, FileText } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { addDoc, updateDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 
@@ -487,7 +487,7 @@ ${form.remarks ? `<div class="section-title">Remarks</div><p>${form.remarks}</p>
 };
 
 // ── Main Modal ──────────────────────────────────────────────────────────
-const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) => {
+const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onViewCaseSheet }) => {
   const [form, setForm] = useState(() => {
     if (existingSummary) return { ...emptyForm(), ...existingSummary };
     const f = emptyForm();
@@ -753,6 +753,15 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave }) =>
             </p>
           </div>
           <div className="flex gap-2">
+            {isIPPatient && onViewCaseSheet && (
+              <button
+                onClick={onViewCaseSheet}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-800 text-white rounded-lg hover:bg-teal-900 font-medium text-sm"
+                title="Open this patient's IP Case Sheet"
+              >
+                <FileText className="w-4 h-4" /> IP Case Sheet
+              </button>
+            )}
             <button
               onClick={handlePrint}
               className="flex items-center gap-2 px-4 py-2 bg-white text-teal-700 rounded-lg hover:bg-teal-50 font-medium text-sm"

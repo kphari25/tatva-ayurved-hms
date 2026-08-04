@@ -1348,6 +1348,11 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
           existingSummary={dischargeSummaryExisting}
           onClose={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); setDischargeSummaryExisting(null); }}
           onSave={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); setDischargeSummaryExisting(null); }}
+          onViewCaseSheet={() => {
+            const p = dischargeSummaryPatient;
+            setShowDischargeSummary(false); setDischargeSummaryPatient(null); setDischargeSummaryExisting(null);
+            setCaseSheetPatient(p); setShowCaseSheet(true);
+          }}
         />
       )}
 
@@ -1364,6 +1369,11 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
         <IPCaseSheetModal
           patient={caseSheetPatient}
           onClose={() => { setShowCaseSheet(false); setCaseSheetPatient(null); }}
+          onViewDischargeSummary={async () => {
+            const p = caseSheetPatient;
+            setShowCaseSheet(false); setCaseSheetPatient(null);
+            await openDischargeSummary(p);
+          }}
         />
       )}
 

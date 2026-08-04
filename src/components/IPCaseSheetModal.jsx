@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, Plus, Pencil, Trash2 } from 'lucide-react';
+import { X, Printer, Save, Plus, Pencil, Trash2, ClipboardList } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import InvestigationAttachments from './InvestigationAttachments';
@@ -361,7 +361,7 @@ ${bodyHTML}
 };
 
 // ── Main Modal ──────────────────────────────────────────────────────────
-const IPCaseSheetModal = ({ patient, onClose }) => {
+const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   const patientId = patient?.id || patient?.firebaseId;
   const [form, setForm] = useState(emptyForm());
   const [loading, setLoading] = useState(true);
@@ -604,6 +604,15 @@ const IPCaseSheetModal = ({ patient, onClose }) => {
             </p>
           </div>
           <div className="flex gap-2">
+            {onViewDischargeSummary && (
+              <button
+                onClick={onViewDischargeSummary}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-800 text-white rounded-lg hover:bg-teal-900 font-medium text-sm"
+                title="Open this patient's Discharge Summary"
+              >
+                <ClipboardList className="w-4 h-4" /> Discharge Summary
+              </button>
+            )}
             <button
               onClick={() => setShowPrintOptions(true)}
               className="flex items-center gap-2 px-4 py-2 bg-white text-teal-700 rounded-lg hover:bg-teal-50 font-medium text-sm"
