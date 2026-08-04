@@ -542,12 +542,21 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         }
       }).catch(() => {}).finally(() => setLoadingProgress(false));
 
-      // Load IP Case Sheet (admission-time Ayurvedic assessment & history) to prefill
-      if (!existingSummary) {
-        getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
-          if (snap.exists()) autoPopulateFromCaseSheet(snap.data());
-        }).catch(() => {});
+      // Load IP Case Sheet (admission-time Ayurvedic assessment & history) to
+      // prefill a blank draft. The Date of Discharge specifically is kept in
+      // sync with the Case Sheet's own field even when resuming an
+      // already-saved summary — it's the one value staff shouldn't have to
+      // re-type or manually reconcile between the two documents.
+      getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
+        if (!snap.exists()) return;
+        const cs = snap.data();
+        if (cs.discharge_date) {
+          setForm(prev => ({ ...prev, discharge_date: cs.discharge_date }));
+        }
+        if (!existingSummary) autoPopulateFromCaseSheet(cs);
+      }).catch(() => {});
 
+      if (!existingSummary) {
         // Load OP Case Sheet vitals — takes priority over daily-progress vitals
         // for "on admission" since it's recorded at the actual admitting visit.
         getDoc(doc(db, 'op_case_sheets', patientId)).then(snap => {
