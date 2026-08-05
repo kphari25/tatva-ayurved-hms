@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil } from 'lucide-react';
+import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Stethoscope, Leaf, Flower2 } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
@@ -34,17 +34,38 @@ const getMonthRange = (d) => [
   new Date(d.getFullYear(), d.getMonth() + 1, 0)
 ];
 
-// Colors are keyed to the exact three Appointment Type options in Patient
-// Portal's "Schedule Appointment" form — one fixed color per type everywhere
-// an appointment is shown, instead of an arbitrary per-string hash.
+// The Appointments panel is organized into three fixed columns/buckets.
+// Real appointment "type" text is free-form (booked via Patient Portal's
+// dropdown, typed in on a phone call-in, or logged from Scheduling) — e.g.
+// "PANCHAKARMA SESSION", "PODIKIZHI", "REVIEW CONSULTA" — so every
+// appointment is sorted into a bucket by keyword rather than exact match,
+// with Ayurvedic Therapy as the catch-all so nothing is ever hidden.
+const APPOINTMENT_BUCKETS = ['Consultation', 'Ayurvedic Therapy', 'Panchakarma Session'];
+
+const bucketForAppointment = (apt) => {
+  const t = (apt.type || '').toLowerCase();
+  if (t.includes('consult')) return 'Consultation';
+  if (t.includes('panchakarma')) return 'Panchakarma Session';
+  return 'Ayurvedic Therapy';
+};
+
 const APPOINTMENT_TYPE_COLORS = {
-  'Follow-up Treatment': { border: 'border-blue-400', bg: 'bg-blue-50', time: 'text-blue-700', badge: 'bg-blue-100 text-blue-800', dot: 'bg-blue-400' },
-  'Doctor Consultation': { border: 'border-purple-400', bg: 'bg-purple-50', time: 'text-purple-700', badge: 'bg-purple-100 text-purple-800', dot: 'bg-purple-400' },
-  'Ayurvedic Therapy': { border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-400' },
+  'Consultation': {
+    icon: Stethoscope, gradient: 'from-blue-500 to-blue-600',
+    border: 'border-blue-400', bg: 'bg-blue-50', time: 'text-blue-700', badge: 'bg-blue-100 text-blue-800', dot: 'bg-blue-400',
+  },
+  'Ayurvedic Therapy': {
+    icon: Leaf, gradient: 'from-emerald-500 to-emerald-600',
+    border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-400',
+  },
+  'Panchakarma Session': {
+    icon: Flower2, gradient: 'from-amber-500 to-amber-600',
+    border: 'border-amber-400', bg: 'bg-amber-50', time: 'text-amber-700', badge: 'bg-amber-100 text-amber-800', dot: 'bg-amber-400',
+  },
 };
 const DEFAULT_APPOINTMENT_COLOR = { border: 'border-gray-300', bg: 'bg-gray-50', time: 'text-gray-700', badge: 'bg-gray-100 text-gray-700', dot: 'bg-gray-400' };
 
-const colorForAppointment = (apt) => APPOINTMENT_TYPE_COLORS[apt.type] || DEFAULT_APPOINTMENT_COLOR;
+const colorForAppointment = (apt) => APPOINTMENT_TYPE_COLORS[bucketForAppointment(apt)] || DEFAULT_APPOINTMENT_COLOR;
 
 const formatGroupDate = (dateStr) => {
   const today = toDateStr(new Date());
@@ -746,20 +767,111 @@ const Dashboard = () => {
                   </button>
                 ))}
               </div>
-              <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-blue-100">
-                {Object.entries(APPOINTMENT_TYPE_COLORS).map(([type, color]) => (
-                  <span key={type} className="flex items-center gap-1.5">
-                    <span className={`w-2.5 h-2.5 rounded-full ${color.dot}`}></span>
-                    {type}
-                  </span>
-                ))}
-              </div>
+              {appointmentView !== 'daily' && (
+                <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-blue-100">
+                  {APPOINTMENT_BUCKETS.map(name => (
+                    <span key={name} className="flex items-center gap-1.5">
+                      <span className={`w-2.5 h-2.5 rounded-full ${APPOINTMENT_TYPE_COLORS[name].dot}`}></span>
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {panelAppointments.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
                 <p>No appointments scheduled for this {appointmentView === 'daily' ? 'day' : appointmentView === 'weekly' ? 'week' : 'month'}</p>
+              </div>
+            ) : appointmentView === 'daily' ? (
+              <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {APPOINTMENT_BUCKETS.map(bucketName => {
+                  const color = APPOINTMENT_TYPE_COLORS[bucketName];
+                  const Icon = color.icon;
+                  const appts = panelAppointments.filter(apt => bucketForAppointment(apt) === bucketName);
+                  return (
+                    <div key={bucketName} className="rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col overflow-hidden">
+                      <div className={`flex items-center gap-2 px-4 py-3 bg-gradient-to-r ${color.gradient}`}>
+                        <Icon className="w-4 h-4 text-white shrink-0" />
+                        <h3 className="font-bold text-white text-sm flex-1 leading-tight">{bucketName}</h3>
+                        <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">{appts.length}</span>
+                      </div>
+                      <div className="p-3 space-y-2.5 max-h-[30rem] overflow-y-auto flex-1">
+                        {appts.length === 0 ? (
+                          <p className="text-xs text-gray-400 text-center py-8">No {bucketName.toLowerCase()} today</p>
+                        ) : (
+                          appts.map(apt => (
+                            <div
+                              key={apt.id}
+                              onClick={apt.patient_id ? () => window.dispatchEvent(new CustomEvent('viewPatient', { detail: apt.patient_id })) : undefined}
+                              title={apt.patient_id ? 'View patient details' : undefined}
+                              className={`rounded-lg border-l-4 ${color.border} bg-white p-3 shadow-sm hover:shadow-md transition-shadow ${apt.patient_id ? 'cursor-pointer' : ''}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className={`text-sm font-bold ${color.time}`}>{apt.time}</p>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setEditingAppointment(apt); }}
+                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title="Edit appointment"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); deleteAppointment(apt.id); }}
+                                    className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Remove appointment"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                              <p className="font-semibold text-gray-900 text-sm mt-0.5">{apt.patient}</p>
+                              {apt.type && (
+                                <p className="text-xs text-gray-500 mt-0.5 truncate" title={apt.type}>{apt.type}</p>
+                              )}
+                              {apt.doctorName && (
+                                <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
+                                  🩺 Dr. {apt.doctorName}
+                                </p>
+                              )}
+                              {apt.therapistName && (
+                                <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
+                                  👤 {apt.therapistName}
+                                </p>
+                              )}
+                              {apt.patient_id ? (
+                                <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                  apt.status === 'in-progress'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
+                                </span>
+                              ) : (
+                                <select
+                                  value={apt.contact_status || 'called_in'}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => handleContactStatusChange(apt, e.target.value)}
+                                  title="Front desk contact status"
+                                  className={`mt-2 text-xs font-semibold rounded-full border-0 pl-2 pr-6 py-0.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                                    apt.contact_status === 'in_office'
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-amber-100 text-amber-800'
+                                  }`}
+                                >
+                                  <option value="called_in">📞 Called In</option>
+                                  <option value="in_office">🏥 In the Office</option>
+                                </select>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="p-4 space-y-5 max-h-[32rem] overflow-y-auto">
@@ -771,11 +883,9 @@ const Dashboard = () => {
                   }, {})
                 ).map(([dateKey, appts]) => (
                   <div key={dateKey}>
-                    {appointmentView !== 'daily' && (
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
-                        {formatGroupDate(dateKey)}
-                      </p>
-                    )}
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                      {formatGroupDate(dateKey)}
+                    </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                       {appts.map(apt => {
                         const color = colorForAppointment(apt);

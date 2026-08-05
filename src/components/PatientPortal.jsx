@@ -63,7 +63,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [apptSaving, setApptSaving] = useState(false);
   const [apptSMSStatus, setApptSMSStatus] = useState({ patient: null, doctor: null });
   const [apptForm, setApptForm] = useState({
-    appointment_type: 'Follow-up Treatment',
+    appointment_type: 'Consultation',
     doctor_id: '',
     doctor_name: '',
     doctor_phone: '',
@@ -100,7 +100,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const openAppointmentModal = (patient) => {
     setAppointmentPatient(patient);
     setApptForm({
-      appointment_type: 'Follow-up Treatment',
+      appointment_type: 'Consultation',
       doctor_id: '',
       doctor_name: '',
       doctor_phone: '',
@@ -866,9 +866,9 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                       onChange={e => setApptForm(f => ({ ...f, appointment_type: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
                     >
-                      <option>Follow-up Treatment</option>
-                      <option>Doctor Consultation</option>
+                      <option>Consultation</option>
                       <option>Ayurvedic Therapy</option>
+                      <option>Panchakarma Session</option>
                     </select>
                   </div>
 
