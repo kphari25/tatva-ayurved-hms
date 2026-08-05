@@ -14,6 +14,18 @@ const HOSPITAL = {
   preparedBy: 'Dr. Satheesh Kumar – Chief Physician\nDr. Abirami PB – RMO\nTatva Ayurved Hospital, Calicut',
 };
 
+// Formats the IP Case Sheet's native <input type="time"> value ("HH:MM",
+// 24-hour) into this form's own "hh:mmAM/PM" convention, so a synced value
+// reads the same way a manually-typed one would.
+const formatTime12h = (t) => {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return t;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')}${period}`;
+};
+
 const emptyForm = () => ({
   // Patient identifiers (pre-filled from patient record)
   ward_no: '',
@@ -543,16 +555,20 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
       }).catch(() => {}).finally(() => setLoadingProgress(false));
 
       // Load IP Case Sheet (admission-time Ayurvedic assessment & history) to
-      // prefill a blank draft. The Date of Discharge specifically is kept in
-      // sync with the Case Sheet's own field even when resuming an
-      // already-saved summary — it's the one value staff shouldn't have to
-      // re-type or manually reconcile between the two documents.
+      // prefill a blank draft. Date/Time of Admission and Date of Discharge
+      // specifically are kept in sync with the Case Sheet's own fields even
+      // when resuming an already-saved summary — they're the values staff
+      // shouldn't have to re-type or manually reconcile between the two
+      // documents.
       getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
         if (!snap.exists()) return;
         const cs = snap.data();
-        if (cs.discharge_date) {
-          setForm(prev => ({ ...prev, discharge_date: cs.discharge_date }));
-        }
+        setForm(prev => ({
+          ...prev,
+          admission_date: cs.admission_date || prev.admission_date,
+          admission_time: cs.admission_time ? formatTime12h(cs.admission_time) : prev.admission_time,
+          discharge_date: cs.discharge_date || prev.discharge_date,
+        }));
         if (!existingSummary) autoPopulateFromCaseSheet(cs);
       }).catch(() => {});
 
@@ -845,17 +861,17 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Admission</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Admission <span className="text-teal-600 text-xs">(synced from IP Case Sheet)</span></label>
                   <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.admission_date} onChange={e => set('admission_date', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Admission Time</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Admission Time <span className="text-teal-600 text-xs">(synced from IP Case Sheet)</span></label>
                   <input type="text" placeholder="e.g. 03:00PM" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.admission_time} onChange={e => set('admission_time', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Discharge</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Discharge <span className="text-teal-600 text-xs">(synced from IP Case Sheet)</span></label>
                   <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.discharge_date} onChange={e => set('discharge_date', e.target.value)} />
                 </div>

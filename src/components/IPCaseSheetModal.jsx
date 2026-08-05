@@ -74,6 +74,7 @@ const emptyForm = () => ({
 
   room_number: '',
   admission_date: '',
+  admission_time: '',
   discharge_date: '',
   admin_diagnosis: '',
   result: '',
@@ -138,6 +139,18 @@ const SectionTitle = ({ children }) => (
 );
 
 const fmtDate = (d) => formatDateOnly(d);
+
+// Formats a native <input type="time"> value ("HH:MM", 24-hour) into the
+// "hh:mmAM/PM" style used on the printed case sheet and shared with the
+// Discharge Summary's Admission Time field.
+const fmtTime12h = (t) => {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return t;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')}${period}`;
+};
 
 // ── Print HTML generator ────────────────────────────────────────────────
 const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all') => {
@@ -339,7 +352,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
     <div class="info-row"><span class="info-label">Room No:</span> ${form.room_number}</div>
     <div class="info-row"><span class="info-label">Department:</span> ${form.department}</div>
     <div class="info-row"><span class="info-label">Physician:</span> ${form.physician_name}</div>
-    <div class="info-row"><span class="info-label">Date of Admission:</span> ${fmtDate(form.admission_date)}</div>
+    <div class="info-row"><span class="info-label">Date of Admission:</span> ${fmtDate(form.admission_date)}${form.admission_time ? ` (${fmtTime12h(form.admission_time)})` : ''}</div>
     <div class="info-row"><span class="info-label">Date of Discharge:</span> ${fmtDate(form.discharge_date)}</div>
     <div class="info-row"><span class="info-label">Diagnosis:</span> ${form.admin_diagnosis}</div>
     <div class="info-row"><span class="info-label">Result:</span> ${form.result}</div>
@@ -708,6 +721,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                       )}
                     </div>
                     <Field label="Date of Admission" type="date" value={form.admission_date} onChange={v => set('admission_date', v)} />
+                    <Field label="Time of Admission" type="time" value={form.admission_time} onChange={v => set('admission_time', v)} />
                     <Field label="Date of Discharge" type="date" value={form.discharge_date} onChange={v => set('discharge_date', v)} />
                     <Field label="Diagnosis" value={form.admin_diagnosis} onChange={v => set('admin_diagnosis', v)} />
                     <Field label="Result" value={form.result} onChange={v => set('result', v)} />
