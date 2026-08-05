@@ -48,6 +48,11 @@ const emptyForm = () => ({
   physician: '',
   initial_diagnosis: '',
 
+  admission_date: '',
+  admission_time: '',
+  discharge_date: '',
+  discharge_time: '',
+
   temperature: '', pulse: '', pulse_regularity: '', bp: '', rr: '',
 
   height: '', weight: '', bmi: '', nourishment_status: '',
@@ -148,6 +153,18 @@ const SectionTitle = ({ children }) => (
 );
 
 const fmtDate = (d) => formatDateOnly(d);
+
+// Formats a native <input type="time"> value ("HH:MM", 24-hour) into the
+// "hh:mmAM/PM" style used on the printed case sheet and shared with the
+// Discharge Summary's Admission/Discharge Time fields.
+const fmtTime12h = (t) => {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return t;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')}${period}`;
+};
 
 // ── Print HTML generator ────────────────────────────────────────────────
 const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all') => {
@@ -372,6 +389,8 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all')
     <div class="info-row"><span class="info-label">Physician:</span> ${form.physician}</div>
     <div class="info-row"><span class="info-label">Date:</span> ${fmtDate(form.case_date)}</div>
     <div class="info-row"><span class="info-label">Diagnosis:</span> ${form.initial_diagnosis}</div>
+    ${form.admission_date ? `<div class="info-row"><span class="info-label">Date of Admission:</span> ${fmtDate(form.admission_date)}${form.admission_time ? ` (${fmtTime12h(form.admission_time)})` : ''}</div>` : ''}
+    ${form.discharge_date ? `<div class="info-row"><span class="info-label">Date of Discharge:</span> ${fmtDate(form.discharge_date)}${form.discharge_time ? ` (${fmtTime12h(form.discharge_time)})` : ''}</div>` : ''}
   </div>
 </div>
 
@@ -699,6 +718,14 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                         )}
                       </select>
                     </div>
+                  </div>
+
+                  <SectionTitle>Admission / Discharge Details</SectionTitle>
+                  <div className="grid grid-cols-4 gap-4">
+                    <Field label="Date of Admission" type="date" value={form.admission_date} onChange={v => set('admission_date', v)} />
+                    <Field label="Time of Admission" type="time" value={form.admission_time} onChange={v => set('admission_time', v)} />
+                    <Field label="Date of Discharge" type="date" value={form.discharge_date} onChange={v => set('discharge_date', v)} />
+                    <Field label="Time of Discharge" type="time" value={form.discharge_time} onChange={v => set('discharge_time', v)} />
                   </div>
 
                   <SectionTitle>Demographics</SectionTitle>

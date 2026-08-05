@@ -539,7 +539,24 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
     // Load daily progress for IP patients to auto-populate summary
     const patientId = patient?.id || patient?.firebaseId;
-    if (patientId && (patient?.patient_type === 'IP' || patient?.ip_number)) {
+    const isIP = patient?.patient_type === 'IP' || !!patient?.ip_number;
+
+    // Date/Time of Admission and Date/Time of Discharge are kept in sync
+    // with the patient's case sheet (IP or OP, whichever applies) every time
+    // this opens — new draft or resuming an already-saved summary — since
+    // those are the values staff shouldn't have to re-type or manually
+    // reconcile between the two documents.
+    const syncAdmissionDischarge = (cs) => {
+      setForm(prev => ({
+        ...prev,
+        admission_date: cs.admission_date || prev.admission_date,
+        admission_time: cs.admission_time ? formatTime12h(cs.admission_time) : prev.admission_time,
+        discharge_date: cs.discharge_date || prev.discharge_date,
+        discharge_time: cs.discharge_time ? formatTime12h(cs.discharge_time) : prev.discharge_time,
+      }));
+    };
+
+    if (patientId && isIP) {
       setLoadingProgress(true);
       // Sorted client-side rather than via orderBy() — combining it with the
       // where() above needs a Firestore composite index that isn't set up,
@@ -555,20 +572,11 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
       }).catch(() => {}).finally(() => setLoadingProgress(false));
 
       // Load IP Case Sheet (admission-time Ayurvedic assessment & history) to
-      // prefill a blank draft. Date/Time of Admission and Date of Discharge
-      // specifically are kept in sync with the Case Sheet's own fields even
-      // when resuming an already-saved summary — they're the values staff
-      // shouldn't have to re-type or manually reconcile between the two
-      // documents.
+      // prefill a blank draft, and to keep admission/discharge date+time synced.
       getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
         if (!snap.exists()) return;
         const cs = snap.data();
-        setForm(prev => ({
-          ...prev,
-          admission_date: cs.admission_date || prev.admission_date,
-          admission_time: cs.admission_time ? formatTime12h(cs.admission_time) : prev.admission_time,
-          discharge_date: cs.discharge_date || prev.discharge_date,
-        }));
+        syncAdmissionDischarge(cs);
         if (!existingSummary) autoPopulateFromCaseSheet(cs);
       }).catch(() => {});
 
@@ -579,6 +587,12 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
           if (snap.exists()) autoPopulateVitalsFromOpCaseSheet(snap.data());
         }).catch(() => {});
       }
+    } else if (patientId) {
+      // OP-only patient — no IP Case Sheet exists, so admission/discharge
+      // date+time come from their OP Case Sheet instead.
+      getDoc(doc(db, 'op_case_sheets', patientId)).then(snap => {
+        if (snap.exists()) syncAdmissionDischarge(snap.data());
+      }).catch(() => {});
     }
   }, []);
 
@@ -861,22 +875,22 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Admission <span className="text-teal-600 text-xs">(synced from IP Case Sheet)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Admission <span className="text-teal-600 text-xs">(synced from {isIPPatient ? 'IP' : 'OP'} Case Sheet)</span></label>
                   <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.admission_date} onChange={e => set('admission_date', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Admission Time <span className="text-teal-600 text-xs">(synced from IP Case Sheet)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Admission Time <span className="text-teal-600 text-xs">(synced from {isIPPatient ? 'IP' : 'OP'} Case Sheet)</span></label>
                   <input type="text" placeholder="e.g. 03:00PM" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.admission_time} onChange={e => set('admission_time', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Discharge <span className="text-teal-600 text-xs">(synced from IP Case Sheet)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Discharge <span className="text-teal-600 text-xs">(synced from {isIPPatient ? 'IP' : 'OP'} Case Sheet)</span></label>
                   <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.discharge_date} onChange={e => set('discharge_date', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Discharge Time</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Discharge Time <span className="text-teal-600 text-xs">(synced from {isIPPatient ? 'IP' : 'OP'} Case Sheet)</span></label>
                   <input type="text" placeholder="e.g. 04:00PM" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.discharge_time} onChange={e => set('discharge_time', e.target.value)} />
                 </div>
