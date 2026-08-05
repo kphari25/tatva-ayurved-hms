@@ -193,22 +193,27 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
       <head>
         <title>Invoice - ${invoice.patient_number}</title>
         <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #14b8a6; padding-bottom: 10px; }
-          .header img { height: 80px; margin-bottom: 10px; }
-          .header h1 { color: #14b8a6; margin: 10px 0; }
-          .header .tagline { color: #666; font-size: 14px; margin: 5px 0; }
-          .info { display: flex; justify-content: space-between; margin-bottom: 20px; }
+          * { box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; }
+          @page { size: A4; margin: 10mm; }
+          .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
+          .header img { height: 42px; }
+          .header-text { text-align: left; }
+          .header h1 { color: #14b8a6; margin: 0; font-size: 18px; }
+          .header .tagline { color: #666; font-size: 10px; margin: 1px 0; }
+          .header .contact-line { font-size: 10px; color: #555; margin: 1px 0; }
+          .info { display: flex; justify-content: space-between; margin-bottom: 12px; }
           .info-box { flex: 1; }
-          .info-box h3 { margin: 0 0 10px 0; color: #14b8a6; }
-          .badge { display: inline-block; padding: 5px 15px; background: #14b8a6; color: white; border-radius: 5px; font-weight: bold; }
-          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+          .info-box h3 { margin: 0 0 6px 0; color: #14b8a6; font-size: 13px; }
+          .info-box p { margin: 2px 0; }
+          .badge { display: inline-block; padding: 4px 14px; background: #14b8a6; color: white; border-radius: 5px; font-weight: bold; font-size: 12px; }
+          table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+          th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
           th { background: #14b8a6; color: white; }
-          .totals { float: right; width: 300px; margin-top: 20px; }
+          .totals { float: right; width: 280px; margin-top: 12px; }
           .totals table { margin: 0; }
-          .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 18px; }
-          .footer { margin-top: 50px; text-align: center; color: #666; font-size: 12px; }
+          .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 15px; }
+          .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
           @media print {
             button { display: none; }
           }
@@ -217,10 +222,11 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
       <body>
         <div class="header">
           <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
-          <h1>Tatva Ayurved</h1>
-          <p class="tagline">Ayurveda for Health & Happiness</p>
-          <p style="margin: 5px 0; font-size: 12px;">Hospital Management System</p>
-          <p style="margin: 5px 0; font-size: 12px;">Phone: [Your Contact] | Email: [Your Email]</p>
+          <div class="header-text">
+            <h1>Tatva Ayurved</h1>
+            <p class="tagline">Ayurveda for Health &amp; Happiness</p>
+            <p class="contact-line">Thekkuveedu Lane, Kannur Road, Kozhikode &nbsp;|&nbsp; 9895112264, 0495 2766717 &nbsp;|&nbsp; www.tatvaayurved.com</p>
+          </div>
         </div>
 
         <div style="text-align: center; margin-bottom: 20px;">
@@ -283,7 +289,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
               </tr>
             ` : ''}
             
-            ${invoice.medicines && invoice.medicines.map(med => `
+            ${(invoice.medicines || []).map(med => `
               <tr>
                 <td>Medicine: ${med.name}</td>
                 <td>${med.quantity}</td>
