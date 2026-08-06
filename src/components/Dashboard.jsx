@@ -51,15 +51,15 @@ const bucketForAppointment = (apt) => {
 
 const APPOINTMENT_TYPE_COLORS = {
   'Consultation': {
-    icon: Stethoscope,
+    icon: Stethoscope, gradient: 'from-blue-400 to-blue-500',
     border: 'border-blue-400', bg: 'bg-blue-50', time: 'text-blue-700', badge: 'bg-blue-100 text-blue-800', dot: 'bg-blue-400',
   },
   'Ayurvedic Therapy': {
-    icon: Leaf,
+    icon: Leaf, gradient: 'from-emerald-400 to-emerald-500',
     border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-400',
   },
   'Panchakarma Session': {
-    icon: Flower2,
+    icon: Flower2, gradient: 'from-amber-400 to-amber-500',
     border: 'border-amber-400', bg: 'bg-amber-50', time: 'text-amber-700', badge: 'bg-amber-100 text-amber-800', dot: 'bg-amber-400',
   },
 };
@@ -728,24 +728,22 @@ const Dashboard = () => {
         {/* Left Column - 2/3 width */}
         <div className="lg:col-span-2 space-y-6">
           {/* Appointments */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-400 to-blue-500 px-6 py-4">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                    <Calendar className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-800">Appointments</h2>
+                  <Calendar className="w-6 h-6 text-white" />
+                  <h2 className="text-xl font-bold text-white">Appointments</h2>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowAddAppointment(true)}
-                    className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-semibold hover:bg-blue-700 transition-colors"
+                    className="flex items-center gap-1 bg-white text-blue-600 px-3 py-1 rounded-full text-sm font-semibold hover:bg-blue-50 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                     Add
                   </button>
-                  <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
+                  <span className="bg-white/25 text-white px-3 py-1 rounded-full text-sm font-semibold">
                     {panelAppointments.length} Total
                   </span>
                 </div>
@@ -761,8 +759,8 @@ const Dashboard = () => {
                     onClick={() => setAppointmentView(tab.id)}
                     className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                       appointmentView === tab.id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        ? 'bg-white text-blue-600'
+                        : 'bg-white/20 text-white hover:bg-white/30'
                     }`}
                   >
                     {tab.label}
@@ -770,7 +768,7 @@ const Dashboard = () => {
                 ))}
               </div>
               {appointmentView !== 'daily' && (
-                <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-500">
+                <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-white/90">
                   {APPOINTMENT_BUCKETS.map(name => (
                     <span key={name} className="flex items-center gap-1.5">
                       <span className={`w-2.5 h-2.5 rounded-full ${APPOINTMENT_TYPE_COLORS[name].dot}`}></span>
@@ -794,10 +792,10 @@ const Dashboard = () => {
                   const appts = panelAppointments.filter(apt => bucketForAppointment(apt) === bucketName);
                   return (
                     <div key={bucketName} className="rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col overflow-hidden">
-                      <div className={`flex items-center gap-2 px-4 py-3 ${color.bg} border-b ${color.border}`}>
-                        <Icon className={`w-4 h-4 shrink-0 ${color.time}`} />
-                        <h3 className={`font-bold text-sm flex-1 leading-tight ${color.time}`}>{bucketName}</h3>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${color.badge}`}>{appts.length}</span>
+                      <div className={`flex items-center gap-2 px-4 py-3 bg-gradient-to-r ${color.gradient}`}>
+                        <Icon className="w-4 h-4 text-white shrink-0" />
+                        <h3 className="font-bold text-white text-sm flex-1 leading-tight">{bucketName}</h3>
+                        <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">{appts.length}</span>
                       </div>
                       <div className="p-3 space-y-2.5 max-h-[30rem] overflow-y-auto flex-1">
                         {appts.length === 0 ? (
@@ -968,16 +966,14 @@ const Dashboard = () => {
           </div>
 
           {/* Current IP Patients */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-400 to-purple-500 px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
-                    <Bed className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-800">In-Patient Status</h2>
+                  <Bed className="w-6 h-6 text-white" />
+                  <h2 className="text-xl font-bold text-white">In-Patient Status</h2>
                 </div>
-                <span className="bg-purple-50 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">
+                <span className="bg-white text-purple-600 px-3 py-1 rounded-full text-sm font-semibold">
                   {dashboardData.stats.ipPatientsCount} Active
                 </span>
               </div>
@@ -1035,15 +1031,13 @@ const Dashboard = () => {
           {/* Lead Conversion Snapshot */}
           <div
             onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'leads' }))}
-            className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+            className="bg-white rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
             title="Open Lead Management"
           >
-            <div className="px-6 py-4 border-b border-gray-100">
+            <div className="bg-gradient-to-r from-indigo-400 to-indigo-500 px-6 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                  <Phone className="w-4 h-4 text-indigo-600" />
-                </div>
-                <h3 className="font-bold text-gray-800">Lead Conversion</h3>
+                <Phone className="w-5 h-5 text-white" />
+                <h3 className="font-bold text-white">Lead Conversion</h3>
               </div>
             </div>
             <div className="p-4">
@@ -1065,13 +1059,11 @@ const Dashboard = () => {
           </div>
 
           {/* Discharges Today */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="bg-gradient-to-r from-green-400 to-green-500 px-6 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
-                  <LogOut className="w-4 h-4 text-green-600" />
-                </div>
-                <h3 className="font-bold text-gray-800">Discharges Today</h3>
+                <LogOut className="w-5 h-5 text-white" />
+                <h3 className="font-bold text-white">Discharges Today</h3>
               </div>
             </div>
             <div className="p-4 space-y-3">
@@ -1097,13 +1089,11 @@ const Dashboard = () => {
           </div>
 
           {/* Therapist Schedule */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="bg-gradient-to-r from-teal-400 to-teal-500 px-6 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
-                  <Activity className="w-4 h-4 text-teal-600" />
-                </div>
-                <h3 className="font-bold text-gray-800">Therapist Schedule</h3>
+                <Activity className="w-5 h-5 text-white" />
+                <h3 className="font-bold text-white">Therapist Schedule</h3>
               </div>
             </div>
             <div className="p-4 space-y-3">
