@@ -551,7 +551,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
             <div>
               <h2 className="text-2xl font-bold">Generate Invoice</h2>
               <p className="text-teal-100 text-sm">
-                {patient.first_name} {patient.last_name} - {patient.patient_number}
+                {patient.first_name} {patient.last_name}
               </p>
             </div>
           </div>

@@ -1172,7 +1172,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-800">Patient Details</h2>
-                <p className="text-sm text-gray-600 mt-1">{selectedPatient.patient_number}</p>
+                <p className="text-sm text-gray-600 mt-1">MRD: {selectedPatient.mrd_number || selectedPatient.patient_number}</p>
               </div>
               <button
                 onClick={() => setShowDetails(false)}

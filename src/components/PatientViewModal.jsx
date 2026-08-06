@@ -86,7 +86,7 @@ const PatientViewModal = ({ patient, onClose, onEdit, onSendSMS }) => {
               <h2 className="text-2xl font-bold">
                 {patient.first_name} {patient.last_name}
               </h2>
-              <p className="text-teal-100 text-sm">{patient.patient_number}</p>
+              <p className="text-teal-100 text-sm">MRD: {patient.mrd_number || patient.patient_number}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
