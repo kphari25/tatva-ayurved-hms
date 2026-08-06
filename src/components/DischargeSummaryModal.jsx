@@ -589,9 +589,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
       }
     } else if (patientId) {
       // OP-only patient — no IP Case Sheet exists, so admission/discharge
-      // date+time come from their OP Case Sheet instead.
+      // date+time, and the clinical history prefill, come from their OP
+      // Case Sheet instead.
       getDoc(doc(db, 'op_case_sheets', patientId)).then(snap => {
-        if (snap.exists()) syncAdmissionDischarge(snap.data());
+        if (!snap.exists()) return;
+        const cs = snap.data();
+        syncAdmissionDischarge(cs);
+        if (!existingSummary) autoPopulateFromOpCaseSheet(cs);
       }).catch(() => {});
     }
   }, []);
@@ -621,6 +625,30 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
       medical_history: prev.medical_history.filter(Boolean).length > 0
         ? prev.medical_history
         : cs.history_past_illness ? [cs.history_past_illness] : prev.medical_history,
+    }));
+  };
+
+  const autoPopulateFromOpCaseSheet = (cs) => {
+    const historyLines = [
+      cs.history_present_illness ? `Present Illness: ${cs.history_present_illness}` : '',
+      cs.history_previous_illness ? `Previous Illness: ${cs.history_previous_illness}` : '',
+      cs.family_history ? `Family History: ${cs.family_history}` : '',
+    ].filter(Boolean);
+
+    setForm(prev => ({
+      ...prev,
+      samprapthi: {
+        ...prev.samprapthi,
+        dushya: prev.samprapthi.dushya || cs.dushyam || '',
+        srothas: prev.samprapthi.srothas || cs.srotas || '',
+      },
+      provisional_diagnosis: prev.provisional_diagnosis || cs.provisional_diagnosis || cs.diagnosis || '',
+      chief_complaints: prev.chief_complaints.filter(Boolean).length > 0
+        ? prev.chief_complaints
+        : cs.presenting_complaints ? [cs.presenting_complaints] : prev.chief_complaints,
+      medical_history: prev.medical_history.filter(Boolean).length > 0
+        ? prev.medical_history
+        : historyLines.length > 0 ? historyLines : prev.medical_history,
     }));
   };
 

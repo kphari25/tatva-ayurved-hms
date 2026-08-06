@@ -237,7 +237,6 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
           <div class="info-box">
             <h3>Patient Details:</h3>
             <p><strong>Name:</strong> ${invoice.patient_name}</p>
-            <p><strong>Patient ID:</strong> ${invoice.patient_number}</p>
             <p><strong>Phone:</strong> ${invoice.patient_phone || 'N/A'}</p>
             <p><strong>Address:</strong> ${invoice.patient_address || 'N/A'}</p>
           </div>

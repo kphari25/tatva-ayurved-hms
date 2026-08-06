@@ -375,7 +375,6 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           <div class="info-box">
             <h3>Patient Details:</h3>
             <p><strong>Name:</strong> ${data.patient_name}</p>
-            <p><strong>MRD No:</strong> ${data.mrd_number || data.patient_number}</p>
             ${data.ip_number ? `<p><strong>IP No:</strong> ${data.ip_number}</p>` : ''}
             <p><strong>Phone:</strong> ${data.patient_phone || 'N/A'}</p>
             <p><strong>Address:</strong> ${data.patient_address || 'N/A'}</p>
