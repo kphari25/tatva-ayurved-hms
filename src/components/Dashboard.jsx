@@ -51,15 +51,15 @@ const bucketForAppointment = (apt) => {
 
 const APPOINTMENT_TYPE_COLORS = {
   'Consultation': {
-    icon: Stethoscope, gradient: 'from-blue-500 to-blue-600',
+    icon: Stethoscope,
     border: 'border-blue-400', bg: 'bg-blue-50', time: 'text-blue-700', badge: 'bg-blue-100 text-blue-800', dot: 'bg-blue-400',
   },
   'Ayurvedic Therapy': {
-    icon: Leaf, gradient: 'from-emerald-500 to-emerald-600',
+    icon: Leaf,
     border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-400',
   },
   'Panchakarma Session': {
-    icon: Flower2, gradient: 'from-amber-500 to-amber-600',
+    icon: Flower2,
     border: 'border-amber-400', bg: 'bg-amber-50', time: 'text-amber-700', badge: 'bg-amber-100 text-amber-800', dot: 'bg-amber-400',
   },
 };
@@ -648,7 +648,7 @@ const Dashboard = () => {
   };
 
   const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }) => (
-    <div className="bg-white rounded-xl shadow-md p-6 border-l-4 hover:shadow-lg transition-shadow" style={{ borderColor: color }}>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 border-l-4 hover:shadow-md transition-shadow" style={{ borderLeftColor: color }}>
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm font-medium text-gray-600">{title}</p>
         <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
@@ -728,22 +728,24 @@ const Dashboard = () => {
         {/* Left Column - 2/3 width */}
         <div className="lg:col-span-2 space-y-6">
           {/* Appointments */}
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
-                  <Calendar className="w-6 h-6 text-white" />
-                  <h2 className="text-xl font-bold text-white">Appointments</h2>
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                    <Calendar className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <h2 className="text-lg font-bold text-gray-800">Appointments</h2>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowAddAppointment(true)}
-                    className="flex items-center gap-1 bg-white text-blue-700 px-3 py-1 rounded-full text-sm font-semibold hover:bg-blue-50 transition-colors"
+                    className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-semibold hover:bg-blue-700 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                     Add
                   </button>
-                  <span className="bg-blue-800 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                  <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
                     {panelAppointments.length} Total
                   </span>
                 </div>
@@ -759,8 +761,8 @@ const Dashboard = () => {
                     onClick={() => setAppointmentView(tab.id)}
                     className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                       appointmentView === tab.id
-                        ? 'bg-white text-blue-700'
-                        : 'bg-blue-800/40 text-blue-100 hover:bg-blue-800/60'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
                     {tab.label}
@@ -768,7 +770,7 @@ const Dashboard = () => {
                 ))}
               </div>
               {appointmentView !== 'daily' && (
-                <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-blue-100">
+                <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-500">
                   {APPOINTMENT_BUCKETS.map(name => (
                     <span key={name} className="flex items-center gap-1.5">
                       <span className={`w-2.5 h-2.5 rounded-full ${APPOINTMENT_TYPE_COLORS[name].dot}`}></span>
@@ -792,10 +794,10 @@ const Dashboard = () => {
                   const appts = panelAppointments.filter(apt => bucketForAppointment(apt) === bucketName);
                   return (
                     <div key={bucketName} className="rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col overflow-hidden">
-                      <div className={`flex items-center gap-2 px-4 py-3 bg-gradient-to-r ${color.gradient}`}>
-                        <Icon className="w-4 h-4 text-white shrink-0" />
-                        <h3 className="font-bold text-white text-sm flex-1 leading-tight">{bucketName}</h3>
-                        <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">{appts.length}</span>
+                      <div className={`flex items-center gap-2 px-4 py-3 ${color.bg} border-b ${color.border}`}>
+                        <Icon className={`w-4 h-4 shrink-0 ${color.time}`} />
+                        <h3 className={`font-bold text-sm flex-1 leading-tight ${color.time}`}>{bucketName}</h3>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${color.badge}`}>{appts.length}</span>
                       </div>
                       <div className="p-3 space-y-2.5 max-h-[30rem] overflow-y-auto flex-1">
                         {appts.length === 0 ? (
@@ -966,14 +968,16 @@ const Dashboard = () => {
           </div>
 
           {/* Current IP Patients */}
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Bed className="w-6 h-6 text-white" />
-                  <h2 className="text-xl font-bold text-white">In-Patient Status</h2>
+                  <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
+                    <Bed className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <h2 className="text-lg font-bold text-gray-800">In-Patient Status</h2>
                 </div>
-                <span className="bg-white text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">
+                <span className="bg-purple-50 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">
                   {dashboardData.stats.ipPatientsCount} Active
                 </span>
               </div>
@@ -1031,13 +1035,15 @@ const Dashboard = () => {
           {/* Lead Conversion Snapshot */}
           <div
             onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'leads' }))}
-            className="bg-white rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+            className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
             title="Open Lead Management"
           >
-            <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4">
+            <div className="px-6 py-4 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <Phone className="w-5 h-5 text-white" />
-                <h3 className="font-bold text-white">Lead Conversion</h3>
+                <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <Phone className="w-4 h-4 text-indigo-600" />
+                </div>
+                <h3 className="font-bold text-gray-800">Lead Conversion</h3>
               </div>
             </div>
             <div className="p-4">
@@ -1058,45 +1064,14 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Pending Admissions */}
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="bg-gradient-to-r from-orange-600 to-orange-700 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-white" />
-                <h3 className="font-bold text-white">Pending Admissions</h3>
-              </div>
-            </div>
-            <div className="p-4 space-y-3">
-              {dashboardData.pendingAdmissions.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">No pending admissions</p>
-              ) : (
-                dashboardData.pendingAdmissions.map(admission => (
-                  <div key={admission.id} className="p-3 bg-orange-50 rounded-lg border border-orange-200">
-                    <p className="font-semibold text-gray-900 text-sm">{admission.patient}</p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {admission.mrd_number && <span className="font-mono">{admission.mrd_number}</span>}
-                      {admission.requested_at && ` · Requested ${formatDateOnly(admission.requested_at)}`}
-                    </p>
-                    <div className="flex items-center justify-end mt-2">
-                      <button
-                        onClick={() => admitPatient(admission)}
-                        className="text-xs bg-orange-600 text-white px-3 py-1 rounded hover:bg-orange-700"
-                      >
-                        Admit
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
           {/* Discharges Today */}
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <LogOut className="w-5 h-5 text-white" />
-                <h3 className="font-bold text-white">Discharges Today</h3>
+                <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+                  <LogOut className="w-4 h-4 text-green-600" />
+                </div>
+                <h3 className="font-bold text-gray-800">Discharges Today</h3>
               </div>
             </div>
             <div className="p-4 space-y-3">
@@ -1122,11 +1097,13 @@ const Dashboard = () => {
           </div>
 
           {/* Therapist Schedule */}
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <Activity className="w-5 h-5 text-white" />
-                <h3 className="font-bold text-white">Therapist Schedule</h3>
+                <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
+                  <Activity className="w-4 h-4 text-teal-600" />
+                </div>
+                <h3 className="font-bold text-gray-800">Therapist Schedule</h3>
               </div>
             </div>
             <div className="p-4 space-y-3">
@@ -1154,40 +1131,6 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="bg-white rounded-xl shadow-md p-4">
-            <h3 className="font-bold text-gray-800 mb-3 text-sm">Quick Actions</h3>
-            <div className="space-y-2">
-              <button 
-                onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'leads' }))}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm flex items-center justify-center gap-2"
-              >
-                <Phone className="w-4 h-4" />
-                New Lead
-              </button>
-              <button 
-                onClick={() => {
-                  // Navigate to patients view
-                  window.dispatchEvent(new CustomEvent('navigate', { detail: 'patients' }));
-                  // Trigger new patient registration after a short delay
-                  setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent('openNewPatient'));
-                  }, 100);
-                }}
-                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm flex items-center justify-center gap-2"
-              >
-                <Users className="w-4 h-4" />
-                New Patient Registration
-              </button>
-              <button 
-                onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
-                className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm flex items-center justify-center gap-2"
-              >
-                <IndianRupee className="w-4 h-4" />
-                Create Invoice
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
