@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Receipt, Search, Download, Printer, Eye, Filter, Calendar, IndianRupee, TrendingUp, Plus, UserRound, ShoppingBag, X } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -6,6 +6,161 @@ import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import InvoiceModal from './InvoiceModal';
 import MedicineSaleModal from './MedicineSaleModal';
+
+// letterhead=true skips the logo/contact header (already pre-printed on the
+// hospital's letterhead stock) and pushes page-1 content down to clear that
+// artwork — only page 1 gets the extra top margin; page 2+ print normally.
+const buildInvoicePrintHTML = (invoice, letterhead = false) => `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invoice - ${invoice.patient_number}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; }
+          @page { size: A4; margin: 10mm; }
+          ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
+          .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
+          .header img { height: 42px; }
+          .header-text { text-align: left; }
+          .header h1 { color: #14b8a6; margin: 0; font-size: 18px; }
+          .header .tagline { color: #666; font-size: 10px; margin: 1px 0; }
+          .header .contact-line { font-size: 10px; color: #555; margin: 1px 0; }
+          .info { display: flex; justify-content: space-between; margin-bottom: 12px; }
+          .info-box { flex: 1; }
+          .info-box h3 { margin: 0 0 6px 0; color: #14b8a6; font-size: 13px; }
+          .info-box p { margin: 2px 0; }
+          .badge { display: inline-block; padding: 4px 14px; background: #14b8a6; color: white; border-radius: 5px; font-weight: bold; font-size: 12px; }
+          table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+          th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+          th { background: #14b8a6; color: white; }
+          .totals { float: right; width: 280px; margin-top: 12px; }
+          .totals table { margin: 0; }
+          .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 15px; }
+          .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
+        </style>
+      </head>
+      <body>
+        ${letterhead ? '' : `
+        <div class="header">
+          <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
+          <div class="header-text">
+            <h1>Tatva Ayurved</h1>
+            <p class="tagline">Ayurveda for Health &amp; Happiness</p>
+            <p class="contact-line">Thekkuveedu Lane, Kannur Road, Kozhikode &nbsp;|&nbsp; 9895112264, 0495 2766717 &nbsp;|&nbsp; www.tatvaayurved.com</p>
+          </div>
+        </div>
+        `}
+
+        <div style="text-align: center; margin-bottom: 20px;">
+          <span class="badge">${invoice.invoice_type === 'OP' ? 'OUT PATIENT (O/P)' : 'IN PATIENT (I/P)'}</span>
+        </div>
+
+        <div class="info">
+          <div class="info-box">
+            <h3>Patient Details:</h3>
+            <p><strong>Name:</strong> ${invoice.patient_name}</p>
+            <p><strong>Phone:</strong> ${invoice.patient_phone || 'N/A'}</p>
+            <p><strong>Address:</strong> ${invoice.patient_address || 'N/A'}</p>
+          </div>
+          <div class="info-box" style="text-align: right;">
+            <h3>Invoice Details:</h3>
+            <p><strong>Date:</strong> ${new Date(invoice.invoice_date).toLocaleDateString()}</p>
+            <p><strong>Invoice Type:</strong> ${invoice.invoice_type}</p>
+            ${invoice.invoice_type === 'IP' && invoice.admission_date ? `<p><strong>Admission Date:</strong> ${new Date(invoice.admission_date).toLocaleDateString()}</p>` : ''}
+            ${invoice.invoice_type === 'IP' && invoice.discharge_date ? `<p><strong>Discharge Date:</strong> ${new Date(invoice.discharge_date).toLocaleDateString()}</p>` : ''}
+            <p><strong>Payment Mode:</strong> ${invoice.payment_mode}</p>
+          </div>
+        </div>
+
+        <h3>Charges Breakdown:</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th>Quantity/Days</th>
+              <th>Rate (₹)</th>
+              <th>Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${invoice.treatment_charges > 0 ? `
+              <tr>
+                <td>Treatment Charges</td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${invoice.treatment_charges.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+
+            ${invoice.invoice_type === 'IP' && invoice.room_rent > 0 ? `
+              <tr>
+                <td>Room Rent (${invoice.room_type})</td>
+                <td>${invoice.days} days</td>
+                <td>₹${invoice.room_rent.toFixed(2)}</td>
+                <td>₹${(invoice.room_rent * invoice.days).toFixed(2)}</td>
+              </tr>
+            ` : ''}
+
+            ${invoice.invoice_type === 'IP' && invoice.mess_charges > 0 ? `
+              <tr>
+                <td>Mess Charges</td>
+                <td>${invoice.mess_days} days</td>
+                <td>₹${invoice.mess_charges.toFixed(2)}</td>
+                <td>₹${(invoice.mess_charges * invoice.mess_days).toFixed(2)}</td>
+              </tr>
+            ` : ''}
+
+            ${(invoice.medicines || []).map(med => `
+              <tr>
+                <td>Medicine: ${med.name}</td>
+                <td>${med.quantity}</td>
+                <td>₹${parseFloat(med.rate).toFixed(2)}</td>
+                <td>₹${(med.quantity * med.rate).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="totals">
+          <table>
+            <tr>
+              <td>Subtotal:</td>
+              <td style="text-align: right;">₹${invoice.subtotal.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td>GST (${invoice.gst_percentage}%):</td>
+              <td style="text-align: right;">₹${invoice.gst_amount.toFixed(2)}</td>
+            </tr>
+            ${invoice.discount > 0 ? `
+              <tr>
+                <td>Discount:</td>
+                <td style="text-align: right; color: red;">-₹${invoice.discount.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            <tr class="grand-total">
+              <td>TOTAL:</td>
+              <td style="text-align: right;">₹${invoice.total_amount.toFixed(2)}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="clear: both;"></div>
+
+        ${invoice.notes ? `
+          <div style="margin-top: 30px;">
+            <strong>Notes:</strong>
+            <p>${invoice.notes}</p>
+          </div>
+        ` : ''}
+
+        <div class="footer">
+          <p>Thank you for choosing Tatva Ayurved Hospital</p>
+          <p>This is a computer-generated invoice</p>
+        </div>
+      </body>
+      </html>
+    `;
 
 const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [invoices, setInvoices] = useState([]);
@@ -19,6 +174,9 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showNewInvoiceChooser, setShowNewInvoiceChooser] = useState(false);
   const [showMedicineSale, setShowMedicineSale] = useState(false);
+  const [printPreviewInvoice, setPrintPreviewInvoice] = useState(null);
+  const [useLetterheadPrint, setUseLetterheadPrint] = useState(false);
+  const printIframeRef = useRef(null);
   const [stats, setStats] = useState({
     totalRevenue: 0,
     opRevenue: 0,
@@ -187,165 +345,14 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const COLORS = ['#3b82f6', '#8b5cf6']; // Blue for OP, Purple for IP
 
   const handlePrintInvoice = (invoice) => {
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice - ${invoice.patient_number}</title>
-        <style>
-          * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; }
-          @page { size: A4; margin: 10mm; }
-          .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
-          .header img { height: 42px; }
-          .header-text { text-align: left; }
-          .header h1 { color: #14b8a6; margin: 0; font-size: 18px; }
-          .header .tagline { color: #666; font-size: 10px; margin: 1px 0; }
-          .header .contact-line { font-size: 10px; color: #555; margin: 1px 0; }
-          .info { display: flex; justify-content: space-between; margin-bottom: 12px; }
-          .info-box { flex: 1; }
-          .info-box h3 { margin: 0 0 6px 0; color: #14b8a6; font-size: 13px; }
-          .info-box p { margin: 2px 0; }
-          .badge { display: inline-block; padding: 4px 14px; background: #14b8a6; color: white; border-radius: 5px; font-weight: bold; font-size: 12px; }
-          table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
-          th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-          th { background: #14b8a6; color: white; }
-          .totals { float: right; width: 280px; margin-top: 12px; }
-          .totals table { margin: 0; }
-          .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 15px; }
-          .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
-          @media print {
-            button { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
-          <div class="header-text">
-            <h1>Tatva Ayurved</h1>
-            <p class="tagline">Ayurveda for Health &amp; Happiness</p>
-            <p class="contact-line">Thekkuveedu Lane, Kannur Road, Kozhikode &nbsp;|&nbsp; 9895112264, 0495 2766717 &nbsp;|&nbsp; www.tatvaayurved.com</p>
-          </div>
-        </div>
+    setPrintPreviewInvoice(invoice);
+  };
 
-        <div style="text-align: center; margin-bottom: 20px;">
-          <span class="badge">${invoice.invoice_type === 'OP' ? 'OUT PATIENT (O/P)' : 'IN PATIENT (I/P)'}</span>
-        </div>
-
-        <div class="info">
-          <div class="info-box">
-            <h3>Patient Details:</h3>
-            <p><strong>Name:</strong> ${invoice.patient_name}</p>
-            <p><strong>Phone:</strong> ${invoice.patient_phone || 'N/A'}</p>
-            <p><strong>Address:</strong> ${invoice.patient_address || 'N/A'}</p>
-          </div>
-          <div class="info-box" style="text-align: right;">
-            <h3>Invoice Details:</h3>
-            <p><strong>Date:</strong> ${new Date(invoice.invoice_date).toLocaleDateString()}</p>
-            <p><strong>Invoice Type:</strong> ${invoice.invoice_type}</p>
-            ${invoice.invoice_type === 'IP' && invoice.admission_date ? `<p><strong>Admission Date:</strong> ${new Date(invoice.admission_date).toLocaleDateString()}</p>` : ''}
-            ${invoice.invoice_type === 'IP' && invoice.discharge_date ? `<p><strong>Discharge Date:</strong> ${new Date(invoice.discharge_date).toLocaleDateString()}</p>` : ''}
-            <p><strong>Payment Mode:</strong> ${invoice.payment_mode}</p>
-          </div>
-        </div>
-
-        <h3>Charges Breakdown:</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th>Quantity/Days</th>
-              <th>Rate (₹)</th>
-              <th>Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${invoice.treatment_charges > 0 ? `
-              <tr>
-                <td>Treatment Charges</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${invoice.treatment_charges.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            
-            ${invoice.invoice_type === 'IP' && invoice.room_rent > 0 ? `
-              <tr>
-                <td>Room Rent (${invoice.room_type})</td>
-                <td>${invoice.days} days</td>
-                <td>₹${invoice.room_rent.toFixed(2)}</td>
-                <td>₹${(invoice.room_rent * invoice.days).toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            
-            ${invoice.invoice_type === 'IP' && invoice.mess_charges > 0 ? `
-              <tr>
-                <td>Mess Charges</td>
-                <td>${invoice.mess_days} days</td>
-                <td>₹${invoice.mess_charges.toFixed(2)}</td>
-                <td>₹${(invoice.mess_charges * invoice.mess_days).toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            
-            ${(invoice.medicines || []).map(med => `
-              <tr>
-                <td>Medicine: ${med.name}</td>
-                <td>${med.quantity}</td>
-                <td>₹${parseFloat(med.rate).toFixed(2)}</td>
-                <td>₹${(med.quantity * med.rate).toFixed(2)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-
-        <div class="totals">
-          <table>
-            <tr>
-              <td>Subtotal:</td>
-              <td style="text-align: right;">₹${invoice.subtotal.toFixed(2)}</td>
-            </tr>
-            <tr>
-              <td>GST (${invoice.gst_percentage}%):</td>
-              <td style="text-align: right;">₹${invoice.gst_amount.toFixed(2)}</td>
-            </tr>
-            ${invoice.discount > 0 ? `
-              <tr>
-                <td>Discount:</td>
-                <td style="text-align: right; color: red;">-₹${invoice.discount.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            <tr class="grand-total">
-              <td>TOTAL:</td>
-              <td style="text-align: right;">₹${invoice.total_amount.toFixed(2)}</td>
-            </tr>
-          </table>
-        </div>
-
-        <div style="clear: both;"></div>
-
-        ${invoice.notes ? `
-          <div style="margin-top: 30px;">
-            <strong>Notes:</strong>
-            <p>${invoice.notes}</p>
-          </div>
-        ` : ''}
-
-        <div class="footer">
-          <p>Thank you for choosing Tatva Ayurved Hospital</p>
-          <p>This is a computer-generated invoice</p>
-        </div>
-
-        <div style="text-align: center; margin-top: 20px;">
-          <button onclick="window.print()" style="padding: 10px 30px; background: #14b8a6; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
-            Print Invoice
-          </button>
-        </div>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+  const handlePrintFromPreview = () => {
+    const win = printIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.focus();
+    win.print();
   };
 
   const handleExport = () => {
@@ -755,6 +762,51 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                   <div className="text-xs text-gray-500 mt-1">Direct medicine billing for walk-in customers or patients</div>
                 </div>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print Preview Modal */}
+      {printPreviewInvoice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col">
+            <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <div>
+                <h2 className="text-xl font-bold">Print Preview</h2>
+                <p className="text-teal-100 text-sm">{printPreviewInvoice.patient_name}</p>
+              </div>
+              <button onClick={() => setPrintPreviewInvoice(null)} className="hover:bg-teal-700 p-2 rounded">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={useLetterheadPrint}
+                  onChange={e => setUseLetterheadPrint(e.target.checked)}
+                  className="w-4 h-4 accent-teal-600"
+                />
+                Print on letterhead <span className="text-gray-400">(skips logo/contact header, page 1 only)</span>
+              </label>
+              <button
+                onClick={handlePrintFromPreview}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+              >
+                <Printer className="w-4 h-4" /> Print
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-gray-200 p-6 flex justify-center">
+              <iframe
+                ref={printIframeRef}
+                title="Invoice print preview"
+                srcDoc={buildInvoicePrintHTML(printPreviewInvoice, useLetterheadPrint)}
+                className="bg-white shadow-lg"
+                style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+              />
             </div>
           </div>
         </div>
