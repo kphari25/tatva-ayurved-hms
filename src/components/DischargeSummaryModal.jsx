@@ -228,7 +228,10 @@ const MedicineListEditor = ({ label, items, onChange, inventory }) => {
 };
 
 // ── Print HTML generator ────────────────────────────────────────────────
-const buildPrintHTML = (patient, form) => {
+// letterhead=true skips the logo/contact header (already pre-printed on the
+// hospital's letterhead stock) and pushes page-1 content down to clear that
+// artwork — only page 1 gets the extra top margin; page 2+ print normally.
+const buildPrintHTML = (patient, form, letterhead = false) => {
   const patientName = `${patient?.title || ''} ${patient?.first_name || ''} ${patient?.last_name || ''}`.trim().toUpperCase();
   const address = [patient?.address, patient?.city, patient?.state, patient?.pincode].filter(Boolean).join(', ').toUpperCase();
   const age = patient?.age || '';
@@ -249,6 +252,7 @@ const buildPrintHTML = (patient, form) => {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; }
     @page { size: A4; margin: 15mm 12mm; }
+    ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     @media print { body { -webkit-print-color-adjust: exact; } }
 
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 10px; }
@@ -283,7 +287,8 @@ const buildPrintHTML = (patient, form) => {
 </head>
 <body>
 
-<!-- HEADER -->
+<!-- HEADER (omitted on letterhead — already pre-printed on the paper) -->
+${letterhead ? '' : `
 <div class="header">
   <div class="logo-block">
     <div class="brand">TATVA AYURVED</div>
@@ -297,6 +302,7 @@ const buildPrintHTML = (patient, form) => {
     <span class="reg">Reg No: ${HOSPITAL.regNo}</span>
   </div>
 </div>
+`}
 
 <div class="title">DISCHARGE SUMMARY</div>
 
@@ -511,6 +517,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     return f;
   });
   const [saving, setSaving] = useState(false);
+  const [useLetterhead, setUseLetterhead] = useState(false);
   const [activeSection, setActiveSection] = useState('patient');
   const [inventory, setInventory] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -740,7 +747,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     ).slice(0, 6);
 
   const handlePrint = () => {
-    const html = buildPrintHTML(patient, form);
+    const html = buildPrintHTML(patient, form, useLetterhead);
     const win = window.open('', '_blank');
     win.document.write(html);
     win.document.close();
@@ -1426,7 +1433,15 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
         {/* Bottom nav */}
         <div className="flex-shrink-0 border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
-          <span>Fill all sections then Save or Print directly.</span>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useLetterhead}
+              onChange={e => setUseLetterhead(e.target.checked)}
+              className="w-4 h-4 accent-teal-600"
+            />
+            Print on letterhead <span className="text-gray-400">(skips logo/contact header, page 1 only — pages 2+ print normally)</span>
+          </label>
           <div className="flex gap-2">
             <button onClick={handlePrint} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
               <Printer className="w-4 h-4" /> Print Discharge Summary
