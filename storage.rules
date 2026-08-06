@@ -22,5 +22,13 @@ service firebase.storage {
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
       allow delete: if true;
     }
+
+    // Vendor PDF invoices uploaded via Purchase Management > Import Invoice (PDF).
+    match /vendor_invoices/{fileName} {
+      allow read: if true;
+      allow create: if request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+      allow delete: if true;
+    }
   }
 }

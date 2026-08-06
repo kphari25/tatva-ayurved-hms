@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, CheckCircle, XCircle, Clock, FileText, Package, AlertTriangle, Plus, Search, Filter, Download, Send, Eye } from 'lucide-react';
+import { ShoppingCart, CheckCircle, XCircle, Clock, FileText, Package, AlertTriangle, Plus, Search, Filter, Download, Send, Eye, Upload } from 'lucide-react';
 import { collection, getDocs, addDoc, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import * as XLSX from 'xlsx';
@@ -7,6 +7,7 @@ import PurchaseRequestModal from './PurchaseRequestModal';
 import PurchaseOrderModal from './PurchaseOrderModal';
 import GoodsReceiptModal from './GoodsReceiptModal';
 import ViewPurchaseRequestModal from './ViewPurchaseRequestModal';
+import ImportInvoiceModal from './ImportInvoiceModal';
 
 const PurchaseManagement = () => {
   const [activeTab, setActiveTab] = useState('requests');
@@ -19,6 +20,7 @@ const PurchaseManagement = () => {
   const [showGRNModal, setShowGRNModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [selectedPO, setSelectedPO] = useState(null);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
 
@@ -98,13 +100,22 @@ const PurchaseManagement = () => {
               <p className="text-gray-600 text-sm">Medicine procurement and inventory tracking</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowRequestModal(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            New Request
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+            >
+              <Upload className="w-5 h-5" />
+              Import Invoice (PDF)
+            </button>
+            <button
+              onClick={() => setShowRequestModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              New Request
+            </button>
+          </div>
         </div>
       </div>
 
@@ -234,6 +245,16 @@ const PurchaseManagement = () => {
           onSave={() => {
             setShowGRNModal(false);
             setSelectedPO(null);
+            loadData();
+          }}
+        />
+      )}
+
+      {showImportModal && (
+        <ImportInvoiceModal
+          onClose={() => setShowImportModal(false)}
+          onSave={() => {
+            setShowImportModal(false);
             loadData();
           }}
         />
