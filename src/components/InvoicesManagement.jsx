@@ -126,6 +126,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
       filtered = filtered.filter(inv =>
         (inv.patient_name || '').toLowerCase().includes(term) ||
         (inv.patient_number || '').toLowerCase().includes(term) ||
+        (inv.mrd_number || '').toLowerCase().includes(term) ||
         (inv.invoice_type || '').toLowerCase().includes(term)
       );
     }
@@ -592,7 +593,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Patient</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Patient No.</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">MRD No.</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment</th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -617,7 +618,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">{invoice.patient_name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{invoice.patient_number}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{invoice.mrd_number || invoice.patient_number}</td>
                     <td className="px-6 py-4 text-sm text-right font-semibold text-gray-900">
                       ₹{invoice.total_amount.toFixed(2)}
                     </td>
