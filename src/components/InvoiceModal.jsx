@@ -329,7 +329,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Invoice - ${data.patient_number}</title>
+        <title>Invoice - ${data.patient_name || data.mrd_number || data.patient_number}</title>
         <style>
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; }

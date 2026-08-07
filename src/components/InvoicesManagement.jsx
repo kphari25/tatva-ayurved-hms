@@ -14,7 +14,7 @@ const buildInvoicePrintHTML = (invoice, letterhead = false) => `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Invoice - ${invoice.patient_number}</title>
+        <title>Invoice - ${invoice.patient_name || invoice.mrd_number || invoice.patient_number}</title>
         <style>
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; }
