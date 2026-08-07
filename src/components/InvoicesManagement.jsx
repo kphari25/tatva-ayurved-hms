@@ -174,6 +174,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showNewInvoiceChooser, setShowNewInvoiceChooser] = useState(false);
   const [showMedicineSale, setShowMedicineSale] = useState(false);
+  const [patientPickerSearch, setPatientPickerSearch] = useState('');
   const [printPreviewInvoice, setPrintPreviewInvoice] = useState(null);
   const [useLetterheadPrint, setUseLetterheadPrint] = useState(false);
   const printIframeRef = useRef(null);
@@ -228,6 +229,20 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
     } catch (error) {
       console.error('Error loading patients:', error);
     }
+  };
+
+  const getPatientPickerResults = () => {
+    const term = patientPickerSearch.trim().toLowerCase();
+    return patients
+      .filter(p => {
+        if (!term) return true;
+        const name = `${p.first_name || ''} ${p.last_name || ''}`.toLowerCase();
+        return name.includes(term)
+          || (p.mrd_number || '').toLowerCase().includes(term)
+          || (p.patient_number || '').toLowerCase().includes(term)
+          || (p.phone || '').includes(term);
+      })
+      .sort((a, b) => `${a.first_name || ''} ${a.last_name || ''}`.localeCompare(`${b.first_name || ''} ${b.last_name || ''}`));
   };
 
   const loadInvoices = async () => {
@@ -659,8 +674,8 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
               <h2 className="text-2xl font-bold">Select Patient</h2>
-              <button 
-                onClick={() => setShowInvoiceModal(false)} 
+              <button
+                onClick={() => { setShowInvoiceModal(false); setPatientPickerSearch(''); }}
                 className="hover:bg-teal-700 p-2 rounded"
               >
                 <Plus className="w-6 h-6 rotate-45" />
@@ -670,16 +685,15 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
               <div className="mb-4">
                 <input
                   type="text"
-                  placeholder="Search patients..."
+                  value={patientPickerSearch}
+                  onChange={(e) => setPatientPickerSearch(e.target.value)}
+                  placeholder="Search by name, MRD number, or phone..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  onChange={(e) => {
-                    const term = e.target.value.toLowerCase();
-                    // Simple inline filter for demo
-                  }}
+                  autoFocus
                 />
               </div>
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {patients.map(patient => (
+                {getPatientPickerResults().map(patient => (
                   <button
                     key={patient.id}
                     onClick={() => setSelectedPatient(patient)}
@@ -689,14 +703,16 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                       {patient.first_name} {patient.last_name}
                     </div>
                     <div className="text-sm text-gray-600">
-                      {patient.patient_number} • {patient.phone || 'No phone'}
+                      {patient.mrd_number || patient.patient_number} • {patient.phone || 'No phone'}
                     </div>
                   </button>
                 ))}
               </div>
-              {patients.length === 0 && (
+              {getPatientPickerResults().length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  No patients found. Register patients first.
+                  {patientPickerSearch.trim()
+                    ? `No patients match "${patientPickerSearch}"`
+                    : 'No patients found. Register patients first.'}
                 </div>
               )}
             </div>
@@ -711,10 +727,12 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
           onClose={() => {
             setShowInvoiceModal(false);
             setSelectedPatient(null);
+            setPatientPickerSearch('');
           }}
           onSave={() => {
             setShowInvoiceModal(false);
             setSelectedPatient(null);
+            setPatientPickerSearch('');
             loadInvoices();
           }}
         />
