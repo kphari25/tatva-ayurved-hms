@@ -78,6 +78,7 @@ const MODULES = {
   invoices: { label: 'Invoices', icon: Receipt, description: 'Generate and manage invoices' },
   discharge: { label: 'Discharge', icon: UserCheck, description: 'Patient discharge management' },
   analytics: { label: 'Analytics', icon: TrendingUp, description: 'Reports and analytics dashboards' },
+  reports: { label: 'Reports', icon: FileText, description: 'Monthly patient intake and inventory movement reports' },
   'ai-assist': { label: 'AI Assist', icon: BarChart3, description: 'AI-powered health assistance' },
   'mess-management': { label: 'Mess Management', icon: Utensils, description: 'Assign patient meals and set meal prices' },
   'mess-expense': { label: 'Mess Expense', icon: Utensils, description: 'Kitchen expense tracking' },
@@ -92,12 +93,12 @@ const MODULES = {
 // Default permissions per role
 const DEFAULT_PERMISSIONS = {
   system_admin: Object.keys(MODULES), // All modules
-  doctor: ['dashboard', 'patients', 'scheduling', 'prescriptions', 'packages', 'treatment-charges', 'discharge', 'analytics', 'ai-assist'],
+  doctor: ['dashboard', 'patients', 'scheduling', 'prescriptions', 'packages', 'treatment-charges', 'discharge', 'analytics', 'reports', 'ai-assist'],
   therapist: ['dashboard', 'patients', 'scheduling', 'treatment-charges'],
-  front_office: ['dashboard', 'patients', 'scheduling', 'leads', 'invoices', 'packages', 'treatment-charges', 'discharge', 'mess-management'],
-  store_admin: ['dashboard', 'inventory', 'purchase'],
+  front_office: ['dashboard', 'patients', 'scheduling', 'leads', 'invoices', 'packages', 'treatment-charges', 'discharge', 'mess-management', 'reports'],
+  store_admin: ['dashboard', 'inventory', 'purchase', 'reports'],
   kitchen_staff: ['dashboard', 'mess-management', 'mess-expense', 'diet-module'],
-  accountant: ['dashboard', 'invoices', 'profit-loss', 'financials', 'analytics', 'purchase', 'treatment-charges']
+  accountant: ['dashboard', 'invoices', 'profit-loss', 'financials', 'analytics', 'purchase', 'treatment-charges', 'reports']
 };
 
 const UserManagement = () => {

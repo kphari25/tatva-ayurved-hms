@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Home, Users, Package, FileText, Receipt, TrendingUp,
   Calendar, IndianRupee, UserCog, Database, LogOut,
-  ShoppingCart, Utensils, BarChart3, Wallet, History
+  ShoppingCart, Utensils, BarChart3, Wallet, History, FileBarChart
 } from 'lucide-react';
 import { db } from './lib/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
@@ -36,6 +36,7 @@ import AppointmentScheduling from './components/AppointmentScheduling';
 import UserManagement, { getUserPermissions, hasModuleAccess } from './components/UserManagement';
 import HRPayrollModule from './components/HRPayrollModule';
 import UserActivityReport from './components/UserActivityReport';
+import Reports from './components/Reports';
 
 function App() {
   // DEBUG VERSION - Updated 2026-05-22 - New Patient Button Fix
@@ -234,6 +235,7 @@ function App() {
     { id: 'invoices', label: 'Invoices', icon: Receipt, moduleId: 'invoices' },
     { id: 'discharge', label: 'Discharge', icon: FileText, moduleId: 'discharge' },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp, moduleId: 'analytics' },
+    { id: 'reports', label: 'Reports', icon: FileBarChart, moduleId: 'reports' },
     { id: 'scheduling', label: 'Scheduling', icon: Calendar, moduleId: 'scheduling' },
     
     // Kitchen Module Section
@@ -379,6 +381,7 @@ function App() {
         {currentView === 'mess-expense' && <MessExpenseTracker />}
         {currentView === 'diet-module' && <DietModule />}
         {currentView === 'analytics' && <InventoryAnalytics />}
+        {currentView === 'reports' && <Reports />}
         {currentView === 'invoices' && (
           <InvoicesManagement
             initialPatientId={initialInvoicePatientId}
