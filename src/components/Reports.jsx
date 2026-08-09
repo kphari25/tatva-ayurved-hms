@@ -88,11 +88,9 @@ const Reports = () => {
   const selectedRange = useMemo(() => {
     if (rangeMode === 'custom') {
       const now = new Date();
-      const from = customFrom || monthKey(now);
-      const to = customTo || monthKey(now);
-      const [fy, fm] = from.split('-').map(Number);
-      const [ty, tm] = to.split('-').map(Number);
-      return [new Date(fy, fm - 1, 1), new Date(ty, tm, 0, 23, 59, 59)];
+      const start = customFrom ? new Date(customFrom + 'T00:00:00') : new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = customTo ? new Date(customTo + 'T23:59:59') : now;
+      return [start, end];
     }
     return quickRanges[rangeMode]();
   }, [rangeMode, customFrom, customTo]);
@@ -256,14 +254,14 @@ const Reports = () => {
             <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-3 py-1.5">
               <Calendar className="w-4 h-4 text-gray-400" />
               <input
-                type="month"
+                type="date"
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
                 className="text-sm outline-none"
               />
               <span className="text-gray-400">to</span>
               <input
-                type="month"
+                type="date"
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
                 className="text-sm outline-none"
