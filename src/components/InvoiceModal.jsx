@@ -6,6 +6,9 @@ import { sendInvoiceSMS } from '../lib/sms';
 import { getRoomInfo } from '../lib/rooms';
 import { addDaysToDateString } from '../lib/formatDate';
 
+const DOCTOR_FEE_PER_DAY = 200;
+const NURSE_FEE_PER_DAY = 150;
+
 const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
   const isRegistrationInvoice = registrationFee > 0;
   const [invoiceType, setInvoiceType] = useState(patient?.patient_type === 'IP' ? 'IP' : 'OP');
@@ -18,6 +21,10 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
   const [priceListItems, setPriceListItems] = useState([]);
   // Ad-hoc charges added directly on the invoice, on top of the price-list treatments.
   const [additionalCharges, setAdditionalCharges] = useState([]);
+  // Medicines administered during the IP stay (from the case sheet + each Daily
+  // Progress entry's MedicineTable) — billed as one aggregate total, not itemized,
+  // since these are clinical dosing entries rather than priced treatment picks.
+  const [medicinesTotal, setMedicinesTotal] = useState(0);
 
   useEffect(() => {
     const patientId = patient?.firebaseId || patient?.id;
@@ -25,10 +32,15 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     const loadTreatmentItems = async () => {
       try {
         const items = [];
+        let medsTotal = 0;
         const caseSheetCollection = invoiceType === 'IP' ? 'ip_case_sheets' : 'op_case_sheets';
         const caseSheetSnap = await getDoc(doc(db, caseSheetCollection, patientId));
         if (caseSheetSnap.exists()) {
-          (caseSheetSnap.data().treatment_items || []).forEach(it => items.push({ ...it, source: 'Case Sheet' }));
+          const cs = caseSheetSnap.data();
+          (cs.treatment_items || []).forEach(it => items.push({ ...it, source: 'Case Sheet' }));
+          if (invoiceType === 'IP') {
+            (cs.medicine_items || []).forEach(m => { medsTotal += Number(m.mrp) || 0; });
+          }
         }
 
         // IP treatments are mostly logged day-to-day; OP follow-ups are logged per visit — both should bill too.
@@ -38,9 +50,13 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         logSnap.docs.forEach(d => {
           const data = d.data();
           (data.treatment_items || []).forEach(it => items.push({ ...it, source: data.date ? `${sourceLabel} · ${data.date}` : sourceLabel }));
+          if (invoiceType === 'IP') {
+            (data.medicine_items || []).forEach(m => { medsTotal += Number(m.mrp) || 0; });
+          }
         });
 
         setPriceListItems(items);
+        setMedicinesTotal(medsTotal);
       } catch (e) {
         console.error('Error loading treatment items:', e);
       }
@@ -55,7 +71,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
 
   const calculateTreatmentCharges = () =>
     priceListItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0) +
-    additionalCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+    additionalCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0) +
+    medicinesTotal;
 
   const [formData, setFormData] = useState({
     invoice_date: new Date().toISOString().split('T')[0],
@@ -93,6 +110,15 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     return Math.max(1, Math.round((discharge - admission) / (1000 * 60 * 60 * 24)));
   };
 
+  // Doctor's/Nursing fees are a fixed per-day rate for IP stays — always kept in
+  // sync with the current "Days" value so they never drift out of date when the
+  // stay length changes, the same way "Days" itself tracks the admission/discharge dates.
+  const applyAutoFees = (data) => {
+    if (invoiceType !== 'IP') return data;
+    const days = parseFloat(data.days) || 0;
+    return { ...data, doctor_fees: days * DOCTOR_FEE_PER_DAY, nursing_fees: days * NURSE_FEE_PER_DAY };
+  };
+
   const handleStayDateChange = (field, value) => {
     const updated = { ...formData, [field]: value };
     const stayDays = calcStayDays(updated.admission_date, updated.discharge_date);
@@ -100,7 +126,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       updated.days = stayDays;
       updated.mess_days = stayDays;
     }
-    setFormData(updated);
+    setFormData(applyAutoFees(updated));
   };
 
   // Pre-fill room + stay dates from the IP Case Sheet the moment this opens
@@ -132,6 +158,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         if (stayDays !== null) {
           updated.days = stayDays;
           updated.mess_days = stayDays;
+          updated.doctor_fees = stayDays * DOCTOR_FEE_PER_DAY;
+          updated.nursing_fees = stayDays * NURSE_FEE_PER_DAY;
         }
         return updated;
       });
@@ -208,6 +236,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         treatment_charges: calculateTreatmentCharges(),
         treatment_items: priceListItems,
         additional_charges: additionalCharges,
+        medicines_total: invoiceType === 'IP' ? medicinesTotal : 0,
         nursing_fees: parseFloat(formData.nursing_fees) || 0,
         doctor_fees: parseFloat(formData.doctor_fees) || 0,
         lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
@@ -300,6 +329,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       treatment_charges: calculateTreatmentCharges(),
       treatment_items: priceListItems,
       additional_charges: additionalCharges,
+      medicines_total: invoiceType === 'IP' ? medicinesTotal : 0,
       nursing_fees: parseFloat(formData.nursing_fees) || 0,
       doctor_fees: parseFloat(formData.doctor_fees) || 0,
       lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
@@ -416,6 +446,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 <td>₹${Number(item.price || 0).toFixed(2)}</td>
               </tr>
             `).join('') : ''}
+            ${(data.medicines_total || 0) > 0 ? `
+              <tr>
+                <td>Medicines Administered</td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${data.medicines_total.toFixed(2)}</td>
+              </tr>
+            ` : ''}
             ${(data.additional_charges && data.additional_charges.length > 0) ? data.additional_charges.map(charge => `
               <tr>
                 <td>${charge.label || 'Additional Charge'}</td>
@@ -424,7 +462,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 <td>₹${Number(charge.amount || 0).toFixed(2)}</td>
               </tr>
             `).join('') : ''}
-            ${(!data.treatment_items?.length && !data.additional_charges?.length && data.treatment_charges > 0) ? `
+            ${(!data.treatment_items?.length && !data.additional_charges?.length && !(data.medicines_total > 0) && data.treatment_charges > 0) ? `
               <tr>
                 <td>Treatment Charges</td>
                 <td>-</td>
@@ -683,7 +721,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                   </span>
                 </div>
 
-                {priceListItems.length === 0 && additionalCharges.length === 0 && (
+                {priceListItems.length === 0 && additionalCharges.length === 0 && medicinesTotal === 0 && (
                   <p className="text-xs text-gray-400 mb-2">
                     No treatments picked from the price list yet. Add treatments via "Add from Price List" in the {invoiceType} case sheet{invoiceType === 'IP' ? ' or Daily Progress' : "'s Visit Log"}, or add a charge manually below.
                   </p>
@@ -696,6 +734,12 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                       <span className="font-medium text-gray-800">₹{Number(item.price || 0).toLocaleString('en-IN')}</span>
                     </div>
                   ))}
+                  {invoiceType === 'IP' && medicinesTotal > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Medicines Administered <span className="text-xs text-teal-600">(case sheet & daily progress)</span></span>
+                      <span className="font-medium text-gray-800">₹{medicinesTotal.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2 mb-2">
@@ -744,7 +788,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
               {/* Other charges grid */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Doctor's Fees (₹)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Doctor's Fees (₹) {invoiceType === 'IP' && (
+                      <span className="text-xs font-normal text-teal-600">(auto: ₹{DOCTOR_FEE_PER_DAY}/day × {formData.days || 0})</span>
+                    )}
+                  </label>
                   <input
                     type="number"
                     value={formData.doctor_fees}
@@ -754,7 +802,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nursing Fees (₹)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nursing Fees (₹) {invoiceType === 'IP' && (
+                      <span className="text-xs font-normal text-teal-600">(auto: ₹{NURSE_FEE_PER_DAY}/day × {formData.days || 0})</span>
+                    )}
+                  </label>
                   <input
                     type="number"
                     value={formData.nursing_fees}
@@ -853,7 +905,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                     <input
                       type="number"
                       value={formData.days}
-                      onChange={(e) => setFormData({ ...formData, days: e.target.value })}
+                      onChange={(e) => setFormData(applyAutoFees({ ...formData, days: e.target.value }))}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                       placeholder="0"
                     />
