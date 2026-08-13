@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Stethoscope, Leaf, Flower2 } from 'lucide-react';
+import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Stethoscope, Leaf, CalendarClock } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
@@ -36,15 +36,15 @@ const getMonthRange = (d) => [
 // The Appointments panel is organized into three fixed columns/buckets.
 // Real appointment "type" text is free-form (booked via Patient Portal's
 // dropdown, typed in on a phone call-in, or logged from Scheduling) — e.g.
-// "PANCHAKARMA SESSION", "PODIKIZHI", "REVIEW CONSULTA" — so every
+// "PANCHAKARMA SESSION", "PODIKIZHI", "REVIEW CONSULTA", "FOLLOW UP" — so every
 // appointment is sorted into a bucket by keyword rather than exact match,
 // with Ayurvedic Therapy as the catch-all so nothing is ever hidden.
-const APPOINTMENT_BUCKETS = ['Consultation', 'Ayurvedic Therapy', 'Panchakarma Session'];
+const APPOINTMENT_BUCKETS = ['Consultation', 'Ayurvedic Therapy', 'Follow Up'];
 
 const bucketForAppointment = (apt) => {
   const t = (apt.type || '').toLowerCase();
   if (t.includes('consult')) return 'Consultation';
-  if (t.includes('panchakarma')) return 'Panchakarma Session';
+  if (t.includes('follow')) return 'Follow Up';
   return 'Ayurvedic Therapy';
 };
 
@@ -57,8 +57,8 @@ const APPOINTMENT_TYPE_COLORS = {
     icon: Leaf, gradient: 'from-emerald-400 to-emerald-500',
     border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-400',
   },
-  'Panchakarma Session': {
-    icon: Flower2, gradient: 'from-amber-400 to-amber-500',
+  'Follow Up': {
+    icon: CalendarClock, gradient: 'from-amber-400 to-amber-500',
     border: 'border-amber-400', bg: 'bg-amber-50', time: 'text-amber-700', badge: 'bg-amber-100 text-amber-800', dot: 'bg-amber-400',
   },
 };
@@ -162,7 +162,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. Consultation, Panchakarma Session"
+              placeholder="e.g. Consultation, Ayurvedic Therapy, Follow Up"
             />
           </div>
           <div>
