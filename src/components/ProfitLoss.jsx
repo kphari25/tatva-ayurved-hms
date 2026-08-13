@@ -16,12 +16,11 @@ const ProfitLoss = () => {
     // Revenue
     patientRevenue: 0,
     medicineRevenue: 0,
-    packageRevenue: 0,
     totalRevenue: 0,
 
     // Cost of Goods Sold (Medicine Purchase)
     medicinePurchaseCost: 0,
-    
+
     // Gross Profit
     grossProfit: 0,
     grossProfitMargin: 0,
@@ -44,10 +43,16 @@ const ProfitLoss = () => {
     netProfit: 0,
     netProfitMargin: 0,
 
-    // Detailed breakdowns
+    // Detailed breakdowns (for on-screen charts)
     revenueBreakdown: [],
     expenseBreakdown: [],
-    monthlyTrend: []
+
+    // Raw line items for this period, kept for the Excel export
+    invoiceLines: [],
+    medicineSaleLines: [],
+    expenseLines: [],
+    messExpenseLines: [],
+    inventoryLines: [],
   });
 
   useEffect(() => {
@@ -91,66 +96,108 @@ const ProfitLoss = () => {
     try {
       setLoading(true);
       const { startDate, endDate } = getDateRange();
+      const inRange = (dateVal) => {
+        if (!dateVal) return false;
+        const d = new Date(dateVal);
+        return !isNaN(d) && d >= startDate && d <= endDate;
+      };
 
       // Load all data sources
-      const [invoices, inventory, messExpenses, expenses] = await Promise.all([
+      const [invoices, inventory, messExpenses, expenses, medicineSales] = await Promise.all([
         getDocs(collection(db, 'invoices')),
         getDocs(collection(db, 'inventory')),
         getDocs(collection(db, 'mess_expenses')),
-        getDocs(collection(db, 'expenses'))
+        getDocs(collection(db, 'expenses')),
+        getDocs(collection(db, 'medicine_sales')),
       ]);
 
-      // Calculate Revenue from Invoices
+      // Revenue from patient invoices (OP/IP billing) — total_amount is the
+      // authoritative billed figure already inclusive of GST/discount, so it's
+      // used as-is rather than re-summing individual charge fields.
       let patientRevenue = 0;
-      let medicineRevenue = 0;
-      let packageRevenue = 0;
-
+      const invoiceLines = [];
       invoices.docs.forEach(doc => {
         const invoice = doc.data();
-        const invoiceDate = new Date(invoice.invoice_date || invoice.created_at);
-        
-        if (invoiceDate >= startDate && invoiceDate <= endDate) {
-          const total = parseFloat(invoice.total_amount) || 0;
-          
-          // Revenue from treatments (OP/IP without medicines)
-          const treatmentAmount = (parseFloat(invoice.treatment_charges) || 0) +
-                                 (parseFloat(invoice.room_charges) || 0) +
-                                 (parseFloat(invoice.mess_charges) || 0);
-          patientRevenue += treatmentAmount;
-
-          // Revenue from medicines sold
-          const medicineAmount = invoice.medicines?.reduce((sum, med) => 
-            sum + (parseFloat(med.quantity) * parseFloat(med.rate)), 0) || 0;
-          medicineRevenue += medicineAmount;
-
-          // If package mentioned, count as package revenue
-          if (invoice.package_name) {
-            packageRevenue += total;
-          }
-        }
+        if (!inRange(invoice.invoice_date || invoice.created_at)) return;
+        const amount = parseFloat(invoice.total_amount) || 0;
+        patientRevenue += amount;
+        invoiceLines.push({
+          Date: invoice.invoice_date || invoice.created_at,
+          Type: invoice.invoice_type || '',
+          Patient: invoice.patient_name || '',
+          'Patient No': invoice.patient_number || invoice.mrd_number || '',
+          'Treatment Charges': parseFloat(invoice.treatment_charges) || 0,
+          'Room Rent (per day)': parseFloat(invoice.room_rent) || 0,
+          Days: parseFloat(invoice.days) || 0,
+          'Registration Fee': parseFloat(invoice.registration_fee) || 0,
+          'Lab Charges': parseFloat(invoice.lab_test_charges) || 0,
+          'Doctor Fees': parseFloat(invoice.doctor_fees) || 0,
+          'Nursing Fees': parseFloat(invoice.nursing_fees) || 0,
+          GST: parseFloat(invoice.gst_amount) || 0,
+          Discount: parseFloat(invoice.discount) || 0,
+          'Total Amount': amount,
+          'Payment Mode': invoice.payment_mode || '',
+        });
       });
 
-      // Calculate Medicine Purchase Cost (COGS)
+      // Revenue from medicine sale bills (separate from invoices in this app's data model)
+      let medicineRevenue = 0;
+      const medicineSaleLines = [];
+      medicineSales.docs.forEach(doc => {
+        const sale = doc.data();
+        if (!inRange(sale.sale_date || sale.created_at)) return;
+        const amount = parseFloat(sale.total_amount) || 0;
+        medicineRevenue += amount;
+        medicineSaleLines.push({
+          Date: sale.sale_date || sale.created_at,
+          'Bill No': sale.bill_number || '',
+          Customer: sale.customer_name || '',
+          Items: (sale.items || []).map(it => `${it.name} x${it.quantity}`).join(', '),
+          Subtotal: parseFloat(sale.subtotal) || 0,
+          GST: parseFloat(sale.gst_amount) || 0,
+          Discount: parseFloat(sale.discount) || 0,
+          'Total Amount': amount,
+          'Payment Mode': sale.payment_mode || '',
+        });
+      });
+
+      // Medicine Purchase Cost (COGS) — current stock valuation. This app has no
+      // per-period stock-out log, so this reflects value on hand as of now, not
+      // purchases made within the selected date range.
       let medicinePurchaseCost = 0;
+      const inventoryLines = [];
       inventory.docs.forEach(doc => {
         const item = doc.data();
         const purchasePrice = parseFloat(item.purchase_price) || 0;
         const quantity = parseFloat(item.stock_quantity) || 0;
-        medicinePurchaseCost += purchasePrice * quantity;
-      });
-
-      // Calculate Mess Expenses
-      let messExpense = 0;
-      messExpenses.docs.forEach(doc => {
-        const expense = doc.data();
-        const expenseDate = new Date(expense.date);
-        
-        if (expenseDate >= startDate && expenseDate <= endDate) {
-          messExpense += parseFloat(expense.total_amount) || 0;
+        const value = purchasePrice * quantity;
+        medicinePurchaseCost += value;
+        if (value > 0) {
+          inventoryLines.push({
+            Item: item.item_name || '',
+            'Stock Qty': quantity,
+            'Purchase Price': purchasePrice,
+            'Stock Value': value,
+          });
         }
       });
 
-      // Calculate Other Expenses
+      // Mess Expenses
+      let messExpense = 0;
+      const messExpenseLines = [];
+      messExpenses.docs.forEach(doc => {
+        const expense = doc.data();
+        if (!inRange(expense.date)) return;
+        const amount = parseFloat(expense.total_amount) || 0;
+        messExpense += amount;
+        messExpenseLines.push({
+          Date: expense.date,
+          Items: (expense.items || []).map(it => `${it.name} (${it.quantity} ${it.unit})`).join(', '),
+          'Total Amount': amount,
+        });
+      });
+
+      // Other Expenses
       let salaryExpense = 0;
       let electricityExpense = 0;
       let rentExpense = 0;
@@ -161,74 +208,87 @@ const ProfitLoss = () => {
       let equipmentExpense = 0;
       let miscExpense = 0;
       let otherExpense = 0;
+      const expenseLines = [];
 
       expenses.docs.forEach(doc => {
         const expense = doc.data();
-        const expenseDate = new Date(expense.date);
-        
-        if (expenseDate >= startDate && expenseDate <= endDate) {
-          const amount = parseFloat(expense.amount) || 0;
-          
-          switch (expense.category?.toLowerCase()) {
-            case 'salary':
-            case 'salaries':
-              salaryExpense += amount;
-              break;
-            case 'electricity':
-              electricityExpense += amount;
-              break;
-            case 'utilities':
-              utilitiesExpense += amount;
-              break;
-            case 'rent':
-              rentExpense += amount;
-              break;
-            case 'maintenance':
-            case 'repairs':
-              maintenanceExpense += amount;
-              break;
-            case 'marketing':
-            case 'advertising':
-              marketingExpense += amount;
-              break;
-            case 'supplies':
-              suppliesExpense += amount;
-              break;
-            case 'equipment':
-              equipmentExpense += amount;
-              break;
-            case 'misc':
-            case 'miscellaneous':
-              miscExpense += amount;
-              break;
-            case 'other':
-              otherExpense += amount;
-              break;
-            default:
-              miscExpense += amount;
-          }
+        if (!inRange(expense.date)) return;
+        const amount = parseFloat(expense.amount) || 0;
+        expenseLines.push({
+          Date: expense.date,
+          Category: expense.category || '',
+          Amount: amount,
+          Description: expense.description || '',
+          'Payment Mode': expense.payment_mode || '',
+        });
+
+        switch (expense.category?.toLowerCase()) {
+          case 'salary':
+          case 'salaries':
+            salaryExpense += amount;
+            break;
+          case 'electricity':
+            electricityExpense += amount;
+            break;
+          case 'utilities':
+            utilitiesExpense += amount;
+            break;
+          case 'rent':
+            rentExpense += amount;
+            break;
+          case 'maintenance':
+          case 'repairs':
+            maintenanceExpense += amount;
+            break;
+          case 'marketing':
+          case 'advertising':
+            marketingExpense += amount;
+            break;
+          case 'supplies':
+            suppliesExpense += amount;
+            break;
+          case 'equipment':
+            equipmentExpense += amount;
+            break;
+          case 'misc':
+          case 'miscellaneous':
+            miscExpense += amount;
+            break;
+          case 'other':
+            otherExpense += amount;
+            break;
+          case 'mess':
+            // Same expense type as the dedicated Mess Expense tracker (mess_expenses
+            // collection) — folded into the same bucket rather than Miscellaneous.
+            messExpense += amount;
+            break;
+          case 'medicine_purchase':
+            // Already reflected in COGS via inventory stock valuation above —
+            // counting it again here would double-count the same purchase.
+            break;
+          default:
+            miscExpense += amount;
         }
       });
 
       // Calculate totals
-      const totalRevenue = patientRevenue + medicineRevenue + packageRevenue;
+      const totalRevenue = patientRevenue + medicineRevenue;
       const grossProfit = totalRevenue - medicinePurchaseCost;
       const grossProfitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue * 100) : 0;
-      
-      const totalExpenses = messExpense + salaryExpense + electricityExpense + 
-                           rentExpense + maintenanceExpense + marketingExpense + 
+
+      const totalExpenses = messExpense + salaryExpense + electricityExpense +
+                           rentExpense + maintenanceExpense + marketingExpense +
                            utilitiesExpense + suppliesExpense + equipmentExpense +
                            miscExpense + otherExpense;
-      
+
       const netProfit = grossProfit - totalExpenses;
       const netProfitMargin = totalRevenue > 0 ? (netProfit / totalRevenue * 100) : 0;
 
       // Prepare breakdown data for charts
       const revenueBreakdown = [
-        { name: 'Patient Services', value: patientRevenue, color: '#3b82f6' },
+        { name: 'Patient Invoices', value: patientRevenue, color: '#3b82f6' },
         { name: 'Medicine Sales', value: medicineRevenue, color: '#10b981' },
-        { name: 'Package Revenue', value: packageRevenue, color: '#8b5cf6' }
-      ];
+      ].filter(item => item.value > 0);
 
       const expenseBreakdown = [
         { name: 'Medicine Purchase', value: medicinePurchaseCost, color: '#ef4444' },
@@ -244,7 +304,6 @@ const ProfitLoss = () => {
       setPLData({
         patientRevenue,
         medicineRevenue,
-        packageRevenue,
         totalRevenue,
         medicinePurchaseCost,
         grossProfit,
@@ -264,7 +323,12 @@ const ProfitLoss = () => {
         netProfit,
         netProfitMargin,
         revenueBreakdown,
-        expenseBreakdown
+        expenseBreakdown,
+        invoiceLines,
+        medicineSaleLines,
+        expenseLines,
+        messExpenseLines,
+        inventoryLines,
       });
 
       console.log('✅ P&L data loaded');
@@ -278,15 +342,14 @@ const ProfitLoss = () => {
   };
 
   const handleExport = () => {
-    const exportData = [
+    const summaryData = [
       { Category: 'REVENUE', Description: '', Amount: '' },
-      { Category: '', Description: 'Patient Services', Amount: plData.patientRevenue },
+      { Category: '', Description: 'Patient Invoices (OP/IP)', Amount: plData.patientRevenue },
       { Category: '', Description: 'Medicine Sales', Amount: plData.medicineRevenue },
-      { Category: '', Description: 'Package Revenue', Amount: plData.packageRevenue },
       { Category: '', Description: 'Total Revenue', Amount: plData.totalRevenue },
       { Category: '', Description: '', Amount: '' },
       { Category: 'COST OF GOODS SOLD', Description: '', Amount: '' },
-      { Category: '', Description: 'Medicine Purchase', Amount: plData.medicinePurchaseCost },
+      { Category: '', Description: 'Medicine Purchase (current stock value)', Amount: plData.medicinePurchaseCost },
       { Category: '', Description: '', Amount: '' },
       { Category: 'GROSS PROFIT', Description: '', Amount: plData.grossProfit },
       { Category: '', Description: `Gross Margin: ${plData.grossProfitMargin.toFixed(1)}%`, Amount: '' },
@@ -295,19 +358,30 @@ const ProfitLoss = () => {
       { Category: '', Description: 'Mess Expense', Amount: plData.messExpense },
       { Category: '', Description: 'Salaries', Amount: plData.salaryExpense },
       { Category: '', Description: 'Electricity', Amount: plData.electricityExpense },
+      { Category: '', Description: 'Utilities', Amount: plData.utilitiesExpense },
       { Category: '', Description: 'Rent', Amount: plData.rentExpense },
       { Category: '', Description: 'Maintenance', Amount: plData.maintenanceExpense },
+      { Category: '', Description: 'Supplies', Amount: plData.suppliesExpense },
+      { Category: '', Description: 'Equipment', Amount: plData.equipmentExpense },
       { Category: '', Description: 'Marketing', Amount: plData.marketingExpense },
       { Category: '', Description: 'Miscellaneous', Amount: plData.miscExpense },
+      { Category: '', Description: 'Other', Amount: plData.otherExpense },
       { Category: '', Description: 'Total Expenses', Amount: plData.totalExpenses },
       { Category: '', Description: '', Amount: '' },
       { Category: 'NET PROFIT', Description: '', Amount: plData.netProfit },
       { Category: '', Description: `Net Margin: ${plData.netProfitMargin.toFixed(1)}%`, Amount: '' }
     ];
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
+    const sheet = (rows, emptyLabel) =>
+      XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: emptyLabel }]);
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'P&L Statement');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), 'Summary');
+    XLSX.utils.book_append_sheet(wb, sheet(plData.invoiceLines, 'No patient invoices in this period'), 'Patient Invoices');
+    XLSX.utils.book_append_sheet(wb, sheet(plData.medicineSaleLines, 'No medicine sales in this period'), 'Medicine Sales');
+    XLSX.utils.book_append_sheet(wb, sheet(plData.expenseLines, 'No expenses in this period'), 'Expenses');
+    XLSX.utils.book_append_sheet(wb, sheet(plData.messExpenseLines, 'No mess expenses in this period'), 'Mess Expenses');
+    XLSX.utils.book_append_sheet(wb, sheet(plData.inventoryLines, 'No inventory in stock'), 'Inventory (COGS)');
     XLSX.writeFile(wb, `PL_Statement_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
@@ -454,16 +528,12 @@ const ProfitLoss = () => {
               <h3 className="font-bold text-gray-800 mb-3 text-lg border-b pb-2">REVENUE</h3>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-gray-700">Patient Services</span>
+                  <span className="text-gray-700">Patient Invoices (OP/IP)</span>
                   <span className="font-semibold text-gray-900">₹{plData.patientRevenue.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-700">Medicine Sales</span>
                   <span className="font-semibold text-gray-900">₹{plData.medicineRevenue.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-700">Package Revenue</span>
-                  <span className="font-semibold text-gray-900">₹{plData.packageRevenue.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-gray-200">
                   <span className="font-bold text-gray-900">Total Revenue</span>
