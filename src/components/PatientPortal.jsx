@@ -348,8 +348,11 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       (patient.patient_type || 'OP') === filterPatientType;
 
     // Discharged patients are hidden by default (same rule Dashboard's IP
-    // list already uses) so they don't linger in the active roster forever.
+    // list already uses) so they don't linger in the active roster forever —
+    // but a name/MRD/phone search should still be able to recall them, so the
+    // status filter only applies when the search box is empty.
     const matchesStatus =
+      !!s ||
       filterStatus === 'all' ||
       (filterStatus === 'discharged' ? patient.admission_status === 'discharged' : patient.admission_status !== 'discharged');
 
@@ -447,7 +450,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
               <div>
                 <p className="text-sm text-gray-600">Active</p>
                 <p className="text-2xl font-bold text-gray-800">
-                  {patients.filter(p => p.is_active !== false).length}
+                  {patients.filter(p => p.admission_status !== 'discharged').length}
                 </p>
               </div>
               <div className="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center">
@@ -651,7 +654,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                       }
                     </td>
                     <td className="px-6 py-4">
-                      {patient.is_active !== false ? (
+                      {patient.admission_status !== 'discharged' ? (
                         <span className="px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
                           Active
                         </span>
