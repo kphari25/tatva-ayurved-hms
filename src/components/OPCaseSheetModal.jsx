@@ -388,9 +388,8 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all')
     <div class="info-row"><span class="info-label">Department:</span> ${form.department}</div>
     <div class="info-row"><span class="info-label">Physician:</span> ${form.physician}</div>
     <div class="info-row"><span class="info-label">Date:</span> ${fmtDate(form.case_date)}</div>
+    <div class="info-row"><span class="info-label">Time:</span> ${form.admission_time ? fmtTime12h(form.admission_time) : ''}</div>
     <div class="info-row"><span class="info-label">Diagnosis:</span> ${form.initial_diagnosis}</div>
-    ${form.admission_date ? `<div class="info-row"><span class="info-label">Date of Admission:</span> ${fmtDate(form.admission_date)}${form.admission_time ? ` (${fmtTime12h(form.admission_time)})` : ''}</div>` : ''}
-    ${form.discharge_date ? `<div class="info-row"><span class="info-label">Date of Discharge:</span> ${fmtDate(form.discharge_date)}${form.discharge_time ? ` (${fmtTime12h(form.discharge_time)})` : ''}</div>` : ''}
   </div>
 </div>
 
@@ -701,9 +700,10 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-4 gap-4">
                     <Field label="Department" value={form.department} onChange={v => set('department', v)} />
                     <Field label="Date" type="date" value={form.case_date} onChange={v => set('case_date', v)} />
+                    <Field label="Time" type="time" value={form.admission_time} onChange={v => set('admission_time', v)} />
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Physician</label>
                       <select
@@ -718,14 +718,6 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                         )}
                       </select>
                     </div>
-                  </div>
-
-                  <SectionTitle>Admission / Discharge Details</SectionTitle>
-                  <div className="grid grid-cols-4 gap-4">
-                    <Field label="Date of Admission" type="date" value={form.admission_date} onChange={v => set('admission_date', v)} />
-                    <Field label="Time of Admission" type="time" value={form.admission_time} onChange={v => set('admission_time', v)} />
-                    <Field label="Date of Discharge" type="date" value={form.discharge_date} onChange={v => set('discharge_date', v)} />
-                    <Field label="Time of Discharge" type="time" value={form.discharge_time} onChange={v => set('discharge_time', v)} />
                   </div>
 
                   <SectionTitle>Demographics</SectionTitle>
