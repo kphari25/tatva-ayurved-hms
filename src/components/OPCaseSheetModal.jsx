@@ -46,7 +46,6 @@ const emptyForm = () => ({
   socio_economic_status: '',
   occupation: '',
   physician: '',
-  initial_diagnosis: '',
 
   admission_date: '',
   admission_time: '',
@@ -93,6 +92,7 @@ const emptyForm = () => ({
 
 const emptyVisitEntry = () => ({
   date: new Date().toISOString().split('T')[0],
+  time: '',
   clinical_findings: '',
   medication_notes: '',
   medicine_items: [],
@@ -176,7 +176,7 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all')
   const row2 = (l1, v1, l2, v2) => `<tr><td><strong>${l1}</strong></td><td>${v1 || ''}</td><td><strong>${l2}</strong></td><td>${v2 || ''}</td></tr>`;
 
   const visitRows = visitNotes.map(v => `<tr>
-      <td>${fmtDate(v.date)}</td>
+      <td>${fmtDate(v.date)}${v.time ? `<br>${fmtTime12h(v.time)}` : ''}</td>
       <td>${v.clinical_findings || ''}</td>
       <td>${buildMedicineItemsTableHTML(v.medicine_items) || v.medication_notes || ''}</td>
       <td>${v.treatment_notes || v.medicines_procedures || ''}</td>
@@ -389,7 +389,6 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all')
     <div class="info-row"><span class="info-label">Physician:</span> ${form.physician}</div>
     <div class="info-row"><span class="info-label">Date:</span> ${fmtDate(form.case_date)}</div>
     <div class="info-row"><span class="info-label">Time:</span> ${form.admission_time ? fmtTime12h(form.admission_time) : ''}</div>
-    <div class="info-row"><span class="info-label">Diagnosis:</span> ${form.initial_diagnosis}</div>
   </div>
 </div>
 
@@ -584,6 +583,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     setEditingVisitId(entry.id);
     setVisitForm({
       date: entry.date || new Date().toISOString().split('T')[0],
+      time: entry.time || '',
       clinical_findings: entry.clinical_findings || '',
       medication_notes: entry.medication_notes || '',
       medicine_items: entry.medicine_items || [],
@@ -728,7 +728,6 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                     <SelectField label="Marital Status" value={form.marital_status} onChange={v => set('marital_status', v)} options={['Married', 'Single']} />
                     <SelectField label="Socio-Economic Status" value={form.socio_economic_status} onChange={v => set('socio_economic_status', v)} options={['L', 'M', 'H']} />
                     <Field label="Occupation" value={form.occupation} onChange={v => set('occupation', v)} />
-                    <Field label="Diagnosis" value={form.initial_diagnosis} onChange={v => set('initial_diagnosis', v)} />
                   </div>
 
                   <SectionTitle>Vital Signs</SectionTitle>
@@ -883,10 +882,11 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                 <div className="space-y-5">
                   <div className="border border-gray-200 rounded-xl p-4 bg-gray-50" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e)}>
                     <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">
-                      {editingVisitId ? `Editing Entry — ${fmtDate(visitForm.date)}` : 'Add Visit Entry'}
+                      {editingVisitId ? `Editing Entry — ${fmtDate(visitForm.date)}${visitForm.time ? ` ${fmtTime12h(visitForm.time)}` : ''}` : 'Add Visit Entry'}
                     </h3>
-                    <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div className="grid grid-cols-4 gap-3 mb-3">
                       <Field label="Date" type="date" value={visitForm.date} onChange={v => setVisitForm(p => ({ ...p, date: v }))} />
+                      <Field label="Time" type="time" value={visitForm.time} onChange={v => setVisitForm(p => ({ ...p, time: v }))} />
                       <Field label="Pain Intensity Score" value={visitForm.pain_intensity_score} onChange={v => setVisitForm(p => ({ ...p, pain_intensity_score: v }))} />
                       {!editingVisitId && (
                         <div>
@@ -969,7 +969,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                         <div key={v.id} className={`border rounded-xl overflow-hidden ${editingVisitId === v.id ? 'border-teal-400 ring-1 ring-teal-200' : 'border-gray-200'}`}>
                           <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-gray-800 text-sm">{fmtDate(v.date)}</span>
+                              <span className="font-semibold text-gray-800 text-sm">{fmtDate(v.date)}{v.time && ` · ${fmtTime12h(v.time)}`}</span>
                               {v.total_days > 1 && (
                                 <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">Day {v.day_number} of {v.total_days}</span>
                               )}
