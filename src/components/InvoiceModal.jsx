@@ -69,8 +69,10 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     setAdditionalCharges(prev => prev.map((c, i) => (i === idx ? { ...c, [field]: value } : c)));
   const removeAdditionalCharge = (idx) => setAdditionalCharges(prev => prev.filter((_, i) => i !== idx));
 
+  const priceListTotal = priceListItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+
   const calculateTreatmentCharges = () =>
-    priceListItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0) +
+    priceListTotal +
     additionalCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0) +
     medicinesTotal;
 
@@ -438,14 +440,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 <td>₹${data.registration_fee.toFixed(2)}</td>
               </tr>
             ` : ''}
-            ${(data.treatment_items && data.treatment_items.length > 0) ? data.treatment_items.map(item => `
+            ${(data.treatment_items && data.treatment_items.length > 0) ? `
               <tr>
-                <td>${item.name}</td>
+                <td>Treatments</td>
                 <td>-</td>
                 <td>-</td>
-                <td>₹${Number(item.price || 0).toFixed(2)}</td>
+                <td>₹${data.treatment_items.reduce((sum, item) => sum + (Number(item.price) || 0), 0).toFixed(2)}</td>
               </tr>
-            `).join('') : ''}
+            ` : ''}
             ${(data.medicines_total || 0) > 0 ? `
               <tr>
                 <td>Medicines Administered</td>
@@ -728,12 +730,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 )}
 
                 <div className="space-y-1.5 mb-2">
-                  {priceListItems.map((item, idx) => (
-                    <div key={`pl-${idx}`} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">{item.name} <span className="text-xs text-teal-600">({item.source || 'price list'})</span></span>
-                      <span className="font-medium text-gray-800">₹{Number(item.price || 0).toLocaleString('en-IN')}</span>
+                  {priceListItems.length > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">
+                        Treatments <span className="text-xs text-teal-600">({invoiceType} case sheet & {invoiceType === 'IP' ? 'daily progress' : 'visit log'})</span>
+                      </span>
+                      <span className="font-medium text-gray-800">₹{priceListTotal.toLocaleString('en-IN')}</span>
                     </div>
-                  ))}
+                  )}
                   {invoiceType === 'IP' && medicinesTotal > 0 && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-700">Medicines Administered <span className="text-xs text-teal-600">(case sheet & daily progress)</span></span>
