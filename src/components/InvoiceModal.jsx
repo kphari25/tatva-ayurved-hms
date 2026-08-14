@@ -185,6 +185,12 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           dinner: prev.patient_meals.dinner || prices.dinner || 0,
           snacks: prev.patient_meals.snacks || prices.snacks || 0,
         },
+        bystander_meals: {
+          breakfast: prev.bystander_meals.breakfast || prices.breakfast || 0,
+          lunch: prev.bystander_meals.lunch || prices.lunch || 0,
+          dinner: prev.bystander_meals.dinner || prices.dinner || 0,
+          snacks: prev.bystander_meals.snacks || prices.snacks || 0,
+        },
       }));
     }).catch(e => console.error('Error loading meal prices:', e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
