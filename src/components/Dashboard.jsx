@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Stethoscope, Leaf, CalendarClock } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -209,6 +209,15 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
   );
 };
 
+// Doctors only see patients/appointments assigned to them; every other role
+// (front desk, admin, etc.) keeps the full clinic-wide view. Assignment is
+// name-string based (appointments.doctorName, patients.assigned_doctor) since
+// neither field carries a doctorId — matched case/whitespace-insensitively so
+// a logged-in doctor's account name doesn't have to be byte-for-byte identical
+// to how they were typed in when assigned. If a doctor's login name doesn't
+// match the spelling used when assigning them, their lists will show empty.
+const normName = (s) => (s || '').trim().toLowerCase();
+
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showAddAppointment, setShowAddAppointment] = useState(false);
@@ -241,6 +250,13 @@ const Dashboard = () => {
       hotLeads: 0
     }
   });
+
+  const currentUser = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('currentUser') || '{}'); } catch { return {}; }
+  }, []);
+  const isDoctorView = currentUser.role === 'doctor';
+  const myName = normName(currentUser.name);
+  const isMine = (doctorField) => !isDoctorView || normName(doctorField) === myName;
 
   useEffect(() => {
     loadDashboardData();
@@ -317,6 +333,7 @@ const Dashboard = () => {
     // them from the list.
     const ipPatients = allPatients
       .filter(p => p.patient_type === 'IP' && p.admission_status !== 'pending_admission' && p.admission_status !== 'discharged')
+      .filter(p => isMine(p.assigned_doctor))
       .map(p => {
         const cs = ipCaseSheetsById[p.id] || {};
         const admissionDate = p.admission_date || p.created_at;
@@ -339,6 +356,7 @@ const Dashboard = () => {
     // Pending admission requests — new IP registrations awaiting approval.
     const pendingAdmissions = allPatients
       .filter(p => p.patient_type === 'IP' && p.admission_status === 'pending_admission')
+      .filter(p => isMine(p.assigned_doctor))
       .map(p => ({
         id: p.id,
         patient: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
@@ -413,6 +431,7 @@ const Dashboard = () => {
       (snap) => {
         const appts = snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
+          .filter(a => isMine(a.doctorName))
           .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
         setPanelAppointments(appts);
       }
@@ -665,8 +684,6 @@ const Dashboard = () => {
     </div>
   );
 
-  const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -694,7 +711,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <StatCard
           title="Today's Appointments"
-          value={dashboardData.stats.totalAppointments}
+          value={isDoctorView ? todayAppointments.filter(a => isMine(a.doctorName)).length : dashboardData.stats.totalAppointments}
           icon={Calendar}
           color="#3b82f6"
           subtitle="Scheduled patients"
