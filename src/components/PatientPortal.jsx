@@ -4,7 +4,7 @@ import {
   Phone, Mail, Calendar, MapPin, Activity,
   X, FileText, Download, Filter, CalendarPlus,
   Stethoscope, Clock, MessageSquare, CheckCircle, AlertCircle, Send,
-  ClipboardList, UserRound, BookOpen, Pill, BedDouble, LogOut
+  ClipboardList, UserRound, BookOpen, Pill, BedDouble, LogOut, RotateCcw
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc } from 'firebase/firestore';
@@ -314,6 +314,38 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     setDischargeSummaryPatient(patient);
     setDischargeSummaryExisting(await fetchLatestDischargeSummary(patient.id));
     setShowDischargeSummary(true);
+  };
+
+  // OP has no room/mess billing to settle, so checkout is a direct status
+  // flip rather than the full IP Discharge Management workflow — it reuses
+  // the same admission_status field so the Active/Inactive badge, default
+  // list, and Discharged filter all treat OP and IP checkouts identically.
+  const handleOpCheckout = async (patient) => {
+    const patientId = patient.id || patient.firebaseId;
+    const name = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+    if (!window.confirm(`Check out ${name || 'this patient'}? They'll move to Inactive and drop out of the active list (still findable by search).`)) return;
+    try {
+      await updateDoc(doc(db, 'patients', patientId), { admission_status: 'discharged' });
+      setPatients(prev => prev.map(p => (p.id || p.firebaseId) === patientId ? { ...p, admission_status: 'discharged' } : p));
+    } catch (error) {
+      console.error('Error checking out patient:', error);
+      alert('Failed to check out patient: ' + error.message);
+    }
+  };
+
+  // Undo for an OP checkout or an IP discharge marked by mistake — moves the
+  // patient back to Active without re-running the full admission workflow.
+  const handleReactivate = async (patient) => {
+    const patientId = patient.id || patient.firebaseId;
+    const name = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+    if (!window.confirm(`Reactivate ${name || 'this patient'}? They'll move back to Active.`)) return;
+    try {
+      await updateDoc(doc(db, 'patients', patientId), { admission_status: null });
+      setPatients(prev => prev.map(p => (p.id || p.firebaseId) === patientId ? { ...p, admission_status: null } : p));
+    } catch (error) {
+      console.error('Error reactivating patient:', error);
+      alert('Failed to reactivate patient: ' + error.message);
+    }
   };
 
   // Opens a specific patient's details when navigated here from elsewhere
@@ -764,6 +796,26 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                             title="Discharge"
                           >
                             <LogOut className="w-4 h-4" />
+                          </button>
+                        )}
+                        {/* Checkout — OP patients only, direct status flip (no room/mess billing to settle) */}
+                        {!(patient.patient_type === 'IP' || patient.ip_number) && patient.admission_status !== 'discharged' && (
+                          <button
+                            onClick={() => handleOpCheckout(patient)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Checkout"
+                          >
+                            <LogOut className="w-4 h-4" />
+                          </button>
+                        )}
+                        {/* Reactivate — undo an OP checkout or IP discharge made by mistake */}
+                        {patient.admission_status === 'discharged' && (
+                          <button
+                            onClick={() => handleReactivate(patient)}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            title="Reactivate"
+                          >
+                            <RotateCcw className="w-4 h-4" />
                           </button>
                         )}
                         {/* Prescription */}
