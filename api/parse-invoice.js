@@ -3,6 +3,44 @@
 // key lives only in this server-side function (ANTHROPIC_API_KEY, no VITE_
 // prefix, set in Vercel project settings), so it never reaches the browser.
 
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs } from 'firebase/firestore';
+
+// Same public client config already shipped in src/lib/firebase.js — Firebase
+// web config isn't a secret, access control is enforced by Firestore rules
+// and (here) the known-user check below, not by hiding this.
+const firebaseConfig = {
+  apiKey: 'AIzaSyAbzT44jVXP4VtKer3HQSSLF4bRsCEyAG8',
+  authDomain: 'tatva-ayurved-hms.firebaseapp.com',
+  projectId: 'tatva-ayurved-hms',
+  storageBucket: 'tatva-ayurved-hms.firebasestorage.app',
+  messagingSenderId: '1098950929087',
+  appId: '1:1098950929087:web:0daa1ad68dae607011340a',
+};
+const db = getFirestore(initializeApp(firebaseConfig));
+
+// Matches Login.jsx's BUILT_IN_USERS — those accounts have no Firestore doc.
+const BUILT_IN_EMAILS = new Set(['admin@tatvaayurved.com', 'admin123']);
+
+// This is a known-user gate, not real authentication: the app has no signed
+// session token to verify (login is a plaintext password check against
+// Firestore, see Login.jsx), so there's nothing cryptographic to check here.
+// This only confirms the email is a real, active account — it stops
+// anonymous/bot abuse of the Anthropic key, but a client that already knows
+// a valid staff email could still spoof it. Closing that gap for real would
+// mean adding real signed sessions to login, which is a separate project.
+const isKnownActiveUser = async (email) => {
+  if (!email) return false;
+  const normalized = email.toLowerCase().trim();
+  if (BUILT_IN_EMAILS.has(normalized)) return true;
+
+  const snap = await getDocs(collection(db, 'users'));
+  return snap.docs.some(d => {
+    const data = d.data();
+    return data.email && data.email.toLowerCase() === normalized && data.is_active !== false;
+  });
+};
+
 const EXTRACTION_PROMPT = `You are reading a vendor B2B tax invoice for medicines/goods sent to an Ayurveda hospital's pharmacy. Extract the data and return ONLY a single JSON object — no markdown fences, no explanation — matching exactly this shape:
 
 {
@@ -44,13 +82,18 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { base64Pdf } = req.body || {};
+  const { base64Pdf, email } = req.body || {};
   if (!base64Pdf) {
     res.status(400).json({ success: false, error: 'Missing base64Pdf in request body' });
     return;
   }
 
   try {
+    if (!(await isKnownActiveUser(email))) {
+      res.status(403).json({ success: false, error: 'Not authorized. Please log in to the app and try again.' });
+      return;
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
