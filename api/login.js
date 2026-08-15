@@ -4,14 +4,16 @@
 // one match; this keeps that comparison server-side and returns only a
 // signed session token plus the matched user's own profile.
 //
-// Password storage itself is still plaintext in Firestore (unchanged from
-// the previous behavior) — this endpoint only stops passwords from being
-// shipped to the browser during login. Hashing passwords at rest is a
-// separate, still-open follow-up.
+// Passwords are hashed at rest (see _lib/password.js). Accounts created
+// before this shipped still have a plaintext value; a successful login
+// against one silently rewrites it as a hash, so each account upgrades
+// itself the next time its owner signs in rather than needing a bulk
+// migration or a forced reset.
 
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { getDb } from './_lib/firebaseAdmin.js';
 import { createSessionToken } from './_lib/session.js';
+import { verifyPassword, hashPassword, isLegacyPlaintext } from './_lib/password.js';
 
 // Matches Login.jsx's BUILT_IN_USERS — kept in sync manually since this
 // endpoint now owns the actual check (Login.jsx just calls this).
@@ -65,9 +67,19 @@ export default async function handler(req, res) {
       return;
     }
 
-    if (userData.password !== password) {
+    if (!(await verifyPassword(password, userData.password))) {
       res.status(401).json({ success: false, error: 'Invalid email or password' });
       return;
+    }
+
+    if (isLegacyPlaintext(userData.password)) {
+      try {
+        await updateDoc(doc(getDb(), 'users', match.id), { password: await hashPassword(password) });
+      } catch (upgradeErr) {
+        // Non-fatal — login still succeeds even if the upgrade write fails;
+        // it'll just try again on the next login.
+        console.error('Could not upgrade legacy password hash:', upgradeErr);
+      }
     }
 
     const user = {

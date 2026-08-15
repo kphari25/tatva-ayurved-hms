@@ -248,16 +248,36 @@ const UserManagement = () => {
           updated_at: new Date().toISOString()
         };
 
+        // Password never gets written directly from the browser — it goes
+        // through /api/set-user-password, which hashes it server-side.
+        let userId = editUser?.id;
+        if (editUser) {
+          await updateDoc(doc(db, 'users', editUser.id), saveData);
+        } else {
+          saveData.created_at = new Date().toISOString();
+          const ref = await addDoc(collection(db, 'users'), saveData);
+          userId = ref.id;
+        }
+
         if (userData.password) {
-          saveData.password = userData.password; // In production, this should be hashed
+          const token = localStorage.getItem('sessionToken') || '';
+          const pwRes = await fetch('/api/set-user-password', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ userId, password: userData.password }),
+          });
+          const pwResult = await pwRes.json();
+          if (!pwRes.ok || !pwResult.success) {
+            throw new Error(pwResult.error || 'Failed to set password');
+          }
         }
 
         if (editUser) {
-          await updateDoc(doc(db, 'users', editUser.id), saveData);
           alert(`✅ User Updated Successfully!\n\nName: ${saveData.name}\nGroups: ${saveData.roles.map(r => ROLES[r]?.label).join(', ')}\nModules: ${saveData.permissions.length} accessible`);
         } else {
-          saveData.created_at = new Date().toISOString();
-          await addDoc(collection(db, 'users'), saveData);
           alert(`✅ User Created Successfully!\n\nName: ${saveData.name}\nEmail: ${saveData.email}\nGroups: ${saveData.roles.map(r => ROLES[r]?.label).join(', ')}\nModules: ${saveData.permissions.length} accessible\n\nThe user can now log in with their email and password.`);
         }
 
