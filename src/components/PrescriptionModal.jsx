@@ -82,6 +82,16 @@ const PrescriptionModal = ({ patient, onClose }) => {
   const previewEntries = isIP ? ipEntries : opEntries.slice(0, 1);
 
   const buildPrintHTML = (entries) => {
+    // "Signed By" on the most recent entry that has one is who actually saw
+    // the patient for this prescription — a closer match than the patient's
+    // general assigned_doctor, which may be unset or belong to someone else.
+    // Whichever source it comes from may or may not already include a "Dr."
+    // prefix (assigned_doctor is typically stored with one, signed_by is
+    // free text and usually isn't), so strip it before we add our own below.
+    const attendingDoctor = (entries.find(e => e.signed_by)?.signed_by || patient?.assigned_doctor || '')
+      .replace(/^dr\.?\s*/i, '')
+      .trim();
+
     const showDateColumn = entries.length > 1;
     const rows = [];
     entries.forEach(entry => {
@@ -122,11 +132,10 @@ const PrescriptionModal = ({ patient, onClose }) => {
     .logo-block { background: #1a5f4e; color: #fff; padding: 10px 16px; border-radius: 4px; min-width: 160px; }
     .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
     .logo-block .tagline { font-size: 9px; color: #a8d8c8; }
-    .doctor-block { margin-top: 8px; font-size: 11px; }
-    .doctor-block .doctor-name { font-weight: bold; font-size: 12px; }
-    .patient-block { text-align: right; font-size: 12px; }
-    .patient-block .info-row { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 3px; }
-    .patient-block .info-label { font-weight: bold; min-width: 90px; text-align: left; }
+    .patient-block { font-size: 12px; border-collapse: collapse; margin-left: auto; }
+    .patient-block td { padding: 0 0 3px; white-space: nowrap; }
+    .patient-block .info-label { font-weight: bold; text-align: left; padding-right: 6px; }
+    .patient-block .info-value { text-align: left; }
     .title { text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin: 4px 0 14px; letter-spacing: 1px; }
     table.grid { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 12px; }
     table.grid th, table.grid td { border: 1px solid #aaa; padding: 6px 8px; text-align: left; vertical-align: top; }
@@ -144,23 +153,17 @@ const PrescriptionModal = ({ patient, onClose }) => {
 </head>
 <body>
   <div class="header">
-    <div>
-      <div class="logo-block">
-        <div class="brand">TATVA AYURVED</div>
-        <div class="tagline">Ayurveda for Health &amp; Happiness</div>
-      </div>
-      <div class="doctor-block">
-        <div class="doctor-name">Dr. ${patient?.assigned_doctor || '—'}</div>
-        ${doctorQualification ? `<div>${doctorQualification}</div>` : ''}
-      </div>
+    <div class="logo-block">
+      <div class="brand">TATVA AYURVED</div>
+      <div class="tagline">Ayurveda for Health &amp; Happiness</div>
     </div>
-    <div class="patient-block">
-      <div class="info-row"><span class="info-label">Name</span><span>: ${patientName}</span></div>
-      <div class="info-row"><span class="info-label">Age &amp; Sex</span><span>: ${patient?.age || '—'} yrs, ${patient?.gender || '—'}</span></div>
-      <div class="info-row"><span class="info-label">MRD No</span><span>: ${patient?.mrd_number || patient?.patient_number || '—'}</span></div>
-      ${patient?.ip_number ? `<div class="info-row"><span class="info-label">IP No</span><span>: ${patient.ip_number}</span></div>` : ''}
-      <div class="info-row"><span class="info-label">Date</span><span>: ${dateLabel || todayLabel()}</span></div>
-    </div>
+    <table class="patient-block">
+      <tr><td class="info-label">Name</td><td class="info-value">: ${patientName}</td></tr>
+      <tr><td class="info-label">Age &amp; Sex</td><td class="info-value">: ${patient?.age || '—'} yrs, ${patient?.gender || '—'}</td></tr>
+      <tr><td class="info-label">MRD No</td><td class="info-value">: ${patient?.mrd_number || patient?.patient_number || '—'}</td></tr>
+      ${patient?.ip_number ? `<tr><td class="info-label">IP No</td><td class="info-value">: ${patient.ip_number}</td></tr>` : ''}
+      <tr><td class="info-label">Date</td><td class="info-value">: ${dateLabel || todayLabel()}</td></tr>
+    </table>
   </div>
 
   <div class="title">PRESCRIPTION</div>
@@ -188,7 +191,8 @@ const PrescriptionModal = ({ patient, onClose }) => {
   <div class="footer">
     <div class="sig-block">
       <div class="sig-line"></div>
-      <p class="doctor-name" style="margin-top:4px;">Dr. ${patient?.assigned_doctor || ''}</p>
+      ${attendingDoctor ? `<p class="doctor-name" style="margin-top:4px;">Dr. ${attendingDoctor}</p>` : ''}
+      ${doctorQualification ? `<p class="reg">${doctorQualification}</p>` : ''}
       <p style="font-size:10px;">Signature of Physician</p>
     </div>
   </div>
