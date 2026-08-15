@@ -5,11 +5,14 @@
 // base64Pdf: raw base64 string (no "data:application/pdf;base64," prefix)
 export const parseInvoicePdf = async (base64Pdf) => {
   try {
-    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const token = localStorage.getItem('sessionToken') || '';
     const response = await fetch('/api/parse-invoice', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base64Pdf, email: currentUser.email || '' }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ base64Pdf }),
     });
 
     const result = await response.json();

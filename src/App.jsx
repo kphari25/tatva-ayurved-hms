@@ -62,6 +62,7 @@ function App() {
       } catch (error) {
         console.error('Error parsing saved user:', error);
         localStorage.removeItem('currentUser');
+        localStorage.removeItem('sessionToken');
       }
     }
 
@@ -191,6 +192,7 @@ function App() {
     if (window.confirm('Are you sure you want to logout?')) {
       endSession();
       localStorage.removeItem('currentUser');
+      localStorage.removeItem('sessionToken');
       setCurrentUser(null);
       setCurrentView('dashboard');
     }

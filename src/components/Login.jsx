@@ -1,5 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+
+// Built-in admin fallback so local `vite dev` (no serverless functions running)
+// can still log in without needing `vercel dev` — this password is already
+// public in the source either way, so keeping it client-side loses nothing.
+// Every other account's password check now happens only server-side, in
+// api/login.js, which also issues the signed session token.
+const BUILT_IN_FALLBACK = {
+  'admin@tatvaayurved.com': { password: 'admin123', name: 'System Administrator', role: 'system_admin', permissions: ['all'] },
+  'admin123': { password: 'admin123', name: 'System Administrator', role: 'system_admin', permissions: ['all'] },
+};
 
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -8,123 +18,45 @@ const Login = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Built-in admin accounts (always work, even if Firebase is down)
-  const BUILT_IN_USERS = {
-    'admin@tatvaayurved.com': {
-      password: 'admin123',
-      name: 'System Administrator',
-      role: 'system_admin',
-      permissions: ['all']
-    },
-    'admin123': {
-      password: 'admin123',
-      name: 'System Administrator',
-      role: 'system_admin',
-      permissions: ['all']
-    }
-  };
-
-  // Try to check Firebase users
-  const checkFirebaseUser = async (inputEmail, inputPassword) => {
-    try {
-      // Dynamic import so Login doesn't crash if Firebase fails
-      const { db } = await import('../lib/firebase');
-      const { collection, getDocs } = await import('firebase/firestore');
-      
-      const usersRef = collection(db, 'users');
-      const snapshot = await getDocs(usersRef);
-      
-      const firebaseUser = snapshot.docs.find(d => {
-        const data = d.data();
-        return data.email && data.email.toLowerCase() === inputEmail;
-      });
-      
-      if (firebaseUser) {
-        const userData = firebaseUser.data();
-        
-        // Check if account is active
-        if (userData.is_active === false) {
-          return { error: 'Your account has been deactivated. Please contact the administrator.' };
-        }
-        
-        // Check password
-        if (userData.password === inputPassword) {
-          return {
-            user: {
-              id: firebaseUser.id,
-              email: inputEmail,
-              name: userData.name,
-              role: userData.role || 'front_office',
-              permissions: userData.permissions || [],
-              department: userData.department || '',
-              qualification: userData.qualification || '',
-              employee_id: userData.employee_id || ''
-            }
-          };
-        }
-      }
-      
-      return { user: null };
-    } catch (err) {
-      console.warn('Firebase user check failed:', err.message);
-      return { user: null };
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
+    const inputEmail = email.toLowerCase().trim();
+
     try {
-      const inputEmail = email.toLowerCase().trim();
-      let loggedInUser = null;
-      
-      // STEP 1: Check built-in admin accounts FIRST (always works)
-      const builtIn = BUILT_IN_USERS[inputEmail];
-      if (builtIn && builtIn.password === password) {
-        loggedInUser = {
-          email: inputEmail,
-          name: builtIn.name,
-          role: builtIn.role,
-          permissions: builtIn.permissions
-        };
-        console.log('✅ Login via built-in admin');
-      }
-      
-      // STEP 2: If not built-in, check Firebase
-      if (!loggedInUser) {
-        const result = await checkFirebaseUser(inputEmail, password);
-        
-        if (result.error) {
-          setError(result.error);
-          setLoading(false);
-          return;
-        }
-        
-        if (result.user) {
-          loggedInUser = result.user;
-          console.log('✅ Login via Firebase:', result.user.name);
-        }
-      }
-      
-      // STEP 3: No match
-      if (!loggedInUser) {
-        setError('Invalid email or password');
-        setLoading(false);
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inputEmail, password }),
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        localStorage.setItem('currentUser', JSON.stringify(result.user));
+        localStorage.setItem('sessionToken', result.token);
+        console.log('✅ Logged in:', result.user.name, '| Role:', result.user.role);
+        if (onLogin) onLogin(result.user);
         return;
       }
-      
-      // Save and login
-      localStorage.setItem('currentUser', JSON.stringify(loggedInUser));
-      console.log('✅ Logged in:', loggedInUser.name, '| Role:', loggedInUser.role);
-      
-      if (onLogin) {
-        onLogin(loggedInUser);
-      }
 
+      setError(result.error || 'Invalid email or password');
+      setLoading(false);
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      // /api/login unreachable (e.g. local `vite dev` without Vercel functions)
+      // — fall back to the built-in admin account only, with no session token.
+      const builtIn = BUILT_IN_FALLBACK[inputEmail];
+      if (builtIn && builtIn.password === password) {
+        const loggedInUser = { email: inputEmail, name: builtIn.name, role: builtIn.role, permissions: builtIn.permissions };
+        localStorage.setItem('currentUser', JSON.stringify(loggedInUser));
+        localStorage.removeItem('sessionToken');
+        console.log('✅ Login via built-in admin (offline fallback)');
+        if (onLogin) onLogin(loggedInUser);
+        return;
+      }
+      console.error('Login request failed:', err);
+      setError('Could not reach the login service. Please try again.');
       setLoading(false);
     }
   };
