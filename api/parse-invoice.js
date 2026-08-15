@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{
           role: 'user',
           content: [
@@ -81,11 +81,18 @@ export default async function handler(req, res) {
     const text = data.content?.find(block => block.type === 'text')?.text || '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      res.status(502).json({ success: false, error: 'AI response did not contain the expected JSON data' });
+      const reason = data.stop_reason === 'max_tokens' ? ' (response was cut off — hit the token limit)' : '';
+      res.status(502).json({ success: false, error: `AI response did not contain the expected JSON data${reason}. Response started with: ${text.slice(0, 300) || '(empty)'}` });
       return;
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      res.status(502).json({ success: false, error: `Could not parse the AI's JSON response: ${parseErr.message}. Raw text: ${jsonMatch[0].slice(0, 300)}` });
+      return;
+    }
     res.status(200).json({ success: true, data: parsed });
   } catch (error) {
     console.error('Error parsing invoice PDF:', error);
