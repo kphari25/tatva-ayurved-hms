@@ -1,24 +1,69 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Save, X, Package, IndianRupee, Calendar, Barcode, Tag, FileText, AlertCircle, CheckCircle, Search } from 'lucide-react';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-const AddMedicine = ({ onClose, onSuccess }) => {
+// Passing `item` switches this into edit mode for that existing inventory
+// document — same form, but it updates the item's master fields (price, MRP,
+// category, etc.) in place instead of creating a new inventory row. Batch/
+// stock history is left untouched here; that's owned by the Goods Receipt /
+// Import Invoice flows so multi-batch tracking doesn't get clobbered.
+const AddMedicine = ({ item, onClose, onSuccess }) => {
+  const isEditMode = !!item;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [existingMedicines, setExistingMedicines] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsRef = useRef(null);
-  
-  const [formData, setFormData] = useState({
+
+  const [formData, setFormData] = useState(() => item ? {
+    item_name: item.item_name || '',
+    item_code: item.item_code || '',
+    category: item.category || '',
+    manufacturer: item.manufacturer || '',
+    hsn_code: item.hsn_code || '',
+
+    purchase_price: (item.purchase_price ?? item.purchase_rate ?? '').toString(),
+    MRP: (item.MRP ?? item.mrp ?? '').toString(),
+    discount_percentage: (item.discount_percentage ?? '').toString(),
+    gst_percentage: (item.gst_percentage ?? 12).toString(),
+    cgst_percentage: (item.cgst_percentage ?? (item.gst_percentage ? item.gst_percentage / 2 : 6)).toString(),
+    sgst_percentage: (item.sgst_percentage ?? (item.gst_percentage ? item.gst_percentage / 2 : 6)).toString(),
+
+    stock_quantity: (item.stock_quantity ?? '').toString(),
+    reorder_level: (item.reorder_level ?? '').toString(),
+    unit_of_measurement: item.unit_of_measurement || 'Nos',
+
+    batch_number: '',
+    manufacturing_date: '',
+    expiry_date: '',
+
+    storage_location: item.storage_location || '',
+    rack_number: item.rack_number || '',
+
+    composition: item.composition || '',
+    dosage_form: item.dosage_form || '',
+    strength: item.strength || '',
+
+    supplier_name: item.supplier_name || '',
+    supplier_contact: item.supplier_contact || '',
+
+    description: item.description || '',
+    usage_instructions: item.usage_instructions || '',
+    side_effects: item.side_effects || '',
+    contraindications: item.contraindications || '',
+
+    is_active: item.is_active !== false,
+    prescription_required: item.prescription_required || false
+  } : {
     // Basic Information
     item_name: '',
     item_code: '',
     category: '',
     manufacturer: '',
     hsn_code: '',
-    
+
     // Pricing
     purchase_price: '',
     MRP: '',
@@ -26,36 +71,36 @@ const AddMedicine = ({ onClose, onSuccess }) => {
     gst_percentage: '12', // Total GST
     cgst_percentage: '6',  // Central GST (half of total)
     sgst_percentage: '6',  // State GST (half of total)
-    
+
     // Stock Information
     stock_quantity: '',
     reorder_level: '',
     unit_of_measurement: 'Nos',
-    
+
     // Batch Information
     batch_number: '',
     manufacturing_date: '',
     expiry_date: '',
-    
+
     // Storage
     storage_location: '',
     rack_number: '',
-    
+
     // Medicine Details
     composition: '',
     dosage_form: '',
     strength: '',
-    
+
     // Supplier Information
     supplier_name: '',
     supplier_contact: '',
-    
+
     // Additional Information
     description: '',
     usage_instructions: '',
     side_effects: '',
     contraindications: '',
-    
+
     // Status
     is_active: true,
     prescription_required: false
@@ -114,8 +159,10 @@ const AddMedicine = ({ onClose, onSuccess }) => {
     setError('');
   };
 
-  // Load existing medicines for auto-complete
+  // Load existing medicines for auto-complete — only useful in add mode,
+  // where searching lets you copy fields from an existing item.
   useEffect(() => {
+    if (isEditMode) return;
     const loadExistingMedicines = async () => {
       try {
         const inventoryRef = collection(db, 'inventory');
@@ -237,11 +284,11 @@ const AddMedicine = ({ onClose, onSuccess }) => {
       setError('Medicine name is required');
       return false;
     }
-    if (!formData.item_code.trim()) {
+    if (!isEditMode && !formData.item_code.trim()) {
       setError('Item code is required');
       return false;
     }
-    if (!formData.category) {
+    if (!isEditMode && !formData.category) {
       setError('Category is required');
       return false;
     }
@@ -292,17 +339,7 @@ const AddMedicine = ({ onClose, onSuccess }) => {
         stock_quantity: parseInt(formData.stock_quantity),
         reorder_level: parseInt(formData.reorder_level) || 10,
         unit_of_measurement: formData.unit_of_measurement,
-        
-        // Batch Information
-        batches: formData.batch_number ? [{
-          batch_number: formData.batch_number,
-          quantity: parseInt(formData.stock_quantity),
-          manufacturing_date: formData.manufacturing_date || null,
-          expiry_date: formData.expiry_date || null,
-          purchase_price: parseFloat(formData.purchase_price),
-          mrp: parseFloat(formData.MRP)
-        }] : [],
-        
+
         // Storage
         storage_location: formData.storage_location || '',
         rack_number: formData.rack_number || '',
@@ -325,24 +362,39 @@ const AddMedicine = ({ onClose, onSuccess }) => {
         // Status
         is_active: formData.is_active,
         prescription_required: formData.prescription_required,
-        
-        // Timestamps
-        created_at: new Date().toISOString(),
-        created_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email,
+
         last_updated: new Date().toISOString(),
-        last_purchase_date: new Date().toISOString().split('T')[0]
       };
 
-      await addDoc(collection(db, 'inventory'), medicineData);
+      if (isEditMode) {
+        // Batches/stock history is owned by Goods Receipt / Import Invoice —
+        // leave it untouched here so editing price fields can't wipe out a
+        // multi-batch item's existing batch records.
+        await updateDoc(doc(db, 'inventory', item.firebaseId), medicineData);
+        alert(`✅ Medicine updated successfully!\n\nItem: ${medicineData.item_name}\nCode: ${medicineData.item_code}`);
+      } else {
+        medicineData.batches = formData.batch_number ? [{
+          batch_number: formData.batch_number,
+          quantity: parseInt(formData.stock_quantity),
+          manufacturing_date: formData.manufacturing_date || null,
+          expiry_date: formData.expiry_date || null,
+          purchase_price: parseFloat(formData.purchase_price),
+          mrp: parseFloat(formData.MRP)
+        }] : [];
+        medicineData.created_at = new Date().toISOString();
+        medicineData.created_by = JSON.parse(localStorage.getItem('currentUser') || '{}').email;
+        medicineData.last_purchase_date = new Date().toISOString().split('T')[0];
 
-      alert(`✅ Medicine added successfully!\n\nItem: ${medicineData.item_name}\nCode: ${medicineData.item_code}\nStock: ${medicineData.stock_quantity} ${medicineData.unit_of_measurement}`);
-      
+        await addDoc(collection(db, 'inventory'), medicineData);
+        alert(`✅ Medicine added successfully!\n\nItem: ${medicineData.item_name}\nCode: ${medicineData.item_code}\nStock: ${medicineData.stock_quantity} ${medicineData.unit_of_measurement}`);
+      }
+
       if (onSuccess) onSuccess();
       if (onClose) onClose();
 
     } catch (err) {
-      console.error('Error adding medicine:', err);
-      setError('Failed to add medicine: ' + err.message);
+      console.error(`Error ${isEditMode ? 'updating' : 'adding'} medicine:`, err);
+      setError(`Failed to ${isEditMode ? 'update' : 'add'} medicine: ` + err.message);
     } finally {
       setSaving(false);
     }
@@ -356,8 +408,8 @@ const AddMedicine = ({ onClose, onSuccess }) => {
           <div className="flex items-center gap-3">
             <Package className="w-6 h-6" />
             <div>
-              <h2 className="text-xl font-bold">Add New Medicine</h2>
-              <p className="text-sm text-blue-100">Complete medicine entry form</p>
+              <h2 className="text-xl font-bold">{isEditMode ? 'Edit Medicine' : 'Add New Medicine'}</h2>
+              <p className="text-sm text-blue-100">{isEditMode ? `Editing ${item.item_name}` : 'Complete medicine entry form'}</p>
             </div>
           </div>
           <button onClick={onClose} className="hover:bg-blue-700 p-2 rounded">
@@ -397,7 +449,7 @@ const AddMedicine = ({ onClose, onSuccess }) => {
                       }
                     }}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="Start typing to search existing medicines..."
+                    placeholder={isEditMode ? 'Medicine name' : 'Start typing to search existing medicines...'}
                     required
                     autoComplete="off"
                   />
@@ -453,7 +505,7 @@ const AddMedicine = ({ onClose, onSuccess }) => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Item Code *
+                  Item Code {!isEditMode && '*'}
                 </label>
                 <input
                   type="text"
@@ -461,19 +513,19 @@ const AddMedicine = ({ onClose, onSuccess }) => {
                   onChange={(e) => handleChange('item_code', e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="ASH-001"
-                  required
+                  required={!isEditMode}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Category *
+                  Category {!isEditMode && '*'}
                 </label>
                 <select
                   value={formData.category}
                   onChange={(e) => handleChange('category', e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  required
+                  required={!isEditMode}
                 >
                   <option value="">Select Category</option>
                   {categories.map(cat => (
@@ -659,6 +711,11 @@ const AddMedicine = ({ onClose, onSuccess }) => {
               <Package className="w-5 h-5 text-purple-600" />
               Stock Information
             </h3>
+            {isEditMode && (
+              <p className="text-xs text-gray-500 mb-4 -mt-2">
+                This is a direct stock correction. To receive new stock, use Goods Receipt / Import Invoice instead so batch history stays accurate.
+              </p>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -704,51 +761,55 @@ const AddMedicine = ({ onClose, onSuccess }) => {
             </div>
           </div>
 
-          {/* Batch Information */}
-          <div className="bg-gray-50 rounded-lg p-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Barcode className="w-5 h-5 text-orange-600" />
-              Batch Information
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Batch Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.batch_number}
-                  onChange={(e) => handleChange('batch_number', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="BATCH-2026-001"
-                />
-              </div>
+          {/* Batch Information — add mode only; editing an existing item
+              shouldn't create an ad-hoc batch. Receive new stock via
+              Goods Receipt / Import Invoice so batch history stays accurate. */}
+          {!isEditMode && (
+            <div className="bg-gray-50 rounded-lg p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Barcode className="w-5 h-5 text-orange-600" />
+                Batch Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Batch Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.batch_number}
+                    onChange={(e) => handleChange('batch_number', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="BATCH-2026-001"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Manufacturing Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.manufacturing_date}
-                  onChange={(e) => handleChange('manufacturing_date', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Manufacturing Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.manufacturing_date}
+                    onChange={(e) => handleChange('manufacturing_date', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Expiry Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.expiry_date}
-                  onChange={(e) => handleChange('expiry_date', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.expiry_date}
+                    onChange={(e) => handleChange('expiry_date', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Storage Information */}
           <div className="bg-gray-50 rounded-lg p-6">
@@ -948,7 +1009,7 @@ const AddMedicine = ({ onClose, onSuccess }) => {
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
             >
               <Save className="w-5 h-5" />
-              {saving ? 'Saving...' : 'Add Medicine'}
+              {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Add Medicine'}
             </button>
           </div>
         </form>

@@ -24,6 +24,7 @@ const InventoryManagement = () => {
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showAddMedicine, setShowAddMedicine] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
   const [expandedRow, setExpandedRow] = useState(null); // For showing detailed view
 
   // Load inventory from Firebase
@@ -241,6 +242,19 @@ const InventoryManagement = () => {
       setMessage({ type: 'error', text: 'Failed to clear inventory: ' + error.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteItem = async (item) => {
+    if (!window.confirm(`Delete "${item.item_name}" from inventory? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, 'inventory', item.firebaseId));
+      setInventory(prev => prev.filter(i => i.firebaseId !== item.firebaseId));
+      setExpandedRow(null);
+      setMessage({ type: 'success', text: `${item.item_name} deleted.` });
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      setMessage({ type: 'error', text: 'Failed to delete item: ' + error.message });
     }
   };
 
@@ -604,11 +618,17 @@ const InventoryManagement = () => {
 
                           {/* Actions */}
                           <div className="mt-4 pt-4 border-t border-blue-200 flex gap-3">
-                            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                            <button
+                              onClick={() => setEditingItem(item)}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                            >
                               <Edit className="w-4 h-4" />
                               Edit
                             </button>
-                            <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2">
+                            <button
+                              onClick={() => handleDeleteItem(item)}
+                              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+                            >
                               <Trash2 className="w-4 h-4" />
                               Delete
                             </button>
@@ -641,6 +661,18 @@ const InventoryManagement = () => {
           onClose={() => setShowAddMedicine(false)}
           onSuccess={() => {
             setShowAddMedicine(false);
+            loadInventory(); // Refresh inventory list
+          }}
+        />
+      )}
+
+      {/* Edit Medicine Modal */}
+      {editingItem && (
+        <AddMedicine
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSuccess={() => {
+            setEditingItem(null);
             loadInventory(); // Refresh inventory list
           }}
         />
