@@ -81,6 +81,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     send_sms_doctor: true,
   });
   const [savedAppt, setSavedAppt] = useState(null);
+  const [apptReactivated, setApptReactivated] = useState(false);
 
   // Load patients on component mount
   useEffect(() => {
@@ -119,6 +120,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     });
     setApptSMSStatus({ patient: null, doctor: null });
     setSavedAppt(null);
+    setApptReactivated(false);
     setShowAppointmentModal(true);
   };
 
@@ -178,6 +180,19 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       };
       const ref = await addDoc(collection(db, 'appointments'), apptData);
       setSavedAppt({ id: ref.id, ...apptData });
+
+      // Booking an appointment for a discharged/checked-out patient means
+      // they're back for a visit — reactivate them so they don't stay stuck
+      // under Inactive with a live appointment on the books.
+      let reactivated = false;
+      if (appointmentPatient.admission_status === 'discharged') {
+        const patientId = appointmentPatient.id || appointmentPatient.firebaseId;
+        await updateDoc(doc(db, 'patients', patientId), { admission_status: null });
+        setPatients(prev => prev.map(p => (p.id || p.firebaseId) === patientId ? { ...p, admission_status: null } : p));
+        setAppointmentPatient(prev => prev ? { ...prev, admission_status: null } : prev);
+        reactivated = true;
+      }
+      setApptReactivated(reactivated);
 
       // Send SMS
       const smsDetails = {
@@ -937,6 +952,11 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {savedAppt.appointment_type} with {savedAppt.doctor_name} on{' '}
                         {new Date(savedAppt.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} at {savedAppt.time}
                       </p>
+                      {apptReactivated && (
+                        <p className="text-sm text-green-700 mt-1 flex items-center gap-1">
+                          <RotateCcw className="w-3.5 h-3.5" /> Patient was Inactive — moved back to Active.
+                        </p>
+                      )}
                     </div>
                   </div>
 
