@@ -1003,7 +1003,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                     >
                       <option>Consultation</option>
                       <option>Ayurvedic Therapy</option>
-                      <option>Panchakarma Session</option>
+                      <option>Follow Up</option>
                     </select>
                   </div>
 

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Stethoscope, Leaf, CalendarClock } from 'lucide-react';
+import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { sendAppointmentSMSToPatient } from '../lib/sms';
+import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment } from '../lib/appointmentBuckets';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -32,39 +33,6 @@ const getMonthRange = (d) => [
   new Date(d.getFullYear(), d.getMonth(), 1),
   new Date(d.getFullYear(), d.getMonth() + 1, 0)
 ];
-
-// The Appointments panel is organized into three fixed columns/buckets.
-// Real appointment "type" text is free-form (booked via Patient Portal's
-// dropdown, typed in on a phone call-in, or logged from Scheduling) — e.g.
-// "PANCHAKARMA SESSION", "PODIKIZHI", "REVIEW CONSULTA", "FOLLOW UP" — so every
-// appointment is sorted into a bucket by keyword rather than exact match,
-// with Ayurvedic Therapy as the catch-all so nothing is ever hidden.
-const APPOINTMENT_BUCKETS = ['Consultation', 'Ayurvedic Therapy', 'Follow Up'];
-
-const bucketForAppointment = (apt) => {
-  const t = (apt.type || '').toLowerCase();
-  if (t.includes('consult')) return 'Consultation';
-  if (t.includes('follow')) return 'Follow Up';
-  return 'Ayurvedic Therapy';
-};
-
-const APPOINTMENT_TYPE_COLORS = {
-  'Consultation': {
-    icon: Stethoscope, gradient: 'from-blue-400 to-blue-500',
-    border: 'border-blue-400', bg: 'bg-blue-50', time: 'text-blue-700', badge: 'bg-blue-100 text-blue-800', dot: 'bg-blue-400',
-  },
-  'Ayurvedic Therapy': {
-    icon: Leaf, gradient: 'from-emerald-400 to-emerald-500',
-    border: 'border-emerald-400', bg: 'bg-emerald-50', time: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-400',
-  },
-  'Follow Up': {
-    icon: CalendarClock, gradient: 'from-amber-400 to-amber-500',
-    border: 'border-amber-400', bg: 'bg-amber-50', time: 'text-amber-700', badge: 'bg-amber-100 text-amber-800', dot: 'bg-amber-400',
-  },
-};
-const DEFAULT_APPOINTMENT_COLOR = { border: 'border-gray-300', bg: 'bg-gray-50', time: 'text-gray-700', badge: 'bg-gray-100 text-gray-700', dot: 'bg-gray-400' };
-
-const colorForAppointment = (apt) => APPOINTMENT_TYPE_COLORS[bucketForAppointment(apt)] || DEFAULT_APPOINTMENT_COLOR;
 
 const formatGroupDate = (dateStr) => {
   const today = toDateStr(new Date());

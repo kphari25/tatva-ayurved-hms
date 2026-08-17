@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User, LayoutGrid, List, BarChart3 } from 'lucide-react';
 import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS } from '../lib/appointmentBuckets';
 
 const STATUS_OPTIONS = ['scheduled', 'in-progress', 'completed', 'cancelled'];
 
@@ -139,7 +140,7 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. Consultation, Panchakarma Session"
+              placeholder="e.g. Consultation, Ayurvedic Therapy, Follow Up"
             />
           </div>
 
@@ -991,7 +992,7 @@ const AppointmentScheduling = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Appointments List */}
+            {/* Appointments — sectioned by type: Consultation / Ayurvedic Therapy / Follow Up */}
             <div className="lg:col-span-2 bg-white rounded-xl shadow-md overflow-hidden">
               <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1002,60 +1003,78 @@ const AppointmentScheduling = () => {
                   {appointments.length} Total
                 </span>
               </div>
-              <div className="divide-y divide-gray-100">
-                {loading ? (
-                  <div className="p-8 text-center text-gray-500">Loading...</div>
-                ) : appointments.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">
-                    <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                    <p>No appointments scheduled for this day</p>
-                  </div>
-                ) : (
-                  appointments.map((apt) => (
-                    <div key={apt.id} className="p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <p className="text-lg font-bold text-blue-600 w-16">{apt.time}</p>
-                          <div>
-                            <p className="font-semibold text-gray-900">{apt.patient}</p>
-                            <p className="text-sm text-gray-600">{apt.type}</p>
-                            {apt.doctorName && (
-                              <p className="text-xs text-teal-700 flex items-center gap-1 mt-0.5">
-                                🩺 Dr. {apt.doctorName}
-                              </p>
-                            )}
-                            {apt.therapistName && (
-                              <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
-                                <User className="w-3 h-3" />
-                                {apt.therapistName}
-                              </p>
-                            )}
-                          </div>
+              {loading ? (
+                <div className="p-8 text-center text-gray-500">Loading...</div>
+              ) : appointments.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                  <p>No appointments scheduled for this day</p>
+                </div>
+              ) : (
+                <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {APPOINTMENT_BUCKETS.map(bucketName => {
+                    const color = APPOINTMENT_TYPE_COLORS[bucketName];
+                    const Icon = color.icon;
+                    const bucketAppts = appointments.filter(apt => bucketForAppointment(apt) === bucketName);
+                    return (
+                      <div key={bucketName} className="rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col overflow-hidden">
+                        <div className={`flex items-center gap-2 px-4 py-3 bg-gradient-to-r ${color.gradient}`}>
+                          <Icon className="w-4 h-4 text-white shrink-0" />
+                          <h3 className="font-bold text-white text-sm flex-1 leading-tight">{bucketName}</h3>
+                          <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">{bucketAppts.length}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${STATUS_STYLES[apt.status] || STATUS_STYLES.scheduled}`}>
-                            {apt.status ? apt.status.charAt(0).toUpperCase() + apt.status.slice(1) : 'Scheduled'}
-                          </span>
-                          <button
-                            onClick={() => openEditModal(apt)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Edit appointment"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteAppointment(apt.id)}
-                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Remove appointment"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        <div className="p-3 space-y-2.5 max-h-[32rem] overflow-y-auto flex-1">
+                          {bucketAppts.length === 0 ? (
+                            <p className="text-xs text-gray-400 text-center py-8">No {bucketName.toLowerCase()} today</p>
+                          ) : (
+                            bucketAppts.map(apt => (
+                              <div key={apt.id} className={`rounded-lg border-l-4 ${color.border} bg-white p-3 shadow-sm hover:shadow-md transition-shadow`}>
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className={`text-sm font-bold ${color.time}`}>{apt.time}</p>
+                                  <div className="flex items-center gap-0.5">
+                                    <button
+                                      onClick={() => openEditModal(apt)}
+                                      className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="Edit appointment"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => deleteAppointment(apt.id)}
+                                      className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Remove appointment"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                                <p className="font-semibold text-gray-900 text-sm mt-0.5">{apt.patient}</p>
+                                {apt.type && (
+                                  <p className="text-xs text-gray-500 mt-0.5 truncate" title={apt.type}>{apt.type}</p>
+                                )}
+                                {apt.doctorName && (
+                                  <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
+                                    🩺 Dr. {apt.doctorName}
+                                  </p>
+                                )}
+                                {apt.therapistName && (
+                                  <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
+                                    <User className="w-3 h-3" />
+                                    {apt.therapistName}
+                                  </p>
+                                )}
+                                <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[apt.status] || STATUS_STYLES.scheduled}`}>
+                                  {apt.status ? apt.status.charAt(0).toUpperCase() + apt.status.slice(1) : 'Scheduled'}
+                                </span>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Therapist Schedule Panel */}
