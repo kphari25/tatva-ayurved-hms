@@ -45,7 +45,9 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
     (async () => {
       try {
         const snap = await getDocs(collection(db, 'inventory'));
-        setInventory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        // Spread first, id last: some inventory docs carry their own legacy
+        // numeric `id` field, which would otherwise clobber the real doc id.
+        setInventory(snap.docs.map(d => ({ ...d.data(), id: d.id })));
       } catch (e) {
         console.error('Error loading inventory:', e);
       } finally {

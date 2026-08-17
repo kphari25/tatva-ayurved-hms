@@ -85,7 +85,14 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
           getDocs(collection(db, 'inventory')),
         ]);
         setVendors(vendorsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setInventory(inventorySnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setInventory(
+          inventorySnap.docs
+            // Spread first, id last: some inventory docs carry their own legacy
+            // numeric `id` field in the data, which would otherwise clobber the
+            // real Firestore document id and break doc(db, 'inventory', id) calls.
+            .map(d => ({ ...d.data(), id: d.id }))
+            .sort((a, b) => (a.item_name || '').localeCompare(b.item_name || ''))
+        );
       } catch (err) {
         console.error('Error loading vendors/inventory:', err);
       }

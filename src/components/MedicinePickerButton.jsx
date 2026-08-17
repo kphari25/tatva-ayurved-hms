@@ -35,7 +35,9 @@ const MedicinePickerButton = ({ onSelect, label = 'Add from Inventory' }) => {
       try {
         setLoading(true);
         const snap = await getDocs(collection(db, 'inventory'));
-        setMedicines(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        // Spread first, id last: some inventory docs carry their own legacy
+        // numeric `id` field, which would otherwise clobber the real doc id.
+        setMedicines(snap.docs.map(d => ({ ...d.data(), id: d.id })));
       } catch (e) {
         console.error('Error loading inventory:', e);
       } finally {

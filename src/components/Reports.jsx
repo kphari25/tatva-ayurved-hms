@@ -75,7 +75,9 @@ const Reports = () => {
         medicineSales: salesSnap.docs.map(d => d.data()),
         expenses: expensesSnap.docs.map(d => d.data()),
         purchaseEntries: purchaseEntriesSnap.docs.map(d => d.data()),
-        inventory: inventorySnap.docs.map(d => ({ id: d.id, ...d.data() })),
+        // Spread first, id last: some inventory docs carry their own legacy
+        // numeric `id` field, which would otherwise clobber the real doc id.
+        inventory: inventorySnap.docs.map(d => ({ ...d.data(), id: d.id })),
       });
     } catch (error) {
       console.error('Error loading report data:', error);

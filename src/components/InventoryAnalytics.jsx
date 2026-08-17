@@ -76,9 +76,11 @@ const InventoryAnalytics = () => {
       const inventoryRef = collection(db, 'inventory');
       const snapshot = await getDocs(inventoryRef);
       
+      // Spread first, id last: some inventory docs carry their own legacy
+      // numeric `id` field, which would otherwise clobber the real doc id.
       const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        id: doc.id
       }));
 
       setInventory(items);
