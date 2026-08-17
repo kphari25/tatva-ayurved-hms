@@ -44,6 +44,12 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [prescriptionPatient, setPrescriptionPatient] = useState(null);
   const [showEditPatient, setShowEditPatient] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
+
+  // Returning-patient check-in: look up by name + phone across all
+  // statuses (not just the active tab) and reactivate in one step.
+  const [showReturningPatient, setShowReturningPatient] = useState(false);
+  const [returningName, setReturningName] = useState('');
+  const [returningPhone, setReturningPhone] = useState('');
   const [showAssignDoctor, setShowAssignDoctor] = useState(false);
   const [assignDoctorPatient, setAssignDoctorPatient] = useState(null);
   const [assignDoctorName, setAssignDoctorName] = useState('');
@@ -338,15 +344,47 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const handleReactivate = async (patient) => {
     const patientId = patient.id || patient.firebaseId;
     const name = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
-    if (!window.confirm(`Reactivate ${name || 'this patient'}? They'll move back to Active.`)) return;
+    if (!window.confirm(`Reactivate ${name || 'this patient'}? They'll move back to Active.`)) return false;
     try {
       await updateDoc(doc(db, 'patients', patientId), { admission_status: null });
       setPatients(prev => prev.map(p => (p.id || p.firebaseId) === patientId ? { ...p, admission_status: null } : p));
+      return true;
     } catch (error) {
       console.error('Error reactivating patient:', error);
       alert('Failed to reactivate patient: ' + error.message);
+      return false;
     }
   };
+
+  // Returning-patient check-in flow: reactivate (if needed) then jump
+  // straight to the patient's details so the front desk can carry on.
+  const closeReturningPatientModal = () => {
+    setShowReturningPatient(false);
+    setReturningName('');
+    setReturningPhone('');
+  };
+
+  const handleCheckInReturningPatient = async (patient) => {
+    const ok = await handleReactivate(patient);
+    if (ok) {
+      closeReturningPatientModal();
+      setFilterStatus('active');
+      viewPatientDetails(patient);
+    }
+  };
+
+  const returningPatientMatches = (returningName.trim() || returningPhone.trim())
+    ? patients.filter(p => {
+        const n = returningName.trim().toLowerCase();
+        const ph = returningPhone.trim().toLowerCase();
+        const fullName = `${p.first_name || ''} ${p.last_name || ''}`.toLowerCase();
+        const matchesName = !n || fullName.includes(n);
+        const matchesPhone = !ph ||
+          (p.phone || '').toLowerCase().includes(ph) ||
+          (p.alternate_phone || '').toLowerCase().includes(ph);
+        return matchesName && matchesPhone;
+      })
+    : [];
 
   // Opens a specific patient's details when navigated here from elsewhere
   // (e.g. clicking an appointment on the Dashboard) — mirrors the App-level
@@ -415,24 +453,34 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
             </h1>
             <p className="text-gray-600 mt-1">View and manage all registered patients</p>
           </div>
-          <button
-            onClick={() => {
-              console.log('🟢 New Patient button clicked!');
-              console.log('🟢 onAddPatient type:', typeof onAddPatient);
-              console.log('🟢 onAddPatient value:', onAddPatient);
-              if (onAddPatient) {
-                console.log('🟢 Calling onAddPatient...');
-                onAddPatient();
-                console.log('🟢 onAddPatient called!');
-              } else {
-                console.error('❌ onAddPatient is undefined!');
-              }
-            }}
-            className="flex items-center space-x-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors shadow-lg"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Register New Patient</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowReturningPatient(true)}
+              className="flex items-center space-x-2 px-5 py-3 bg-white border border-teal-600 text-teal-700 rounded-lg hover:bg-teal-50 transition-colors"
+              title="Look up an inactive patient by name + phone and check them back in"
+            >
+              <RotateCcw className="w-5 h-5" />
+              <span>Returning Patient Check-In</span>
+            </button>
+            <button
+              onClick={() => {
+                console.log('🟢 New Patient button clicked!');
+                console.log('🟢 onAddPatient type:', typeof onAddPatient);
+                console.log('🟢 onAddPatient value:', onAddPatient);
+                if (onAddPatient) {
+                  console.log('🟢 Calling onAddPatient...');
+                  onAddPatient();
+                  console.log('🟢 onAddPatient called!');
+                } else {
+                  console.error('❌ onAddPatient is undefined!');
+                }
+              }}
+              className="flex items-center space-x-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors shadow-lg"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Register New Patient</span>
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -492,6 +540,27 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
           </div>
         </div>
 
+        {/* Status Tabs — discharged/checked-out patients live under Inactive */}
+        <div className="flex border-b border-gray-200 mb-4">
+          {[
+            { key: 'active', label: 'Active', count: patients.filter(p => p.admission_status !== 'discharged').length },
+            { key: 'discharged', label: 'Inactive / Discharged', count: patients.filter(p => p.admission_status === 'discharged').length },
+            { key: 'all', label: 'All Patients', count: patients.length },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilterStatus(tab.key)}
+              className={`px-5 py-3 font-medium text-sm border-b-2 transition-colors ${
+                filterStatus === tab.key
+                  ? 'border-teal-600 text-teal-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
+
         {/* Search and Filter */}
         <div className="flex items-center space-x-4">
           <div className="flex-1 relative">
@@ -525,15 +594,6 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
               <option value="all">All Types</option>
               <option value="IP">IP (In-Patient)</option>
               <option value="OP">OP (Out-Patient)</option>
-            </select>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
-            >
-              <option value="active">Active Patients</option>
-              <option value="discharged">Discharged</option>
-              <option value="all">All Patients</option>
             </select>
           </div>
 
@@ -1456,6 +1516,94 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
             onClose={() => { setShowEditPatient(false); setEditingPatient(null); }}
             onSuccess={() => { setShowEditPatient(false); setEditingPatient(null); loadPatients(); }}
           />
+        </div>
+      )}
+
+      {/* ── Returning Patient Check-In Modal ── */}
+      {showReturningPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-teal-600" />
+                  Returning Patient Check-In
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">Find a patient by name and phone, then check them back in.</p>
+              </div>
+              <button onClick={closeReturningPatientModal} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={returningName}
+                    onChange={e => setReturningName(e.target.value)}
+                    placeholder="Patient name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cell Phone</label>
+                  <input
+                    type="tel"
+                    value={returningPhone}
+                    onChange={e => setReturningPhone(e.target.value)}
+                    placeholder="Phone number"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {!returningName.trim() && !returningPhone.trim() ? (
+                  <p className="text-sm text-gray-500 text-center py-6">Enter a name and/or phone number to search.</p>
+                ) : returningPatientMatches.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-6">No matching patients found.</p>
+                ) : (
+                  returningPatientMatches.map(p => {
+                    const isDischarged = p.admission_status === 'discharged';
+                    return (
+                      <div key={p.id} className="flex items-center justify-between border border-gray-200 rounded-lg px-4 py-3">
+                        <div>
+                          <p className="font-semibold text-gray-900">{p.first_name} {p.last_name}</p>
+                          <p className="text-xs text-gray-500">
+                            {p.phone || 'No phone'}{p.mrd_number && ` · ${p.mrd_number}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${isDischarged ? 'bg-gray-100 text-gray-700' : 'bg-green-100 text-green-700'}`}>
+                            {isDischarged ? 'Inactive' : 'Active'}
+                          </span>
+                          {isDischarged ? (
+                            <button
+                              onClick={() => handleCheckInReturningPatient(p)}
+                              className="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700"
+                            >
+                              Check In
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => { closeReturningPatientModal(); viewPatientDetails(p); }}
+                              className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200"
+                            >
+                              View
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
