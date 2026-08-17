@@ -130,6 +130,7 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
         return {
           key: idx,
           description: it.description || '',
+          hsn_code: it.hsn_code || '',
           inventory_id: match ? match.id : '',
           new_item_name: match ? '' : (it.description || ''),
           quantity: Number(it.quantity) || 0,
@@ -238,6 +239,7 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
         const gstAmount = (amount * (it.gst_percent || 0)) / 100;
         return {
           medicine_name: medicineName,
+          hsn_code: it.hsn_code || '',
           ordered_qty: it.quantity,
           received_qty: it.quantity,
           damaged_qty: 0,
@@ -283,6 +285,7 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
         invoice_date: invoiceDate,
         items: itemsReceived.map(it => ({
           medicine_name: it.medicine_name,
+          hsn_code: it.hsn_code || '',
           quantity: it.received_qty,
           batch_number: it.batch_number,
           expiry_date: it.expiry_date,
@@ -456,6 +459,7 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Matched Inventory Item</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">HSN Code</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Qty</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Batch #</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Expiry</th>
@@ -496,6 +500,15 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
                                 placeholder="New item name"
                               />
                             )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="text"
+                              value={it.hsn_code}
+                              onChange={(e) => handleItemChange(idx, 'hsn_code', e.target.value)}
+                              className="w-20 px-2 py-1 border rounded"
+                              placeholder="HSN"
+                            />
                           </td>
                           <td className="px-3 py-2">
                             <input
@@ -558,7 +571,7 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
                         </tr>
                       ))}
                       {items.length === 0 && (
-                        <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">No line items — AI could not find any on this invoice.</td></tr>
+                        <tr><td colSpan={10} className="px-3 py-6 text-center text-gray-400">No line items — AI could not find any on this invoice.</td></tr>
                       )}
                     </tbody>
                   </table>

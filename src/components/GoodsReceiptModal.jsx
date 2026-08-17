@@ -9,6 +9,7 @@ const GoodsReceiptModal = ({ po, onClose, onSave }) => {
   const [receivedItems, setReceivedItems] = useState(
     po.items.map(item => ({
       ...item,
+      hsn_code: item.hsn_code || '',
       ordered_qty: item.quantity,
       received_qty: item.quantity,
       damaged_qty: 0,
@@ -61,6 +62,7 @@ const GoodsReceiptModal = ({ po, onClose, onSave }) => {
         grn_number: grnNumber,
         po_number: po.po_number,
         po_id: po.id,
+        po_date: po.po_date,
         vendor_name: po.vendor.name,
         vendor_invoice_number: vendorInvoice.number,
         vendor_invoice_date: vendorInvoice.date,
@@ -91,6 +93,7 @@ const GoodsReceiptModal = ({ po, onClose, onSave }) => {
         invoice_date: vendorInvoice.date,
         items: receivedItems.map(item => ({
           medicine_name: item.medicine_name,
+          hsn_code: item.hsn_code || '',
           quantity: item.received_qty,
           batch_number: item.batch_number,
           expiry_date: item.expiry_date,
@@ -360,6 +363,7 @@ ${allReceived ? '✅ All items received!' : '⚠️ Partially received - remaini
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Medicine</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">HSN Code</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Ordered</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Received</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Damaged</th>
@@ -373,6 +377,15 @@ ${allReceived ? '✅ All items received!' : '⚠️ Partially received - remaini
                   {receivedItems.map((item, index) => (
                     <tr key={index} className={item.received_qty !== item.ordered_qty ? 'bg-yellow-50' : ''}>
                       <td className="px-3 py-2">{item.medicine_name}</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={item.hsn_code}
+                          onChange={(e) => handleItemChange(index, 'hsn_code', e.target.value)}
+                          className="w-20 px-2 py-1 border rounded"
+                          placeholder="HSN"
+                        />
+                      </td>
                       <td className="px-3 py-2 text-right">{item.ordered_qty}</td>
                       <td className="px-3 py-2">
                         <input

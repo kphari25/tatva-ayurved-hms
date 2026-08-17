@@ -7,6 +7,7 @@ import PurchaseRequestModal from './PurchaseRequestModal';
 import PurchaseOrderModal from './PurchaseOrderModal';
 import GoodsReceiptModal from './GoodsReceiptModal';
 import ViewPurchaseRequestModal from './ViewPurchaseRequestModal';
+import ViewPurchaseOrderModal from './ViewPurchaseOrderModal';
 import ImportInvoiceModal from './ImportInvoiceModal';
 
 const PurchaseManagement = () => {
@@ -205,6 +206,7 @@ const PurchaseManagement = () => {
       {activeTab === 'receipts' && (
         <GoodsReceiptsTab
           receipts={goodsReceipts}
+          orders={purchaseOrders}
           loading={loading}
         />
       )}
@@ -513,7 +515,9 @@ const PurchaseOrdersTab = ({ orders, loading, onReceive }) => {
 };
 
 // Goods Receipts Tab
-const GoodsReceiptsTab = ({ receipts, loading }) => {
+const GoodsReceiptsTab = ({ receipts, orders, loading }) => {
+  const [viewingPO, setViewingPO] = useState(null);
+
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-md p-12 text-center">
@@ -532,37 +536,85 @@ const GoodsReceiptsTab = ({ receipts, loading }) => {
     );
   }
 
+  const hsnCodesFor = (grn) => {
+    const codes = [...new Set((grn.items_received || []).map(it => it.hsn_code).filter(Boolean))];
+    return codes.length ? codes.join(', ') : '-';
+  };
+
+  const poFor = (grn) => grn.po_id ? orders.find(o => o.id === grn.po_id) : null;
+
+  const poDateFor = (grn) => {
+    if (grn.po_date) return grn.po_date;
+    const po = poFor(grn);
+    return po?.po_date || null;
+  };
+
+  const handleView = (grn) => {
+    const po = poFor(grn);
+    if (po) {
+      setViewingPO(po);
+    } else if (grn.source_file_url) {
+      window.open(grn.source_file_url, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('No purchase order or source invoice is linked to this receipt.');
+    }
+  };
+
   return (
+    <>
     <div className="bg-white rounded-xl shadow-md overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">GRN Number</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice Number</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PO Number</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">HSN Code</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PO Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {receipts.map(grn => (
-              <tr key={grn.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 text-sm font-medium text-gray-900">{grn.grn_number}</td>
-                <td className="px-6 py-4 text-sm text-gray-700">
-                  {new Date(grn.received_date).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-700">{grn.po_number}</td>
-                <td className="px-6 py-4 text-sm text-gray-700">{grn.vendor_name}</td>
-                <td className="px-6 py-4 text-sm text-gray-700">{grn.items_received?.length || 0} items</td>
-                <td className="px-6 py-4 text-sm text-gray-700">{grn.received_by}</td>
-              </tr>
-            ))}
+            {receipts.map(grn => {
+              const poDate = poDateFor(grn);
+              return (
+                <tr key={grn.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => handleView(grn)}>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    {grn.vendor_invoice_number || grn.grn_number}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-700">
+                    {new Date(grn.received_date).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{hsnCodesFor(grn)}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">
+                    {poDate ? new Date(poDate).toLocaleDateString() : (grn.source === 'pdf_import' ? 'Direct import' : '-')}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{grn.vendor_name}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{grn.items_received?.length || 0} items</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{grn.received_by}</td>
+                  <td className="px-6 py-4 text-center">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleView(grn); }}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title={poFor(grn) ? 'View Purchase Order' : grn.source_file_url ? 'View original invoice' : 'No linked document'}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
     </div>
+    {viewingPO && (
+      <ViewPurchaseOrderModal po={viewingPO} onClose={() => setViewingPO(null)} />
+    )}
+    </>
   );
 };
 

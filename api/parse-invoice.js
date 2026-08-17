@@ -5,34 +5,52 @@
 
 import { verifySessionToken } from './_lib/session.js';
 
-const EXTRACTION_PROMPT = `You are reading a vendor B2B tax invoice for medicines/goods sent to an Ayurveda hospital's pharmacy. Extract the data and return ONLY a single JSON object — no markdown fences, no explanation — matching exactly this shape:
-
-{
-  "vendor_name": string,
-  "vendor_gstin": string,
-  "invoice_number": string,
-  "invoice_date": string,
-  "items": [
-    {
-      "description": string,
-      "batch_number": string,
-      "expiry_date": string,
-      "quantity": number,
-      "unit_price": number,
-      "discount_amount": number,
-      "gst_percent": number
-    }
-  ]
-}
+const EXTRACTION_PROMPT = `You are reading a vendor B2B tax invoice for medicines/goods sent to an Ayurveda hospital's pharmacy. Call the extract_invoice tool with the data from this invoice.
 
 Rules:
 - description: name of the medicine/goods only, without pack size or batch info.
+- hsn_code: the HSN/SAC code printed on that line item; use "" if not present.
 - expiry_date and invoice_date: use YYYY-MM-DD format; use "" if not present on the invoice.
 - gst_percent: the combined tax rate (sum of CGST+SGST, or IGST alone).
 - Only include real line items (goods rows), not subtotal/total/tax-summary rows.
 - Use "" for missing text fields and 0 for missing numbers.
-- Numbers must be plain numbers — no currency symbols, no commas, no strings.
-- Return valid JSON only.`;
+- Numbers must be plain numbers — no currency symbols, no commas, no strings.`;
+
+// Tool-forced extraction instead of asking for freeform JSON in a text block:
+// the API guarantees tool_use.input is valid, schema-shaped JSON, so there's
+// nothing left to regex out of prose or hand-parse — no more "malformed JSON"
+// failures when an invoice's item text happens to contain a stray quote/comma.
+const EXTRACTION_TOOL = {
+  name: 'extract_invoice',
+  description: 'Record the vendor invoice header and line items read from the PDF.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      vendor_name: { type: 'string' },
+      vendor_gstin: { type: 'string' },
+      invoice_number: { type: 'string' },
+      invoice_date: { type: 'string', description: 'YYYY-MM-DD, or "" if not present' },
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            description: { type: 'string' },
+            hsn_code: { type: 'string' },
+            batch_number: { type: 'string' },
+            expiry_date: { type: 'string', description: 'YYYY-MM-DD, or "" if not present' },
+            quantity: { type: 'number' },
+            unit_price: { type: 'number' },
+            discount_amount: { type: 'number' },
+            gst_percent: { type: 'number' },
+          },
+          required: ['description', 'quantity', 'unit_price'],
+        },
+      },
+    },
+    required: ['vendor_name', 'invoice_number', 'items'],
+  },
+};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -70,6 +88,8 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-5',
         max_tokens: 8192,
+        tools: [EXTRACTION_TOOL],
+        tool_choice: { type: 'tool', name: 'extract_invoice' },
         messages: [{
           role: 'user',
           content: [
@@ -87,22 +107,15 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
-    const text = data.content?.find(block => block.type === 'text')?.text || '';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      const reason = data.stop_reason === 'max_tokens' ? ' (response was cut off — hit the token limit)' : '';
-      res.status(502).json({ success: false, error: `AI response did not contain the expected JSON data${reason}. Response started with: ${text.slice(0, 300) || '(empty)'}` });
+    const toolUse = data.content?.find(block => block.type === 'tool_use' && block.name === 'extract_invoice');
+    if (!toolUse) {
+      const reason = data.stop_reason === 'max_tokens' ? ' (response was cut off — hit the token limit, the invoice may have too many line items)' : '';
+      const text = data.content?.find(block => block.type === 'text')?.text || '';
+      res.status(502).json({ success: false, error: `AI response did not include the expected extraction data${reason}.${text ? ` Response: ${text.slice(0, 300)}` : ''}` });
       return;
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch (parseErr) {
-      res.status(502).json({ success: false, error: `Could not parse the AI's JSON response: ${parseErr.message}. Raw text: ${jsonMatch[0].slice(0, 300)}` });
-      return;
-    }
-    res.status(200).json({ success: true, data: parsed });
+    res.status(200).json({ success: true, data: toolUse.input });
   } catch (error) {
     console.error('Error parsing invoice PDF:', error);
     res.status(500).json({ success: false, error: error.message });
