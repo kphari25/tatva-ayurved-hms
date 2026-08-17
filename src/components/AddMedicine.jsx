@@ -389,7 +389,7 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
         alert(`✅ Medicine added successfully!\n\nItem: ${medicineData.item_name}\nCode: ${medicineData.item_code}\nStock: ${medicineData.stock_quantity} ${medicineData.unit_of_measurement}`);
       }
 
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess(medicineData);
       if (onClose) onClose();
 
     } catch (err) {

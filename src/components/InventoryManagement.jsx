@@ -1,9 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, CheckCircle, EyeOff, ChevronDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import {
+  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch,
+  query, orderBy, limit, startAfter, startAt, endAt, getCountFromServer,
+} from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
+
+const PAGE_SIZE = 100;
+const SEARCH_LIMIT = 50;
 
 const getPurchaseDate = (item) => item.last_purchase_date || item.purchase_date || item.created_at || null;
 
@@ -15,11 +21,18 @@ const getDaysInInventory = (item) => {
   return Math.max(0, Math.floor((new Date() - date) / (1000 * 60 * 60 * 24)));
 };
 
+const toItem = (d) => ({ ...d.data(), firebaseId: d.id });
+
 const InventoryManagement = () => {
-  const [inventory, setInventory] = useState([]);
-  const [filteredInventory, setFilteredInventory] = useState([]);
+  const [items, setItems] = useState([]);
+  const [totalCount, setTotalCount] = useState(null); // cheap aggregate count, independent of what's loaded
+  const [lastDoc, setLastDoc] = useState(null); // pagination cursor (browse mode only)
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true); // first page / reset
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [hideOutOfStock, setHideOutOfStock] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -27,50 +40,111 @@ const InventoryManagement = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [expandedRow, setExpandedRow] = useState(null); // For showing detailed view
 
-  // Load inventory from Firebase
+  const searchDebounce = useRef(null);
+  const isSearchMode = searchTerm.trim().length > 0;
+
   useEffect(() => {
-    loadInventory();
+    loadCount();
+    loadFirstPage();
   }, []);
 
-  const loadInventory = async () => {
+  // Debounced search — re-queries on pause so we're not hitting Firestore on every keystroke.
+  useEffect(() => {
+    clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => {
+      if (searchTerm.trim()) {
+        runSearch(searchTerm.trim());
+      } else {
+        loadFirstPage();
+      }
+    }, 350);
+    return () => clearTimeout(searchDebounce.current);
+  }, [searchTerm]);
+
+  const loadCount = async () => {
+    try {
+      const snap = await getCountFromServer(collection(db, 'inventory'));
+      setTotalCount(snap.data().count);
+    } catch (error) {
+      console.error('Error counting inventory:', error);
+    }
+  };
+
+  // Loads (or reloads) the first page of the alphabetical browse list — the
+  // default view. Only PAGE_SIZE documents are read here instead of the
+  // whole collection, which is what made the page slow to open.
+  const loadFirstPage = async () => {
     try {
       setLoading(true);
-      const inventoryRef = collection(db, 'inventory');
-      const snapshot = await getDocs(inventoryRef);
-      
-      const items = snapshot.docs.map(doc => ({
-        firebaseId: doc.id,
-        ...doc.data()
-      }));
-
-      setInventory(items);
-      setFilteredInventory(items);
-      setMessage({ type: 'success', text: `Loaded ${items.length} items from Firebase` });
-      
+      const q = query(collection(db, 'inventory'), orderBy('item_name'), limit(PAGE_SIZE));
+      const snapshot = await getDocs(q);
+      const docs = snapshot.docs;
+      setItems(docs.map(toItem));
+      setLastDoc(docs[docs.length - 1] || null);
+      setHasMore(docs.length === PAGE_SIZE);
+      setMessage({ type: '', text: '' });
     } catch (error) {
       console.error('Error loading inventory:', error);
       setMessage({ type: 'error', text: 'Failed to load inventory: ' + error.message });
-      setInventory([]);
-      setFilteredInventory([]);
+      setItems([]);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
   };
 
-  // Search/filter
-  useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredInventory(inventory);
-      return;
+  const loadMore = async () => {
+    if (!lastDoc || !hasMore || loadingMore) return;
+    try {
+      setLoadingMore(true);
+      const q = query(collection(db, 'inventory'), orderBy('item_name'), startAfter(lastDoc), limit(PAGE_SIZE));
+      const snapshot = await getDocs(q);
+      const docs = snapshot.docs;
+      setItems(prev => [...prev, ...docs.map(toItem)]);
+      setLastDoc(docs[docs.length - 1] || lastDoc);
+      setHasMore(docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error loading more inventory:', error);
+      setMessage({ type: 'error', text: 'Failed to load more items: ' + error.message });
+    } finally {
+      setLoadingMore(false);
     }
+  };
 
-    const term = searchTerm.toLowerCase();
-    const filtered = inventory.filter(item =>
-      (item.item_code || '').toLowerCase().includes(term) ||
-      (item.item_name || '').toLowerCase().includes(term)
-    );
-    setFilteredInventory(filtered);
-  }, [searchTerm, inventory]);
+  // Search is a "starts with" match against item name/code — Firestore has
+  // no full-text search, so this is a range query, not the old substring
+  // filter. Item data is ~99% stored upper-case, so we also try an
+  // upper-cased pass to catch that convention without requiring every
+  // record to carry a separate lower-cased search field.
+  const runSearch = async (term) => {
+    try {
+      setSearching(true);
+      const upper = term.toUpperCase();
+      const invRef = collection(db, 'inventory');
+      const prefixQuery = (field, value) =>
+        getDocs(query(invRef, orderBy(field), startAt(value), endAt(value + ''), limit(SEARCH_LIMIT)));
+
+      const queries = [prefixQuery('item_name', term), prefixQuery('item_code', upper)];
+      if (upper !== term) queries.push(prefixQuery('item_name', upper));
+
+      const snaps = await Promise.all(queries);
+      const seen = new Map();
+      snaps.forEach(snap => snap.docs.forEach(d => seen.set(d.id, toItem(d))));
+      const merged = [...seen.values()].sort((a, b) => (a.item_name || '').localeCompare(b.item_name || ''));
+
+      setItems(merged);
+      setHasMore(false);
+      setLastDoc(null);
+      setMessage({ type: '', text: '' });
+    } catch (error) {
+      console.error('Error searching inventory:', error);
+      setMessage({ type: 'error', text: 'Search failed: ' + error.message });
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const visibleItems = hideOutOfStock ? items.filter(i => (i.stock_quantity || 0) > 0) : items;
 
   // Handle Excel file upload
   const handleFileUpload = async (event) => {
@@ -82,7 +156,7 @@ const InventoryManagement = () => {
 
     try {
       const reader = new FileReader();
-      
+
       reader.onload = async (e) => {
         try {
           const data = new Uint8Array(e.target.result);
@@ -109,12 +183,12 @@ const InventoryManagement = () => {
 
             batchItems.forEach((row) => {
               const docRef = doc(collection(db, 'inventory'));
-              
+
               // Parse purchase date/month
               let purchaseDate = null;
-              const dateField = row.purchase_date || row['Purchase Date'] || row.date || row.Date || 
+              const dateField = row.purchase_date || row['Purchase Date'] || row.date || row.Date ||
                                row.month || row.Month || row.purchase_month || row['Purchase Month'];
-              
+
               if (dateField) {
                 // Handle Excel date serial numbers
                 if (typeof dateField === 'number') {
@@ -131,7 +205,6 @@ const InventoryManagement = () => {
               }
 
               const item = {
-                id: row.id || row.ID || Date.now() + Math.random(),
                 item_code: row.item_code || row['Item Code'] || row.code || '',
                 item_name: row.item_name || row['Item Name'] || row.name || 'Unknown',
                 stock_quantity: parseInt(row.stock_quantity || row['Stock Quantity'] || row.quantity || 0),
@@ -156,13 +229,14 @@ const InventoryManagement = () => {
             await new Promise(resolve => setTimeout(resolve, 100));
           }
 
-          setMessage({ 
-            type: 'success', 
-            text: `✅ Successfully uploaded ${uploadedCount} items to Firebase!` 
+          setMessage({
+            type: 'success',
+            text: `✅ Successfully uploaded ${uploadedCount} items to Firebase!`
           });
 
-          // Reload inventory
-          await loadInventory();
+          // Reload count + first page
+          await loadCount();
+          await loadFirstPage();
 
         } catch (error) {
           console.error('Error processing Excel:', error);
@@ -182,29 +256,39 @@ const InventoryManagement = () => {
     }
   };
 
-  // Export to Excel
-  const handleExport = () => {
-    const exportData = inventory.map(item => ({
-      'Item Code': item.item_code,
-      'Item Name': item.item_name,
-      'Stock Quantity': item.stock_quantity,
-      'Purchase Rate': item.purchase_rate,
-      'MRP': item.mrp,
-      'Stock Value': item.stock_value,
-      'Purchase Date': item.purchase_date || item.month || ''
-    }));
+  // Export to Excel — a deliberate, occasional action, so a full-collection
+  // read here (unlike on every page load) is a reasonable cost for completeness.
+  const handleExport = async () => {
+    setMessage({ type: 'info', text: 'Fetching full inventory for export...' });
+    try {
+      const snapshot = await getDocs(collection(db, 'inventory'));
+      const all = snapshot.docs.map(toItem);
+      const exportData = all.map(item => ({
+        'Item Code': item.item_code,
+        'Item Name': item.item_name,
+        'Stock Quantity': item.stock_quantity,
+        'Purchase Rate': item.purchase_price || item.purchase_rate,
+        'MRP': item.MRP || item.mrp,
+        'Stock Value': item.stock_value,
+        'Purchase Date': item.purchase_date || item.month || ''
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
-    XLSX.writeFile(wb, `Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
-    
-    setMessage({ type: 'success', text: 'Inventory exported successfully!' });
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+      XLSX.writeFile(wb, `Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      setMessage({ type: 'success', text: `Exported ${all.length} items successfully!` });
+    } catch (error) {
+      console.error('Error exporting inventory:', error);
+      setMessage({ type: 'error', text: 'Failed to export inventory: ' + error.message });
+    }
   };
 
   // Delete all inventory
   const handleClearInventory = async () => {
-    if (!window.confirm(`Are you sure you want to delete all ${inventory.length} items from Firebase? This cannot be undone!`)) {
+    const count = totalCount ?? items.length;
+    if (!window.confirm(`Are you sure you want to delete all ${count} items from Firebase? This cannot be undone!`)) {
       return;
     }
 
@@ -214,28 +298,25 @@ const InventoryManagement = () => {
 
     try {
       setLoading(true);
-      setMessage({ type: 'info', text: 'Deleting all inventory...' });
+      setMessage({ type: 'info', text: 'Fetching and deleting all inventory...' });
+
+      const snapshot = await getDocs(collection(db, 'inventory'));
+      const allDocs = snapshot.docs;
 
       // Delete in batches
       const batchSize = 500;
-      for (let i = 0; i < inventory.length; i += batchSize) {
+      for (let i = 0; i < allDocs.length; i += batchSize) {
         const batch = writeBatch(db);
-        const batchItems = inventory.slice(i, i + batchSize);
-
-        batchItems.forEach(item => {
-          if (item.firebaseId) {
-            const docRef = doc(db, 'inventory', item.firebaseId);
-            batch.delete(docRef);
-          }
-        });
-
+        allDocs.slice(i, i + batchSize).forEach(d => batch.delete(doc(db, 'inventory', d.id)));
         await batch.commit();
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       setMessage({ type: 'success', text: 'All inventory deleted!' });
-      setInventory([]);
-      setFilteredInventory([]);
+      setItems([]);
+      setTotalCount(0);
+      setHasMore(false);
+      setLastDoc(null);
 
     } catch (error) {
       console.error('Error clearing inventory:', error);
@@ -249,7 +330,8 @@ const InventoryManagement = () => {
     if (!window.confirm(`Delete "${item.item_name}" from inventory? This cannot be undone.`)) return;
     try {
       await deleteDoc(doc(db, 'inventory', item.firebaseId));
-      setInventory(prev => prev.filter(i => i.firebaseId !== item.firebaseId));
+      setItems(prev => prev.filter(i => i.firebaseId !== item.firebaseId));
+      setTotalCount(prev => (prev != null ? Math.max(0, prev - 1) : prev));
       setExpandedRow(null);
       setMessage({ type: 'success', text: `${item.item_name} deleted.` });
     } catch (error) {
@@ -297,7 +379,7 @@ const InventoryManagement = () => {
             <span>{uploadProgress.current} / {uploadProgress.total}</span>
           </div>
           <div className="w-full bg-yellow-200 rounded-full h-2">
-            <div 
+            <div
               className="bg-yellow-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
             />
@@ -309,17 +391,27 @@ const InventoryManagement = () => {
       <div className="bg-white rounded-xl shadow-md p-4 mb-6">
         <div className="flex flex-wrap gap-4 items-center justify-between">
           {/* Search */}
-          <div className="flex-1 min-w-[300px]">
-            <div className="relative">
+          <div className="flex-1 min-w-[300px] flex items-center gap-3">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by item code or name..."
+                placeholder="Search by item code or name (starts with)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               />
             </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 whitespace-nowrap cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hideOutOfStock}
+                onChange={(e) => setHideOutOfStock(e.target.checked)}
+                className="w-4 h-4 text-teal-600 rounded"
+              />
+              <EyeOff className="w-4 h-4 text-gray-400" />
+              Hide out of stock
+            </label>
           </div>
 
           {/* Action Buttons */}
@@ -347,7 +439,7 @@ const InventoryManagement = () => {
             <button
               onClick={handleExport}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium"
-              disabled={inventory.length === 0}
+              disabled={!totalCount}
             >
               <Download className="w-5 h-5" />
               Export
@@ -356,7 +448,7 @@ const InventoryManagement = () => {
             <button
               onClick={handleClearInventory}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 font-medium"
-              disabled={inventory.length === 0}
+              disabled={!totalCount}
             >
               <Trash2 className="w-5 h-5" />
               Clear All
@@ -368,11 +460,11 @@ const InventoryManagement = () => {
         <div className="mt-4 pt-4 border-t border-gray-200 flex gap-6 text-sm">
           <div>
             <span className="text-gray-600">Total Items:</span>
-            <span className="ml-2 font-semibold text-gray-900">{inventory.length}</span>
+            <span className="ml-2 font-semibold text-gray-900">{totalCount ?? '…'}</span>
           </div>
           <div>
-            <span className="text-gray-600">Showing:</span>
-            <span className="ml-2 font-semibold text-gray-900">{filteredInventory.length}</span>
+            <span className="text-gray-600">{isSearchMode ? 'Matches' : 'Loaded'}:</span>
+            <span className="ml-2 font-semibold text-gray-900">{visibleItems.length}</span>
           </div>
           <div>
             <span className="text-gray-600">Storage:</span>
@@ -383,19 +475,19 @@ const InventoryManagement = () => {
 
       {/* Inventory Table */}
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        {loading ? (
+        {loading || searching ? (
           <div className="p-12 text-center">
             <div className="inline-block w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
-            <p className="mt-4 text-gray-600">Loading inventory from Firebase...</p>
+            <p className="mt-4 text-gray-600">{searching ? 'Searching...' : 'Loading inventory from Firebase...'}</p>
           </div>
-        ) : filteredInventory.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="p-12 text-center">
             <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-600 text-lg mb-2">
-              {searchTerm ? 'No items match your search' : 'No inventory items yet'}
+              {isSearchMode ? 'No items match your search' : hideOutOfStock ? 'No in-stock items on this page' : 'No inventory items yet'}
             </p>
             <p className="text-gray-500 text-sm">
-              {searchTerm ? 'Try a different search term' : 'Import an Excel file to get started'}
+              {isSearchMode ? 'Search matches the start of the item name or code' : 'Import an Excel file to get started'}
             </p>
           </div>
         ) : (
@@ -418,7 +510,7 @@ const InventoryManagement = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredInventory.map((item, index) => (
+                {visibleItems.map((item, index) => (
                   <React.Fragment key={item.firebaseId || index}>
                     <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => setExpandedRow(expandedRow === item.firebaseId ? null : item.firebaseId)}>
                       <td className="px-6 py-4 text-sm">
@@ -470,7 +562,7 @@ const InventoryManagement = () => {
                         </span>
                       </td>
                     </tr>
-                    
+
                     {/* Expanded Row with Complete Details */}
                     {expandedRow === item.firebaseId && (
                       <tr className="bg-blue-50">
@@ -482,25 +574,25 @@ const InventoryManagement = () => {
                               <div className="grid grid-cols-2 gap-2 text-sm">
                                 <span className="text-gray-600">Item Code:</span>
                                 <span className="font-medium">{item.item_code || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Item Name:</span>
                                 <span className="font-medium">{item.item_name}</span>
-                                
+
                                 <span className="text-gray-600">Category:</span>
                                 <span className="font-medium">{item.category || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Manufacturer:</span>
                                 <span className="font-medium">{item.manufacturer || '-'}</span>
-                                
+
                                 <span className="text-gray-600">HSN Code:</span>
                                 <span className="font-medium">{item.hsn_code || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Dosage Form:</span>
                                 <span className="font-medium">{item.dosage_form || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Strength:</span>
                                 <span className="font-medium">{item.strength || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Composition:</span>
                                 <span className="font-medium">{item.composition || '-'}</span>
                               </div>
@@ -512,22 +604,22 @@ const InventoryManagement = () => {
                               <div className="grid grid-cols-2 gap-2 text-sm">
                                 <span className="text-gray-600">Purchase Price:</span>
                                 <span className="font-medium text-green-700">₹{(item.purchase_price || item.purchase_rate || 0).toFixed(2)}</span>
-                                
+
                                 <span className="text-gray-600">MRP:</span>
                                 <span className="font-medium text-blue-700">₹{(item.MRP || item.mrp || 0).toFixed(2)}</span>
-                                
+
                                 <span className="text-gray-600">Discount:</span>
                                 <span className="font-medium">{item.discount_percentage || 0}%</span>
-                                
+
                                 <span className="text-gray-600">Total GST:</span>
                                 <span className="font-medium">{item.gst_percentage || 12}%</span>
-                                
+
                                 <span className="text-gray-600">CGST:</span>
                                 <span className="font-medium">{item.cgst_percentage || (item.gst_percentage/2) || 6}%</span>
-                                
+
                                 <span className="text-gray-600">SGST:</span>
                                 <span className="font-medium">{item.sgst_percentage || (item.gst_percentage/2) || 6}%</span>
-                                
+
                                 <span className="text-gray-600">Stock Quantity:</span>
                                 <span className={`font-bold ${
                                   (item.stock_quantity || 0) === 0 ? 'text-red-600' :
@@ -536,10 +628,10 @@ const InventoryManagement = () => {
                                 }`}>
                                   {item.stock_quantity || 0} {item.unit_of_measurement || 'Nos'}
                                 </span>
-                                
+
                                 <span className="text-gray-600">Reorder Level:</span>
                                 <span className="font-medium">{item.reorder_level || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Stock Value:</span>
                                 <span className="font-medium text-purple-700">₹{(item.stock_value || ((item.stock_quantity || 0) * (item.purchase_price || item.purchase_rate || 0))).toFixed(2)}</span>
                               </div>
@@ -551,25 +643,25 @@ const InventoryManagement = () => {
                               <div className="grid grid-cols-2 gap-2 text-sm">
                                 <span className="text-gray-600">Batch Number:</span>
                                 <span className="font-medium">{item.batch_number || (item.batches && item.batches[0]?.batch_number) || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Mfg Date:</span>
                                 <span className="font-medium">{item.manufacturing_date || (item.batches && item.batches[0]?.manufacturing_date) || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Expiry Date:</span>
                                 <span className="font-medium">{item.expiry_date || (item.batches && item.batches[0]?.expiry_date) || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Storage Location:</span>
                                 <span className="font-medium">{item.storage_location || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Rack Number:</span>
                                 <span className="font-medium">{item.rack_number || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Supplier:</span>
                                 <span className="font-medium">{item.supplier_name || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Supplier Contact:</span>
                                 <span className="font-medium">{item.supplier_contact || '-'}</span>
-                                
+
                                 <span className="text-gray-600">Rx Required:</span>
                                 <span className={`font-medium ${item.prescription_required ? 'text-red-600' : 'text-green-600'}`}>
                                   {item.prescription_required ? 'Yes' : 'No'}
@@ -640,6 +732,27 @@ const InventoryManagement = () => {
                 ))}
               </tbody>
             </table>
+            {!isSearchMode && hasMore && (
+              <div className="p-4 border-t border-gray-100 flex justify-center">
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-5 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {loadingMore ? (
+                    <>
+                      <span className="inline-block w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-4 h-4" />
+                      Load {Math.min(PAGE_SIZE, (totalCount ?? Infinity) - items.length)} more
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -650,7 +763,7 @@ const InventoryManagement = () => {
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">Firebase Cloud Storage Active</p>
-            <p>Your inventory is stored in Firebase and syncs across all devices. Upload Excel files with columns: item_code, item_name, stock_quantity, purchase_rate, mrp, stock_value, purchase_date (or month)</p>
+            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_code, item_name, stock_quantity, purchase_rate, mrp, stock_value, purchase_date (or month)</p>
           </div>
         </div>
       </div>
@@ -661,7 +774,8 @@ const InventoryManagement = () => {
           onClose={() => setShowAddMedicine(false)}
           onSuccess={() => {
             setShowAddMedicine(false);
-            loadInventory(); // Refresh inventory list
+            loadCount();
+            loadFirstPage();
           }}
         />
       )}
@@ -671,9 +785,13 @@ const InventoryManagement = () => {
         <AddMedicine
           item={editingItem}
           onClose={() => setEditingItem(null)}
-          onSuccess={() => {
+          onSuccess={(savedData) => {
+            const updatedId = editingItem.firebaseId;
             setEditingItem(null);
-            loadInventory(); // Refresh inventory list
+            // Patch in place rather than a full reload — keeps scroll/pagination
+            // position, and re-fetching the whole page just to reflect one
+            // edited item would defeat the point of paginating in the first place.
+            setItems(prev => prev.map(i => i.firebaseId === updatedId ? { ...i, ...savedData } : i));
           }}
         />
       )}
