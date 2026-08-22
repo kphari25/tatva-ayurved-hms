@@ -200,7 +200,7 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
       const matches = existingMedicines
         .filter(med => 
           (med.item_name && med.item_name.toLowerCase().includes(searchTerm)) ||
-          (med.item_code && med.item_code.toLowerCase().includes(searchTerm))
+          (med.item_code && String(med.item_code).toLowerCase().includes(searchTerm))
         )
         .slice(0, 10); // Show max 10 suggestions
       

@@ -151,7 +151,7 @@ const MedicineRow = ({ value, onChange, onRemove, inventory }) => {
   const suggestions = query.length >= 2
     ? inventory.filter(m =>
         (m.item_name || '').toLowerCase().includes(query.toLowerCase()) ||
-        (m.item_code || '').toLowerCase().includes(query.toLowerCase())
+        String(m.item_code || '').toLowerCase().includes(query.toLowerCase())
       ).slice(0, 8)
     : [];
 
@@ -745,7 +745,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     q.length < 2 ? [] :
     inventory.filter(m =>
       (m.item_name || '').toLowerCase().includes(q.toLowerCase()) ||
-      (m.item_code || '').toLowerCase().includes(q.toLowerCase())
+      String(m.item_code || '').toLowerCase().includes(q.toLowerCase())
     ).slice(0, 6);
 
   const handlePrint = () => {

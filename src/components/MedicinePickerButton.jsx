@@ -48,7 +48,7 @@ const MedicinePickerButton = ({ onSelect, label = 'Add from Inventory' }) => {
 
   const filtered = medicines.filter(m => {
     const term = search.toLowerCase();
-    return (m.item_name || '').toLowerCase().includes(term) || (m.item_code || '').toLowerCase().includes(term);
+    return (m.item_name || '').toLowerCase().includes(term) || String(m.item_code || '').toLowerCase().includes(term);
   }).slice(0, 20);
 
   const handlePick = (m) => {

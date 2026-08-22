@@ -87,7 +87,7 @@ const PatientEditModal = ({ patient, onClose, onUpdate }) => {
     const searchTerm = medicineSearch.toLowerCase();
     const filtered = allMedicines
       .filter(med => 
-        (med.item_code || '').toLowerCase().includes(searchTerm) ||
+        String(med.item_code || '').toLowerCase().includes(searchTerm) ||
         (med.item_name || '').toLowerCase().includes(searchTerm)
       )
       .slice(0, 10); // Limit to 10 suggestions

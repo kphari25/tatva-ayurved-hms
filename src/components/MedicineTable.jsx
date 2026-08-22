@@ -99,7 +99,7 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
     q.length < 2 ? [] :
     inventory.filter(m =>
       (m.item_name || '').toLowerCase().includes(q.toLowerCase()) ||
-      (m.item_code || '').toLowerCase().includes(q.toLowerCase())
+      String(m.item_code || '').toLowerCase().includes(q.toLowerCase())
     ).slice(0, 8);
 
   const handleNameChange = (rowId, value) => {

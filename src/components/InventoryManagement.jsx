@@ -205,7 +205,11 @@ const InventoryManagement = () => {
               }
 
               const item = {
-                item_code: row.item_code || row['Item Code'] || row.code || '',
+                // String(...) guards against Excel cells typed as numbers (e.g. a
+                // purely numeric item code) coming through as a JS number — that
+                // broke every .toLowerCase() search/autocomplete over item_code
+                // elsewhere in the app.
+                item_code: String(row.item_code || row['Item Code'] || row.code || ''),
                 item_name: row.item_name || row['Item Name'] || row.name || 'Unknown',
                 stock_quantity: parseInt(row.stock_quantity || row['Stock Quantity'] || row.quantity || 0),
                 purchase_rate: parseFloat(row.purchase_rate || row['Purchase Rate'] || row.rate || 0),
