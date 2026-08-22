@@ -623,8 +623,13 @@ const DischargeModal = ({ patient, patients, onClose, onSave }) => {
         alert('✅ Discharge record created successfully!');
       }
 
-      // Drop the patient out of "currently admitted" once the discharge bill is fully settled.
-      if (dischargeData.status === 'completed' && dischargeData.patient_id) {
+      // Drop the patient out of "currently admitted" as soon as they're checked
+      // out — this used to be gated on the bill being fully paid, so a patient
+      // with any pending balance (the common case) silently stayed in the
+      // active Patient Portal list even after their discharge invoice printed.
+      // Payment status stays tracked separately via this discharge record's
+      // own status/pending_amount (Pending vs Completed Discharges tabs).
+      if (dischargeData.patient_id) {
         await updateDoc(doc(db, 'patients', dischargeData.patient_id), { admission_status: 'discharged' });
       }
 
