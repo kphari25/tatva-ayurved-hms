@@ -518,7 +518,9 @@ const InventoryManagement = () => {
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Purchase Price</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">MRP</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">GST</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">GST</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">SGST</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">CGST</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch/Expiry</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date of Purchase</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days in Inventory</th>
@@ -548,13 +550,14 @@ const InventoryManagement = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-right text-gray-700">₹{(item.purchase_price || item.purchase_rate || 0).toFixed(2)}</td>
                       <td className="px-6 py-4 text-sm text-right text-gray-700">₹{(item.MRP || item.mrp || 0).toFixed(2)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {item.gst_percentage || 12}%
-                        {item.cgst_percentage && item.sgst_percentage && (
-                          <span className="text-xs block text-gray-500">
-                            C:{item.cgst_percentage}% S:{item.sgst_percentage}%
-                          </span>
-                        )}
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">
+                        {item.gst_percentage != null ? item.gst_percentage : 12}%
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">
+                        {item.sgst_percentage != null ? `${item.sgst_percentage}%` : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">
+                        {item.cgst_percentage != null ? `${item.cgst_percentage}%` : '-'}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
                         {item.batch_number || (item.batches && item.batches[0]?.batch_number) || '-'}
@@ -582,7 +585,7 @@ const InventoryManagement = () => {
                     {/* Expanded Row with Complete Details */}
                     {expandedRow === item.firebaseId && (
                       <tr className="bg-blue-50">
-                        <td colSpan="12" className="px-6 py-6">
+                        <td colSpan="14" className="px-6 py-6">
                           <div className="grid grid-cols-3 gap-6">
                             {/* Column 1: Basic Information */}
                             <div className="space-y-3">
@@ -786,7 +789,7 @@ const InventoryManagement = () => {
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">Firebase Cloud Storage Active</p>
-            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, scst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month)</p>
+            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month)</p>
           </div>
         </div>
       </div>
