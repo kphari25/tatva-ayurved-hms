@@ -204,17 +204,29 @@ const InventoryManagement = () => {
                 }
               }
 
+              const sgst = parseFloat(row.scst || row.sgst || row['SGST'] || row.sgst_percentage || 0);
+              const cgst = parseFloat(row.cgst || row['CGST'] || row.cgst_percentage || 0);
+
               const item = {
                 // String(...) guards against Excel cells typed as numbers (e.g. a
                 // purely numeric item code) coming through as a JS number — that
                 // broke every .toLowerCase() search/autocomplete over item_code
                 // elsewhere in the app.
-                item_code: String(row.item_code || row['Item Code'] || row.code || ''),
+                item_code: String(row.batch_code || row['Batch Code'] || row.item_code || row['Item Code'] || row.code || ''),
                 item_name: row.item_name || row['Item Name'] || row.name || 'Unknown',
+                manufacturer: row['Company Name'] || row.company_name || row.manufacturer || '',
                 stock_quantity: parseInt(row.stock_quantity || row['Stock Quantity'] || row.quantity || 0),
                 purchase_rate: parseFloat(row.purchase_rate || row['Purchase Rate'] || row.rate || 0),
+                discount_percentage: parseFloat(row.Discount || row.discount || row['Discount %'] || row.discount_percentage || 0),
+                sgst_percentage: sgst,
+                cgst_percentage: cgst,
+                gst_percentage: sgst + cgst,
+                // Per-unit MRP — the sheet's own "MRP" column, not "MRPValue" (that's
+                // MRP × stock_quantity, a line total, kept separately below so it
+                // doesn't get used as a per-unit price in billing).
                 mrp: parseFloat(row.mrp || row.MRP || 0),
                 stock_value: parseFloat(row.stock_value || row['Stock Value'] || 0),
+                mrp_value: parseFloat(row.MRPValue || row.mrp_value || row['MRP Value'] || 0),
                 purchase_date: purchaseDate,
                 month: purchaseDate, // Store in both fields for compatibility
                 last_purchase_date: purchaseDate || new Date().toISOString().split('T')[0],
@@ -638,6 +650,13 @@ const InventoryManagement = () => {
 
                                 <span className="text-gray-600">Stock Value:</span>
                                 <span className="font-medium text-purple-700">₹{(item.stock_value || ((item.stock_quantity || 0) * (item.purchase_price || item.purchase_rate || 0))).toFixed(2)}</span>
+
+                                {item.mrp_value != null && (
+                                  <>
+                                    <span className="text-gray-600">MRP Value (stock):</span>
+                                    <span className="font-medium text-purple-700">₹{(item.mrp_value || ((item.stock_quantity || 0) * (item.MRP || item.mrp || 0))).toFixed(2)}</span>
+                                  </>
+                                )}
                               </div>
                             </div>
 
@@ -767,7 +786,7 @@ const InventoryManagement = () => {
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">Firebase Cloud Storage Active</p>
-            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_code, item_name, stock_quantity, purchase_rate, mrp, stock_value, purchase_date (or month)</p>
+            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, scst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month)</p>
           </div>
         </div>
       </div>
