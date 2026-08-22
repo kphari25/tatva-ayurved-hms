@@ -137,7 +137,7 @@ const GoodsReceiptModal = ({ po, onClose, onSave }) => {
       // 4. Update Inventory
       for (const item of receivedItems) {
         if (item.received_qty > 0) {
-          await updateInventory(item);
+          await updateInventory(item, { invoiceNumber: vendorInvoice.number, vendorName: po.vendor.name, grnNumber });
         }
       }
 
@@ -201,7 +201,7 @@ ${allReceived ? '✅ All items received!' : '⚠️ Partially received - remaini
     }
   };
 
-  const updateInventory = async (item) => {
+  const updateInventory = async (item, purchaseRef) => {
     try {
       // Find inventory item by medicine name
       const inventoryRef = collection(db, 'inventory');
@@ -234,7 +234,13 @@ ${allReceived ? '✅ All items received!' : '⚠️ Partially received - remaini
         purchase_date: new Date().toISOString().split('T')[0],
         expiry_date: item.expiry_date,
         purchase_price: item.purchase_price,
-        mrp: item.mrp
+        mrp: item.mrp,
+        // Lets the inventory item's purchase history show which invoice/GRN
+        // this batch came from, without a separate lookup into
+        // goods_receipt_notes.
+        vendor_invoice_number: purchaseRef?.invoiceNumber || '',
+        vendor_name: purchaseRef?.vendorName || '',
+        grn_number: purchaseRef?.grnNumber || '',
       });
 
       // Calculate weighted average purchase price

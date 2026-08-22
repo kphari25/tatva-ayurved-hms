@@ -166,7 +166,7 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
 
   const grandTotal = items.reduce((sum, it) => sum + computeItemTotal(it), 0);
 
-  const updateOrCreateInventory = async (it) => {
+  const updateOrCreateInventory = async (it, purchaseRef) => {
     const today = new Date().toISOString().split('T')[0];
     const batchEntry = {
       batch_number: it.batch_number,
@@ -175,6 +175,12 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
       expiry_date: it.expiry_date,
       purchase_price: it.purchase_price,
       mrp: it.mrp,
+      // Lets the inventory item's purchase history show which invoice/GRN
+      // this batch came from, without a separate lookup into
+      // goods_receipt_notes.
+      vendor_invoice_number: purchaseRef?.invoiceNumber || '',
+      vendor_name: purchaseRef?.vendorName || '',
+      grn_number: purchaseRef?.grnNumber || '',
     };
 
     if (it.inventory_id) {
@@ -328,7 +334,7 @@ const ImportInvoiceModal = ({ onClose, onSave }) => {
       });
 
       for (const it of activeItems) {
-        await updateOrCreateInventory(it);
+        await updateOrCreateInventory(it, { invoiceNumber, vendorName: resolvedVendorName, grnNumber });
       }
 
       alert(`✅ Invoice imported successfully!\n\nGRN Number: ${grnNumber}\nVendor: ${resolvedVendorName}\nItems: ${activeItems.length}\nTotal: ₹${totalAmount.toLocaleString()}`);

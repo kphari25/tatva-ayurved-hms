@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } from 'lucide-react';
-import { collection, addDoc, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const HOSPITAL = {
@@ -12,7 +12,7 @@ const HOSPITAL = {
   gstin: 'YOUR_GSTIN_HERE',
 };
 
-const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, stock: null, id: Date.now() + Math.random() });
+const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
 const MedicineSaleModal = ({ onClose, onSave }) => {
   const [saving, setSaving] = useState(false);
@@ -156,6 +156,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
         quantity: 1,
         rate: matched ? (parseFloat(matched.mrp) || 0) : (parseFloat(m.mrp) || 0),
         stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
+        inventory_id: matched?.id || '',
         id: Date.now() + Math.random(),
       };
     });
@@ -171,7 +172,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
     ).slice(0, 8);
 
   const handleRowNameChange = (id, value) => {
-    setRows(prev => prev.map(r => r.id === id ? { ...r, name: value, item_code: '', rate: 0, stock: null } : r));
+    setRows(prev => prev.map(r => r.id === id ? { ...r, name: value, item_code: '', rate: 0, stock: null, inventory_id: '' } : r));
     setSuggestions(prev => ({ ...prev, [id]: getMedSuggestions(value) }));
     setOpenDropdown(id);
   };
@@ -186,6 +187,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
               item_code: med.item_code || '',
               rate: parseFloat(med.mrp) || 0,
               stock: parseFloat(med.stock_quantity) ?? null,
+              inventory_id: med.id || '',
             }
           : r
       );
@@ -342,6 +344,10 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
       const billNumber = `MED-${new Date().getFullYear()}-${String(snap.size + 1).padStart(4, '0')}`;
       const saleData = {
         bill_number: billNumber,
+        // Durable link back to the patient (and therefore their
+        // prescription/case sheet) — lets sales be traced by patient id
+        // rather than just the customer_name text on the bill.
+        patient_id: selectedPatientId || null,
         customer_name: formData.customer_name || 'Walk-in Customer',
         mrd_number: formData.mrd_number || '',
         phone: formData.phone || '',
@@ -358,6 +364,24 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
         created_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email || '',
       };
       await addDoc(collection(db, 'medicine_sales'), saleData);
+
+      // Deduct sold quantity from stock — this previously never happened,
+      // so stock_quantity only ever went up (via purchases) and never down.
+      // increment() is an atomic server-side op, so concurrent sales/receipts
+      // can't race each other into a wrong count.
+      for (const item of items) {
+        if (item.inventory_id && parseFloat(item.quantity) > 0) {
+          try {
+            await updateDoc(doc(db, 'inventory', item.inventory_id), {
+              stock_quantity: increment(-parseFloat(item.quantity)),
+              last_updated: new Date().toISOString(),
+            });
+          } catch (stockErr) {
+            console.error(`Failed to deduct stock for ${item.name}:`, stockErr);
+          }
+        }
+      }
+
       if (onSave) onSave(saleData);
       handlePrint(saleData);
       onClose();

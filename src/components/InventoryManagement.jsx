@@ -40,6 +40,14 @@ const InventoryManagement = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [expandedRow, setExpandedRow] = useState(null); // For showing detailed view
 
+  // Sales history — loaded once (lazily, on first row expand) and cached,
+  // then filtered per-item client-side. medicine_sales has no per-item
+  // index to query against directly, and the collection is small enough
+  // that one fetch reused across every expanded row is far cheaper than
+  // loading it on every page visit.
+  const [salesHistory, setSalesHistory] = useState(null); // null = not loaded yet
+  const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
+
   const searchDebounce = useRef(null);
   const isSearchMode = searchTerm.trim().length > 0;
 
@@ -356,6 +364,51 @@ const InventoryManagement = () => {
     }
   };
 
+  const ensureSalesHistoryLoaded = async () => {
+    if (salesHistory !== null || salesHistoryLoading) return;
+    try {
+      setSalesHistoryLoading(true);
+      const snap = await getDocs(collection(db, 'medicine_sales'));
+      setSalesHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error('Error loading sales history:', error);
+      setSalesHistory([]); // don't retry forever on failure
+    } finally {
+      setSalesHistoryLoading(false);
+    }
+  };
+
+  const toggleExpandRow = (item) => {
+    const next = expandedRow === item.firebaseId ? null : item.firebaseId;
+    setExpandedRow(next);
+    if (next) ensureSalesHistoryLoaded();
+  };
+
+  // Matches by inventory_id (sales made after this feature shipped) or by
+  // item_code/item_name (older sales, which only ever recorded the name).
+  const getSalesForItem = (item) => {
+    if (!salesHistory) return [];
+    const rows = [];
+    salesHistory.forEach(sale => {
+      (sale.items || []).forEach(line => {
+        const matches = line.inventory_id
+          ? line.inventory_id === item.firebaseId
+          : (item.item_code && line.item_code && String(line.item_code).toLowerCase() === String(item.item_code).toLowerCase())
+            || (line.name && item.item_name && line.name.toLowerCase() === item.item_name.toLowerCase());
+        if (matches) {
+          rows.push({
+            sale_date: sale.sale_date,
+            bill_number: sale.bill_number,
+            customer_name: sale.customer_name,
+            quantity: line.quantity,
+            rate: line.rate,
+          });
+        }
+      });
+    });
+    return rows.sort((a, b) => (b.sale_date || '').localeCompare(a.sale_date || ''));
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -530,7 +583,7 @@ const InventoryManagement = () => {
               <tbody className="divide-y divide-gray-200">
                 {visibleItems.map((item, index) => (
                   <React.Fragment key={item.firebaseId || index}>
-                    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => setExpandedRow(expandedRow === item.firebaseId ? null : item.firebaseId)}>
+                    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpandRow(item)}>
                       <td className="px-6 py-4 text-sm">
                         <button className="text-blue-600 hover:text-blue-800">
                           {expandedRow === item.firebaseId ? '▼' : '▶'}
@@ -733,6 +786,87 @@ const InventoryManagement = () => {
                               </div>
                             </div>
                           )}
+
+                          {/* Purchase History — one row per received batch, newest first */}
+                          <div className="mt-6 pt-4 border-t border-blue-200">
+                            <h4 className="font-bold text-gray-800 mb-3">📥 Purchase History</h4>
+                            {(item.batches && item.batches.length > 0) ? (
+                              <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Batch #</th>
+                                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
+                                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoice #</th>
+                                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {[...item.batches].sort((a, b) => (b.purchase_date || '').localeCompare(a.purchase_date || '')).map((b, i) => (
+                                      <tr key={i}>
+                                        <td className="px-3 py-2">{b.purchase_date ? new Date(b.purchase_date).toLocaleDateString() : '-'}</td>
+                                        <td className="px-3 py-2">{b.batch_number || '-'}</td>
+                                        <td className="px-3 py-2 text-right">{b.quantity ?? '-'}</td>
+                                        <td className="px-3 py-2 text-right">₹{(b.purchase_price || 0).toFixed(2)}</td>
+                                        <td className="px-3 py-2">{b.vendor_invoice_number || <span className="text-gray-400">-</span>}</td>
+                                        <td className="px-3 py-2">{b.vendor_name || <span className="text-gray-400">-</span>}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-400 bg-gray-50 rounded-lg px-4 py-3">
+                                No batch-level purchase history recorded — this item's stock predates batch tracking, or was added directly rather than via Goods Receipt / Import Invoice.
+                              </p>
+                            )}
+                            {item.batches?.length > 0 && item.batches.every(b => !b.vendor_invoice_number) && (
+                              <p className="text-xs text-gray-400 mt-2">Invoice # / Vendor are blank for batches received before this tracking was added — new purchases will show them.</p>
+                            )}
+                          </div>
+
+                          {/* Sales History — every recorded sale that included this medicine */}
+                          <div className="mt-6 pt-4 border-t border-blue-200">
+                            <h4 className="font-bold text-gray-800 mb-3">💊 Sales History</h4>
+                            {salesHistoryLoading ? (
+                              <div className="text-sm text-gray-400 flex items-center gap-2 px-4 py-3">
+                                <span className="inline-block w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                                Loading sales history…
+                              </div>
+                            ) : (() => {
+                              const sales = getSalesForItem(item);
+                              return sales.length > 0 ? (
+                                <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Bill #</th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Patient / Customer</th>
+                                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {sales.map((s, i) => (
+                                        <tr key={i}>
+                                          <td className="px-3 py-2">{s.sale_date ? new Date(s.sale_date).toLocaleDateString() : '-'}</td>
+                                          <td className="px-3 py-2 font-medium text-teal-700">{s.bill_number || '-'}</td>
+                                          <td className="px-3 py-2">{s.customer_name || '-'}</td>
+                                          <td className="px-3 py-2 text-right">{s.quantity ?? '-'}</td>
+                                          <td className="px-3 py-2 text-right">₹{parseFloat(s.rate || 0).toFixed(2)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-400 bg-gray-50 rounded-lg px-4 py-3">No sales recorded for this medicine yet.</p>
+                              );
+                            })()}
+                          </div>
 
                           {/* Actions */}
                           <div className="mt-4 pt-4 border-t border-blue-200 flex gap-3">
