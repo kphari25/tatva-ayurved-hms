@@ -51,6 +51,10 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [prescriptionSynced, setPrescriptionSynced] = useState(null); // null | number of items found
 
+  // Doctor signature block — only populated when a registered patient (with
+  // an assigned doctor) is selected; stays blank for a true walk-in sale.
+  const [doctorInfo, setDoctorInfo] = useState({ name: '', qualification: '', registrationNumber: '' });
+
   useEffect(() => {
     loadInventory();
     loadPatients();
@@ -118,6 +122,27 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
       syncFromPrescription(patientId);
     } else {
       setPrescriptionSynced(null);
+    }
+
+    loadDoctorInfo(p.assigned_doctor);
+  };
+
+  const loadDoctorInfo = async (assignedDoctorName) => {
+    if (!assignedDoctorName) { setDoctorInfo({ name: '', qualification: '', registrationNumber: '' }); return; }
+    try {
+      const snap = await getDocs(query(collection(db, 'hr_employees'), where('name', '==', assignedDoctorName)));
+      if (!snap.empty) {
+        const d = snap.docs[0].data();
+        setDoctorInfo({
+          name: assignedDoctorName.replace(/^Dr\.?\s*/i, ''),
+          qualification: d.qualification || '',
+          registrationNumber: d.isDoctor ? (d.registrationNumber || '') : '',
+        });
+      } else {
+        setDoctorInfo({ name: assignedDoctorName.replace(/^Dr\.?\s*/i, ''), qualification: '', registrationNumber: '' });
+      }
+    } catch (e) {
+      console.error('Error loading doctor info:', e);
     }
   };
 
@@ -237,7 +262,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
   <title>Medicine Sale - ${saleData.bill_number}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; padding-bottom: 100px; color: #1a1a1a; }
+    body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; padding-bottom: 190px; color: #1a1a1a; }
     @page { size: A4; margin: 15mm 12mm; }
     .header { text-align: center; border-bottom: 3px solid #0d9488; padding-bottom: 14px; margin-bottom: 18px; }
     .header h1 { color: #0d9488; font-size: 26px; margin: 8px 0 4px; }
@@ -254,14 +279,18 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
     .totals table { margin: 0; }
     .totals td { border: none; border-bottom: 1px solid #eee; padding: 5px 8px; }
     .totals .grand { background: #0d9488; color: #fff; font-size: 15px; font-weight: bold; }
-    .footer { clear: both; text-align: center; margin-top: 40px; font-size: 11px; color: #888; border-top: 1px solid #ddd; padding-top: 12px; }
-    /* Hospital address stays pinned to the bottom of the printed page, same
-       treatment as the prescription printout, instead of trailing wherever
-       the content happens to end. */
+    /* Doctor signature + thank-you note + hospital address stay pinned to
+       the bottom of the printed page as one unit, same treatment as the
+       prescription printout, instead of trailing wherever the content ends. */
     .print-footer { margin-top: 50px; }
     @media print {
       .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
     }
+    .sig-block { text-align: right; margin-bottom: 18px; }
+    .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
+    .sig-block .doctor-name { font-weight: bold; font-size: 12px; }
+    .sig-block .reg { font-size: 10px; color: #555; }
+    .thank-you { text-align: center; font-size: 11px; color: #888; margin-bottom: 10px; }
     .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
     .footer-bar { height: 6px; background: #0d9488; margin-top: 10px; }
     @media print { button { display: none; } }
@@ -315,16 +344,21 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
   <div style="clear:both"></div>
   ${saleData.notes ? `<div style="margin-top:16px"><b>Notes:</b> ${saleData.notes}</div>` : ''}
 
-  <div class="footer">
-    <p>Thank you for choosing ${HOSPITAL.name}!</p>
-    <p>This is a computer-generated bill — no signature required.</p>
-  </div>
-
   <div style="text-align:center;margin-top:20px">
     <button onclick="window.print()" style="padding:10px 30px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer">🖨️ Print Bill</button>
   </div>
 
   <div class="print-footer">
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
+      ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
+      ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
+      <p class="reg">Signature</p>
+    </div>
+    <div class="thank-you">
+      <p>Thank you for choosing ${HOSPITAL.name}!</p>
+    </div>
     <div class="page-footer">
       ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
       Reg No: ${HOSPITAL.regNo}
