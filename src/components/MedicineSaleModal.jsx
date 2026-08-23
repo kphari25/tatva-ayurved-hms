@@ -6,10 +6,10 @@ import { db } from '../lib/firebase';
 const HOSPITAL = {
   name: 'Tatva Ayurved',
   tagline: 'Ayurveda for Health & Happiness',
-  address: 'Your Hospital Address, City, State - PIN',
-  phone: '+91 XXXXXXXXXX',
-  email: 'info@tatvaayurved.com',
-  gstin: 'YOUR_GSTIN_HERE',
+  address: 'Thekkuveedu Lane, Kannur Road, Kozhikode',
+  phone: '9895112264, 0495 2766717',
+  website: 'www.tatvaayurved.com',
+  regNo: 'BFHP03-C110100-00061-2025',
 };
 
 const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
@@ -237,11 +237,11 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
   <title>Medicine Sale - ${saleData.bill_number}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; color: #1a1a1a; }
+    body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; padding-bottom: 100px; color: #1a1a1a; }
+    @page { size: A4; margin: 15mm 12mm; }
     .header { text-align: center; border-bottom: 3px solid #0d9488; padding-bottom: 14px; margin-bottom: 18px; }
     .header h1 { color: #0d9488; font-size: 26px; margin: 8px 0 4px; }
     .header .tagline { color: #666; font-size: 12px; }
-    .header .contact { color: #444; font-size: 11px; margin-top: 6px; }
     .badge { display: inline-block; background: #0d9488; color: #fff; padding: 4px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 14px; }
     .info { display: flex; justify-content: space-between; margin-bottom: 18px; }
     .info-block { font-size: 13px; line-height: 1.8; }
@@ -255,6 +255,15 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
     .totals td { border: none; border-bottom: 1px solid #eee; padding: 5px 8px; }
     .totals .grand { background: #0d9488; color: #fff; font-size: 15px; font-weight: bold; }
     .footer { clear: both; text-align: center; margin-top: 40px; font-size: 11px; color: #888; border-top: 1px solid #ddd; padding-top: 12px; }
+    /* Hospital address stays pinned to the bottom of the printed page, same
+       treatment as the prescription printout, instead of trailing wherever
+       the content happens to end. */
+    .print-footer { margin-top: 50px; }
+    @media print {
+      .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
+    }
+    .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
+    .footer-bar { height: 6px; background: #0d9488; margin-top: 10px; }
     @media print { button { display: none; } }
   </style>
 </head>
@@ -263,8 +272,6 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
     <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'" style="height:70px;margin-bottom:6px">
     <h1>${HOSPITAL.name}</h1>
     <div class="tagline">${HOSPITAL.tagline}</div>
-    <div class="contact">${HOSPITAL.address} | ${HOSPITAL.phone} | ${HOSPITAL.email}</div>
-    ${HOSPITAL.gstin !== 'YOUR_GSTIN_HERE' ? `<div class="contact">GSTIN: ${HOSPITAL.gstin}</div>` : ''}
   </div>
 
   <div style="text-align:center;margin-bottom:14px">
@@ -315,6 +322,14 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
 
   <div style="text-align:center;margin-top:20px">
     <button onclick="window.print()" style="padding:10px 30px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer">🖨️ Print Bill</button>
+  </div>
+
+  <div class="print-footer">
+    <div class="page-footer">
+      ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
+      Reg No: ${HOSPITAL.regNo}
+    </div>
+    <div class="footer-bar"></div>
   </div>
 </body>
 </html>`;

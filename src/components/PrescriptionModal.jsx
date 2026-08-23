@@ -142,9 +142,10 @@ const PrescriptionModal = ({ patient, onClose }) => {
       .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
     }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 12px; }
-    .logo-block { background: #1a5f4e; color: #fff; padding: 10px 16px; border-radius: 4px; min-width: 160px; }
-    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
-    .logo-block .tagline { font-size: 9px; color: #a8d8c8; }
+    .logo-block { min-width: 160px; }
+    .logo-block img { height: 56px; margin-bottom: 4px; }
+    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
+    .logo-block .tagline { font-size: 9px; color: #666; }
     .patient-block { font-size: 12px; border-collapse: collapse; margin-left: auto; }
     .patient-block td { padding: 0 0 3px; white-space: nowrap; }
     .patient-block .info-label { font-weight: bold; text-align: left; padding-right: 6px; }
@@ -166,6 +167,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
 <body>
   <div class="header">
     <div class="logo-block">
+      <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
       <div class="brand">TATVA AYURVED</div>
       <div class="tagline">Ayurveda for Health &amp; Happiness</div>
     </div>

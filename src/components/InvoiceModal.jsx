@@ -9,6 +9,15 @@ import { addDaysToDateString } from '../lib/formatDate';
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
 
+const HOSPITAL = {
+  name: 'Tatva Ayurved',
+  tagline: 'Ayurveda for Health & Happiness',
+  address: 'Thekkuveedu Lane, Kannur Road, Kozhikode',
+  phone: '9895112264, 0495 2766717',
+  website: 'www.tatvaayurved.com',
+  regNo: 'BFHP03-C110100-00061-2025',
+};
+
 const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
   const isRegistrationInvoice = registrationFee > 0;
   const [invoiceType, setInvoiceType] = useState(patient?.patient_type === 'IP' ? 'IP' : 'OP');
@@ -370,14 +379,13 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         <title>Invoice - ${data.patient_name || data.mrd_number || data.patient_number}</title>
         <style>
           * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; }
-          @page { size: A4; margin: 10mm; }
+          body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; padding-bottom: 100px; }
+          @page { size: A4; margin: 15mm 12mm; }
           .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
           .header img { height: 42px; }
           .header-text { text-align: left; }
           .header h1 { color: #14b8a6; margin: 0; font-size: 18px; }
           .header .tagline { color: #666; font-size: 10px; margin: 1px 0; }
-          .header .contact-line { font-size: 10px; color: #555; margin: 1px 0; }
           .info { display: flex; justify-content: space-between; margin-bottom: 12px; }
           .info-box { flex: 1; }
           .info-box h3 { margin: 0 0 6px 0; color: #14b8a6; font-size: 13px; }
@@ -390,6 +398,15 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           .totals table { margin: 0; }
           .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 15px; }
           .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
+          /* Hospital address stays pinned to the bottom of the printed page,
+             same treatment as the prescription printout, instead of trailing
+             wherever the content happens to end. */
+          .print-footer { margin-top: 50px; }
+          @media print {
+            .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
+          }
+          .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
+          .footer-bar { height: 6px; background: #14b8a6; margin-top: 10px; }
           @media print {
             button { display: none; }
           }
@@ -399,9 +416,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         <div class="header">
           <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
           <div class="header-text">
-            <h1>Tatva Ayurved</h1>
-            <p class="tagline">Ayurveda for Health &amp; Happiness</p>
-            <p class="contact-line">Thekkuveedu Lane, Kannur Road, Kozhikode &nbsp;|&nbsp; 9895112264, 0495 2766717 &nbsp;|&nbsp; www.tatvaayurved.com</p>
+            <h1>${HOSPITAL.name}</h1>
+            <p class="tagline">${HOSPITAL.tagline}</p>
           </div>
         </div>
 
@@ -580,6 +596,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           <button onclick="window.print()" style="padding: 10px 30px; background: #14b8a6; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
             Print Invoice
           </button>
+        </div>
+
+        <div class="print-footer">
+          <div class="page-footer">
+            ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
+            Reg No: ${HOSPITAL.regNo}
+          </div>
+          <div class="footer-bar"></div>
         </div>
       </body>
       </html>
