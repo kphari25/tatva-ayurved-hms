@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, Plus, Trash2, FileText } from 'lucide-react';
+import { X, Printer, Save, Plus, Trash2, FileText, Receipt } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { addDoc, updateDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import MedicineSaleModal from './MedicineSaleModal';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -551,6 +552,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   // Per-medicine autocomplete in daily treatments
   const [medSuggestions, setMedSuggestions] = useState({});
   const [openMedDrop, setOpenMedDrop] = useState(null);
+  const [showMedicineInvoice, setShowMedicineInvoice] = useState(false);
 
   const loadInventory = () => {
     getDocs(collection(db, 'inventory')).then(snap => {
@@ -1276,6 +1278,15 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
                 inventory={inventory}
               />
 
+              {form.discharge_internal_medicines.filter(Boolean).length > 0 && (
+                <button
+                  onClick={() => setShowMedicineInvoice(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-sm font-medium hover:bg-teal-100"
+                >
+                  <Receipt className="w-4 h-4" /> Generate Medicine Invoice from Discharge Advice
+                </button>
+              )}
+
               <ListEditor label="Advise on Discharge — External Treatments" items={form.discharge_external_treatments}
                 onChange={v => set('discharge_external_treatments', v)}
                 placeholder="e.g. Continue Abhyangam at home with sesame oil" />
@@ -1493,6 +1504,21 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
           </div>
         </div>
       </div>
+
+      {showMedicineInvoice && (
+        <MedicineSaleModal
+          onClose={() => setShowMedicineInvoice(false)}
+          onSave={() => setShowMedicineInvoice(false)}
+          initialCustomer={{
+            customer_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
+            mrd_number: form.mrd_no || patient?.mrd_number || patient?.patient_number || '',
+            phone: patient?.phone || '',
+            patientId: patient?.firebaseId || patient?.id || null,
+            assignedDoctor: form.doctor_in_charge && form.doctor_in_charge !== '__manual__' ? form.doctor_in_charge : '',
+          }}
+          initialMedicineNames={form.discharge_internal_medicines.filter(Boolean)}
+        />
+      )}
     </div>
   );
 };

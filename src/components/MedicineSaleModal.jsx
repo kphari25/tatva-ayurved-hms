@@ -20,24 +20,30 @@ const rateFromPurchasePrice = (item) => {
   return Math.round((purchasePrice + (purchasePrice * 0.025) + (purchasePrice * 0.025)) * 100) / 100;
 };
 
-const MedicineSaleModal = ({ onClose, onSave }) => {
+// initialCustomer: optional { customer_name, mrd_number, phone, patientId, assignedDoctor } —
+// pre-fills the bill for a patient handed off from elsewhere (e.g. discharge advice).
+// initialMedicineNames: optional string[] of raw advice-line text to pre-populate as rows,
+// matched against inventory by name once it loads (each line may carry trailing dose/
+// instructions text, so matching is a prefix check rather than an exact one).
+const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNames }) => {
   const [saving, setSaving] = useState(false);
   const [inventory, setInventory] = useState([]);
   const [patients, setPatients] = useState([]);
   const [formData, setFormData] = useState({
     sale_date: new Date().toISOString().split('T')[0],
-    customer_name: '',
-    mrd_number: '',
-    phone: '',
+    customer_name: initialCustomer?.customer_name || '',
+    mrd_number: initialCustomer?.mrd_number || '',
+    phone: initialCustomer?.phone || '',
     gst_percentage: 0,
     discount: 0,
     payment_mode: 'Cash',
     notes: '',
   });
   const [rows, setRows] = useState([emptyRow()]);
+  const initialMedicinesAppliedRef = useRef(false);
 
   // Patient search
-  const [patientQuery, setPatientQuery] = useState('');
+  const [patientQuery, setPatientQuery] = useState(initialCustomer?.customer_name || '');
   const [patientSuggestions, setPatientSuggestions] = useState([]);
   const [showPatientDrop, setShowPatientDrop] = useState(false);
   const patientRef = useRef(null);
@@ -48,7 +54,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
   const medRef = useRef(null);
 
   // Prescription sync
-  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [selectedPatientId, setSelectedPatientId] = useState(initialCustomer?.patientId || null);
   const [prescriptionSynced, setPrescriptionSynced] = useState(null); // null | number of items found
 
   // Doctor signature block — only populated when a registered patient (with
@@ -58,6 +64,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
   useEffect(() => {
     loadInventory();
     loadPatients();
+    if (initialCustomer?.assignedDoctor) loadDoctorInfo(initialCustomer.assignedDoctor);
 
     const handler = (e) => {
       if (patientRef.current && !patientRef.current.contains(e.target)) setShowPatientDrop(false);
@@ -65,7 +72,32 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Pre-populate rows from advice-line text handed off from elsewhere (e.g.
+  // discharge advice) once inventory has loaded — only runs once, so it
+  // never clobbers rows the user has already started editing.
+  useEffect(() => {
+    if (initialMedicinesAppliedRef.current) return;
+    if (!initialMedicineNames?.length || inventory.length === 0) return;
+    initialMedicinesAppliedRef.current = true;
+    const newRows = initialMedicineNames.map(rawName => {
+      const lower = rawName.toLowerCase();
+      const candidates = inventory.filter(inv => inv.item_name && lower.startsWith(inv.item_name.toLowerCase()));
+      const matched = candidates.sort((a, b) => (b.item_name.length - a.item_name.length))[0];
+      return {
+        name: matched ? matched.item_name : rawName,
+        item_code: matched?.item_code || '',
+        quantity: 1,
+        rate: matched ? rateFromPurchasePrice(matched) : 0,
+        stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
+        inventory_id: matched?.id || '',
+        id: Date.now() + Math.random(),
+      };
+    });
+    setRows([...newRows, emptyRow()]);
+  }, [inventory, initialMedicineNames]);
 
   const loadInventory = async () => {
     try {
