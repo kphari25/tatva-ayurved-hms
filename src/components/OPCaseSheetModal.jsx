@@ -167,7 +167,7 @@ const fmtTime12h = (t) => {
 };
 
 // ── Print HTML generator ────────────────────────────────────────────────
-const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all') => {
+const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all', doctorInfo = {}) => {
   const patientName = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim().toUpperCase();
   const age = patient?.age || '';
   const gender = patient?.gender?.[0]?.toUpperCase() || '';
@@ -318,14 +318,15 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all')
   <title>OP Case Sheet – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; padding-bottom: 140px; }
     @page { size: A4; margin: 15mm 12mm; }
     @media print { body { -webkit-print-color-adjust: exact; } }
 
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 10px; }
-    .logo-block { background: #1a5f4e; color: #fff; padding: 10px 16px; border-radius: 4px; min-width: 160px; }
-    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
-    .logo-block .tagline { font-size: 9px; color: #a8d8c8; }
+    .logo-block { min-width: 160px; }
+    .logo-block img { height: 48px; margin-bottom: 4px; }
+    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
+    .logo-block .tagline { font-size: 9px; color: #666; }
     .contact-block { text-align: right; font-size: 10px; line-height: 1.6; }
     .contact-block .reg { font-size: 9px; color: #555; }
 
@@ -347,15 +348,24 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all')
     table.med-table th, table.med-table td { border: 1px solid #ccc; padding: 2px 4px; text-align: left; }
     table.med-table th { background: #f5f5f5; font-weight: 600; }
 
-    .footer { margin-top: 20px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
+    /* Signature block stays pinned to the bottom of the printed page, same
+       treatment as the prescription and invoice printouts, instead of
+       trailing wherever the content happens to end. */
+    .footer { margin-top: 50px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
+    @media print {
+      .footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; background: #fff; }
+    }
     .sig-block { text-align: right; }
-    .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; }
+    .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
+    .sig-block .doctor-name { font-weight: bold; font-size: 11px; }
+    .sig-block .reg { font-size: 9px; color: #555; }
   </style>
 </head>
 <body>
 
 <div class="header">
   <div class="logo-block">
+    <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
     <div class="brand">TATVA AYURVED</div>
     <div class="tagline">Ayurveda for Health &amp; Happiness</div>
   </div>
@@ -398,7 +408,10 @@ ${bodyHTML}
   <div></div>
   <div class="sig-block">
     <div class="sig-line"></div>
-    <p style="font-size:10px;margin-top:4px;">Signature of Physician</p>
+    ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
+    ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
+    ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
+    <p style="font-size:10px;margin-top:2px;">Signature of Physician</p>
   </div>
 </div>
 
@@ -612,7 +625,13 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
   };
 
   const handlePrint = (sectionId = 'all') => {
-    const html = buildOPCaseSheetPrintHTML(patient, form, visitNotes, sectionId);
+    const matchedDoctor = doctors.find(d => d.name === form.physician);
+    const doctorInfo = matchedDoctor ? {
+      name: form.physician.replace(/^Dr\.?\s*/i, ''),
+      qualification: matchedDoctor.qualification || '',
+      registrationNumber: matchedDoctor.isDoctor ? (matchedDoctor.registrationNumber || '') : '',
+    } : {};
+    const html = buildOPCaseSheetPrintHTML(patient, form, visitNotes, sectionId, doctorInfo);
     const win = window.open('', '_blank');
     if (!win) { alert('Please allow pop-ups for this site to print.'); return; }
     win.document.write(html);
