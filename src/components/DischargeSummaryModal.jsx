@@ -243,7 +243,7 @@ const MedicineListEditor = ({ label, items, onChange, inventory }) => {
 // letterhead=true skips the logo/contact header (already pre-printed on the
 // hospital's letterhead stock) and pushes page-1 content down to clear that
 // artwork — only page 1 gets the extra top margin; page 2+ print normally.
-const buildPrintHTML = (patient, form, letterhead = false) => {
+const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}) => {
   const patientName = `${patient?.title || ''} ${patient?.first_name || ''} ${patient?.last_name || ''}`.trim().toUpperCase();
   const address = [patient?.address, patient?.city, patient?.state, patient?.pincode].filter(Boolean).join(', ').toUpperCase();
   const age = patient?.age || '';
@@ -262,15 +262,16 @@ const buildPrintHTML = (patient, form, letterhead = false) => {
   <title>Discharge Summary – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; padding-bottom: 140px; }
     @page { size: A4; margin: 15mm 12mm; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     @media print { body { -webkit-print-color-adjust: exact; } }
 
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 10px; }
-    .logo-block { background: #1a5f4e; color: #fff; padding: 10px 16px; border-radius: 4px; min-width: 160px; }
-    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
-    .logo-block .tagline { font-size: 9px; color: #a8d8c8; }
+    .logo-block { min-width: 160px; }
+    .logo-block img { height: 48px; margin-bottom: 4px; }
+    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
+    .logo-block .tagline { font-size: 9px; color: #666; }
     .contact-block { text-align: right; font-size: 10px; line-height: 1.6; }
     .contact-block .reg { font-size: 9px; color: #555; }
 
@@ -291,9 +292,17 @@ const buildPrintHTML = (patient, form, letterhead = false) => {
 
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-    .footer { margin-top: 20px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
+    /* Signature block stays pinned to the bottom of the printed page, same
+       treatment as the prescription and invoice printouts, instead of
+       trailing wherever the content happens to end. */
+    .footer { margin-top: 50px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
+    @media print {
+      .footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; background: #fff; }
+    }
     .sig-block { text-align: right; }
-    .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; }
+    .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
+    .sig-block .doctor-name { font-weight: bold; font-size: 11px; }
+    .sig-block .reg { font-size: 9px; color: #555; }
     .prepared-by { font-size: 10px; line-height: 1.6; }
   </style>
 </head>
@@ -303,6 +312,7 @@ const buildPrintHTML = (patient, form, letterhead = false) => {
 ${letterhead ? '' : `
 <div class="header">
   <div class="logo-block">
+    <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
     <div class="brand">TATVA AYURVED</div>
     <div class="tagline">Ayurveda for Health &amp; Happiness</div>
   </div>
@@ -508,7 +518,10 @@ ${form.remarks ? `<div class="section-title">Remarks</div><p>${form.remarks}</p>
   </div>
   <div class="sig-block">
     <div class="sig-line"></div>
-    <p style="font-size:10px;margin-top:4px;">Signature of Medical Superintendent</p>
+    ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
+    ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
+    ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
+    <p style="font-size:10px;margin-top:2px;">Signature of Medical Superintendent</p>
   </div>
 </div>
 
@@ -772,7 +785,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     ).slice(0, 6);
 
   const handlePrint = () => {
-    const html = buildPrintHTML(patient, form, useLetterhead);
+    const selectedDoctor = doctors.find(d => (`${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name) === form.doctor_in_charge);
+    const doctorInfo = selectedDoctor ? {
+      name: form.doctor_in_charge.replace(/^Dr\.?\s*/i, ''),
+      qualification: selectedDoctor.qualification || '',
+      registrationNumber: selectedDoctor.isDoctor ? (selectedDoctor.registrationNumber || '') : '',
+    } : {};
+    const html = buildPrintHTML(patient, form, useLetterhead, doctorInfo);
     const win = window.open('', '_blank');
     win.document.write(html);
     win.document.close();
