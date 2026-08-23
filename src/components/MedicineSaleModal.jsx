@@ -14,6 +14,12 @@ const HOSPITAL = {
 
 const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
+// Sale rate is purchase price plus a flat 2.5% CGST + 2.5% SGST — not MRP.
+const rateFromPurchasePrice = (item) => {
+  const purchasePrice = parseFloat(item?.purchase_price ?? item?.purchase_rate) || 0;
+  return Math.round((purchasePrice + (purchasePrice * 0.025) + (purchasePrice * 0.025)) * 100) / 100;
+};
+
 const MedicineSaleModal = ({ onClose, onSave }) => {
   const [saving, setSaving] = useState(false);
   const [inventory, setInventory] = useState([]);
@@ -154,7 +160,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
         name: m.item_name,
         item_code: m.item_code || '',
         quantity: 1,
-        rate: matched ? (parseFloat(matched.mrp) || 0) : (parseFloat(m.mrp) || 0),
+        rate: matched ? rateFromPurchasePrice(matched) : 0,
         stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
         inventory_id: matched?.id || '',
         id: Date.now() + Math.random(),
@@ -185,7 +191,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
               ...r,
               name: med.item_name || med.item_code,
               item_code: med.item_code || '',
-              rate: parseFloat(med.mrp) || 0,
+              rate: rateFromPurchasePrice(med),
               stock: parseFloat(med.stock_quantity) ?? null,
               inventory_id: med.id || '',
             }
@@ -623,7 +629,7 @@ const MedicineSaleModal = ({ onClose, onSave }) => {
                                   <div>
                                     <div className="font-medium text-sm text-gray-900">{med.item_code}</div>
                                     <div className="text-xs text-gray-500">{med.item_name}</div>
-                                    <div className="text-xs text-teal-600 mt-0.5">MRP: ₹{med.mrp}</div>
+                                    <div className="text-xs text-teal-600 mt-0.5">Rate: ₹{rateFromPurchasePrice(med).toFixed(2)} <span className="text-gray-400">(incl. GST)</span></div>
                                   </div>
                                   <div className={`text-xs font-semibold px-2 py-1 rounded-full ${
                                     stock === 0 ? 'bg-red-100 text-red-700' :
