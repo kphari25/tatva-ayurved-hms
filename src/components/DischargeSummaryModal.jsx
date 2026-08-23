@@ -182,16 +182,28 @@ const MedicineRow = ({ value, onChange, onRemove, inventory }) => {
         />
         {open && suggestions.length > 0 && (
           <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto text-sm">
-            {suggestions.map(med => (
-              <li
-                key={med.id}
-                onMouseDown={() => select(med)}
-                className="px-3 py-2 hover:bg-teal-50 cursor-pointer flex items-center justify-between gap-2"
-              >
-                <span className="font-medium text-gray-800">{med.item_name}</span>
-                {med.item_code && <span className="text-xs text-gray-400 shrink-0">{med.item_code}</span>}
-              </li>
-            ))}
+            {suggestions.map(med => {
+              const stock = parseFloat(med.stock_quantity) || 0;
+              return (
+                <li
+                  key={med.id}
+                  onMouseDown={() => select(med)}
+                  className="px-3 py-2 hover:bg-teal-50 cursor-pointer flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <span className="font-medium text-gray-800">{med.item_name}</span>
+                    {med.item_code && <span className="text-xs text-gray-400 ml-2">{med.item_code}</span>}
+                  </div>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                    stock === 0 ? 'bg-red-100 text-red-700' :
+                    stock <= 10 ? 'bg-orange-100 text-orange-700' :
+                    'bg-green-100 text-green-700'
+                  }`}>
+                    {stock === 0 ? 'Out of stock' : `Stock: ${stock}`}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -527,12 +539,23 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   const [medSuggestions, setMedSuggestions] = useState({});
   const [openMedDrop, setOpenMedDrop] = useState(null);
 
-  useEffect(() => {
+  const loadInventory = () => {
     getDocs(collection(db, 'inventory')).then(snap => {
       // Spread first, id last: some inventory docs carry their own legacy
       // numeric `id` field, which would otherwise clobber the real doc id.
       setInventory(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     }).catch(() => {});
+  };
+
+  // Re-check live stock right when the user actually starts picking medicines,
+  // rather than only once when the whole modal first opened — this form can
+  // stay open a while, and stock/new items can change under it in the meantime.
+  useEffect(() => {
+    if (activeSection === 'discharge' || activeSection === 'treatment') loadInventory();
+  }, [activeSection]);
+
+  useEffect(() => {
+    loadInventory();
 
     // Load doctors from HR employees
     const DOCTOR_KW = ['doctor', 'physician', 'consultant', 'vaidya', 'surgeon', 'rmo', 'medical'];
