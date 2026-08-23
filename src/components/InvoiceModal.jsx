@@ -35,6 +35,32 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
   // since these are clinical dosing entries rather than priced treatment picks.
   const [medicinesTotal, setMedicinesTotal] = useState(0);
 
+  // Doctor signature block on the printed invoice — looked up from the
+  // patient's assigned doctor, same pattern as the prescription printout.
+  const [doctorInfo, setDoctorInfo] = useState({ name: '', qualification: '', registrationNumber: '' });
+
+  useEffect(() => {
+    if (!patient?.assigned_doctor) return;
+    const loadDoctorInfo = async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'hr_employees'), where('name', '==', patient.assigned_doctor)));
+        if (!snap.empty) {
+          const d = snap.docs[0].data();
+          setDoctorInfo({
+            name: patient.assigned_doctor.replace(/^Dr\.?\s*/i, ''),
+            qualification: d.qualification || '',
+            registrationNumber: d.isDoctor ? (d.registrationNumber || '') : '',
+          });
+        } else {
+          setDoctorInfo({ name: patient.assigned_doctor.replace(/^Dr\.?\s*/i, ''), qualification: '', registrationNumber: '' });
+        }
+      } catch (e) {
+        console.error('Error loading doctor info:', e);
+      }
+    };
+    loadDoctorInfo();
+  }, [patient?.assigned_doctor]);
+
   useEffect(() => {
     const patientId = patient?.firebaseId || patient?.id;
     if (!patientId) return;
@@ -379,7 +405,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         <title>Invoice - ${data.patient_name || data.mrd_number || data.patient_number}</title>
         <style>
           * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; padding-bottom: 100px; }
+          body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; padding-bottom: 190px; }
           @page { size: A4; margin: 15mm 12mm; }
           .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
           .header img { height: 42px; }
@@ -397,14 +423,19 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           .totals { float: right; width: 280px; margin-top: 12px; }
           .totals table { margin: 0; }
           .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 15px; }
-          .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
-          /* Hospital address stays pinned to the bottom of the printed page,
-             same treatment as the prescription printout, instead of trailing
-             wherever the content happens to end. */
+          /* Doctor signature + thank-you note + hospital address stay pinned
+             to the bottom of the printed page as one unit, same treatment as
+             the prescription printout, instead of trailing wherever the
+             content happens to end. */
           .print-footer { margin-top: 50px; }
           @media print {
             .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
           }
+          .sig-block { text-align: right; margin-bottom: 18px; }
+          .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
+          .sig-block .doctor-name { font-weight: bold; font-size: 12px; }
+          .sig-block .reg { font-size: 10px; color: #555; }
+          .thank-you { text-align: center; font-size: 11px; color: #888; margin-bottom: 10px; }
           .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
           .footer-bar { height: 6px; background: #14b8a6; margin-top: 10px; }
           @media print {
@@ -587,11 +618,6 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
           </div>
         ` : ''}
 
-        <div class="footer">
-          <p>Thank you for choosing Tatva Ayurved Hospital</p>
-          <p>This is a computer-generated invoice</p>
-        </div>
-
         <div style="text-align: center; margin-top: 20px;">
           <button onclick="window.print()" style="padding: 10px 30px; background: #14b8a6; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
             Print Invoice
@@ -599,6 +625,16 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         </div>
 
         <div class="print-footer">
+          <div class="sig-block">
+            <div class="sig-line"></div>
+            ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
+            ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
+            ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
+            <p class="reg">Signature</p>
+          </div>
+          <div class="thank-you">
+            <p>Thank you for choosing ${HOSPITAL.name} Hospital</p>
+          </div>
           <div class="page-footer">
             ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
             Reg No: ${HOSPITAL.regNo}
