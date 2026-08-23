@@ -79,6 +79,8 @@ const emptyEmployee = () => ({
   employmentType: 'Full-time',
   reportingManager: '',
   qualification: '',
+  isDoctor: false,
+  registrationNumber: '',
   experience: '',
   pan: '',
   aadhaar: '',
@@ -186,6 +188,21 @@ const EmployeeModal = ({ employee, onClose, onSave }) => {
                 <Field label="PIN Code" value={form.pincode} onChange={v => set('pincode', v)} />
               </div>
               <Field label="Qualification" value={form.qualification} onChange={v => set('qualification', v)} placeholder="BAMS, B.Sc Nursing…" />
+
+              <div className="p-4 bg-teal-50 rounded-xl border border-teal-200">
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" id="isDoctor" checked={!!form.isDoctor}
+                    onChange={e => set('isDoctor', e.target.checked)} className="w-4 h-4 accent-teal-600" />
+                  <label htmlFor="isDoctor" className="text-sm font-medium text-gray-700">This employee is a Doctor</label>
+                </div>
+                {form.isDoctor && (
+                  <div className="mt-3">
+                    <Field label="Registration Number *" value={form.registrationNumber} onChange={v => set('registrationNumber', v)}
+                      placeholder="Medical council registration no." />
+                    <p className="text-xs text-gray-500 mt-1">Printed on prescriptions alongside the doctor's name and qualification.</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

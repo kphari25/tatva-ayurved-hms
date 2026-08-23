@@ -35,6 +35,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
   const [ipEntries, setIpEntries] = useState([]); // daily_progress with medicine_items
   const [complaints, setComplaints] = useState('');
   const [doctorQualification, setDoctorQualification] = useState('');
+  const [doctorRegistrationNumber, setDoctorRegistrationNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [showPrintOptions, setShowPrintOptions] = useState(false);
 
@@ -66,7 +67,11 @@ const PrescriptionModal = ({ patient, onClose }) => {
 
       if (patient?.assigned_doctor) {
         const doctorSnap = await getDocs(query(collection(db, 'hr_employees'), where('name', '==', patient.assigned_doctor)));
-        if (!doctorSnap.empty) setDoctorQualification(doctorSnap.docs[0].data().qualification || '');
+        if (!doctorSnap.empty) {
+          const doctorData = doctorSnap.docs[0].data();
+          setDoctorQualification(doctorData.qualification || '');
+          setDoctorRegistrationNumber(doctorData.isDoctor ? (doctorData.registrationNumber || '') : '');
+        }
       }
     } catch (e) {
       console.error('Error loading prescription:', e);
@@ -125,13 +130,13 @@ const PrescriptionModal = ({ patient, onClose }) => {
   <title>Prescription – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 12px; color: #000; background: #fff; padding-bottom: 65px; }
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #000; background: #fff; padding-bottom: 160px; }
     @page { size: A4; margin: 15mm 12mm; }
     @media print { body { -webkit-print-color-adjust: exact; } }
-    /* Hospital address stays pinned to the bottom of the page — with only a
-       couple of medicine rows the rest of this content is short, and without
-       this it used to land wherever the flow happened to end, leaving a big
-       gap below it instead of above it. */
+    /* Doctor's signature + hospital address stay pinned to the bottom of the
+       page as one unit — with only a couple of medicine rows the rest of
+       this content is short, and without this it used to land wherever the
+       flow happened to end, leaving a big gap below it instead of above it. */
     .print-footer { margin-top: 50px; }
     @media print {
       .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
@@ -150,8 +155,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
     table.grid th { background: #f0f0f0; font-weight: bold; }
     .section-title { font-weight: bold; font-size: 12px; margin-top: 14px; margin-bottom: 3px; }
     .section-body { font-size: 12px; white-space: pre-line; }
-    .footer { margin-top: 40px; display: flex; justify-content: flex-end; }
-    .sig-block { text-align: right; }
+    .sig-block { text-align: right; margin-bottom: 20px; }
     .sig-block .doctor-name { font-weight: bold; }
     .sig-block .reg { font-size: 10px; color: #555; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; }
@@ -196,16 +200,14 @@ const PrescriptionModal = ({ patient, onClose }) => {
     <p class="section-body">${complaints}</p>
   ` : ''}
 
-  <div class="footer">
+  <div class="print-footer">
     <div class="sig-block">
       <div class="sig-line"></div>
       ${attendingDoctor ? `<p class="doctor-name" style="margin-top:4px;">Dr. ${attendingDoctor}</p>` : ''}
       ${doctorQualification ? `<p class="reg">${doctorQualification}</p>` : ''}
+      ${doctorRegistrationNumber ? `<p class="reg">Reg No: ${doctorRegistrationNumber}</p>` : ''}
       <p style="font-size:10px;">Signature of Physician</p>
     </div>
-  </div>
-
-  <div class="print-footer">
     <div class="page-footer">
       ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
       Reg No: ${HOSPITAL.regNo}
