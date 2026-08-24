@@ -168,7 +168,11 @@ const ProfitLoss = () => {
       const inventoryLines = [];
       inventory.docs.forEach(doc => {
         const item = doc.data();
-        const purchasePrice = parseFloat(item.purchase_price) || 0;
+        // purchase_price is the canonical field (set via Add/Edit Medicine);
+        // purchase_rate is what bulk Excel imports write instead — most of
+        // the current inventory only has the latter, so without this
+        // fallback this sum was reading ~0 for nearly every item.
+        const purchasePrice = parseFloat(item.purchase_price ?? item.purchase_rate) || 0;
         const quantity = parseFloat(item.stock_quantity) || 0;
         const value = purchasePrice * quantity;
         medicinePurchaseCost += value;
