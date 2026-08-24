@@ -633,6 +633,23 @@ const DischargeModal = ({ patient, patients, onClose, onSave }) => {
         await updateDoc(doc(db, 'patients', dischargeData.patient_id), { admission_status: 'discharged' });
       }
 
+      // Keep the IP Case Sheet's own admission/discharge dates in sync with
+      // this checkout record — it has its own manually-typed date fields with
+      // no other link to the actual discharge event, so a typo there (or just
+      // never updating it) used to silently drift out of sync with the real
+      // checkout date shown elsewhere (e.g. Discharge Summary's Patient Info
+      // tab, which reads from the case sheet).
+      if (selectedPatient?.patient_type === 'IP' && dischargeData.patient_id) {
+        try {
+          await updateDoc(doc(db, 'ip_case_sheets', dischargeData.patient_id), {
+            admission_date: dischargeData.admission_date,
+            discharge_date: dischargeData.discharge_date,
+          });
+        } catch (syncError) {
+          console.error('Error syncing dates to IP case sheet:', syncError);
+        }
+      }
+
       if (onSave) onSave();
 
     } catch (error) {
