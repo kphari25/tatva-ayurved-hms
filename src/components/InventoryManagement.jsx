@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, CheckCircle, EyeOff, ChevronDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
-  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch,
-  query, orderBy, limit, startAfter, startAt, endAt, getCountFromServer,
+  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, writeBatch,
+  query, where, orderBy, limit, startAfter, startAt, endAt, getCountFromServer,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
+import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 
 const PAGE_SIZE = 100;
 const SEARCH_LIMIT = 50;
@@ -47,6 +48,7 @@ const InventoryManagement = () => {
   // loading it on every page visit.
   const [salesHistory, setSalesHistory] = useState(null); // null = not loaded yet
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
+  const [viewingInvoice, setViewingInvoice] = useState(false);
 
   const searchDebounce = useRef(null);
   const isSearchMode = searchTerm.trim().length > 0;
@@ -214,17 +216,22 @@ const InventoryManagement = () => {
 
               const sgst = parseFloat(row.scst || row.sgst || row['SGST'] || row.sgst_percentage || 0);
               const cgst = parseFloat(row.cgst || row['CGST'] || row.cgst_percentage || 0);
+              const itemCode = String(row.batch_code || row['Batch Code'] || row.item_code || row['Item Code'] || row.code || '');
+              const stockQuantity = parseInt(row.stock_quantity || row['Stock Quantity'] || row.quantity || 0);
+              const purchaseRate = parseFloat(row.purchase_rate || row['Purchase Rate'] || row.rate || 0);
+              const invoiceNumber = String(row.invoice_number || row['Invoice Number'] || row.invoice_no || row['Invoice No'] || row['Invoice #'] || '').trim();
+              const vendorName = row.vendor_name || row['Vendor Name'] || row.vendor || row['Vendor'] || '';
 
               const item = {
                 // String(...) guards against Excel cells typed as numbers (e.g. a
                 // purely numeric item code) coming through as a JS number — that
                 // broke every .toLowerCase() search/autocomplete over item_code
                 // elsewhere in the app.
-                item_code: String(row.batch_code || row['Batch Code'] || row.item_code || row['Item Code'] || row.code || ''),
+                item_code: itemCode,
                 item_name: row.item_name || row['Item Name'] || row.name || 'Unknown',
                 manufacturer: row['Company Name'] || row.company_name || row.manufacturer || '',
-                stock_quantity: parseInt(row.stock_quantity || row['Stock Quantity'] || row.quantity || 0),
-                purchase_rate: parseFloat(row.purchase_rate || row['Purchase Rate'] || row.rate || 0),
+                stock_quantity: stockQuantity,
+                purchase_rate: purchaseRate,
                 discount_percentage: parseFloat(row.Discount || row.discount || row['Discount %'] || row.discount_percentage || 0),
                 sgst_percentage: sgst,
                 cgst_percentage: cgst,
@@ -239,7 +246,18 @@ const InventoryManagement = () => {
                 month: purchaseDate, // Store in both fields for compatibility
                 last_purchase_date: purchaseDate || new Date().toISOString().split('T')[0],
                 imported: true,
-                imported_at: new Date().toISOString()
+                imported_at: new Date().toISOString(),
+                // Recorded as a batch (same shape Goods Receipt / Import Invoice use)
+                // so Purchase History and its Invoice # column work for Excel-imported
+                // stock too, instead of only for GRN-received stock.
+                batches: [{
+                  batch_number: itemCode,
+                  quantity: stockQuantity,
+                  purchase_price: purchaseRate,
+                  purchase_date: purchaseDate,
+                  vendor_invoice_number: invoiceNumber,
+                  vendor_name: vendorName,
+                }],
               };
 
               batch.set(docRef, item);
@@ -397,6 +415,7 @@ const InventoryManagement = () => {
             || (line.name && item.item_name && line.name.toLowerCase() === item.item_name.toLowerCase());
         if (matches) {
           rows.push({
+            sale_id: sale.id,
             sale_date: sale.sale_date,
             bill_number: sale.bill_number,
             customer_name: sale.customer_name,
@@ -407,6 +426,45 @@ const InventoryManagement = () => {
       });
     });
     return rows.sort((a, b) => (b.sale_date || '').localeCompare(a.sale_date || ''));
+  };
+
+  // Reprints a saved Medicine Sale bill — same template used when the sale
+  // was first created — so clicking a bill number in Sales History shows the
+  // actual invoice rather than just the item line recorded against it.
+  const handleViewInvoice = async (saleId) => {
+    if (!saleId || viewingInvoice) return;
+    setViewingInvoice(true);
+    try {
+      const sale = (salesHistory || []).find(s => s.id === saleId);
+      if (!sale) { setMessage({ type: 'error', text: 'Could not find that invoice.' }); return; }
+
+      let doctorInfo = {};
+      if (sale.patient_id) {
+        const patientSnap = await getDoc(doc(db, 'patients', sale.patient_id));
+        const assignedDoctor = patientSnap.exists() ? patientSnap.data().assigned_doctor : '';
+        if (assignedDoctor) {
+          const drSnap = await getDocs(query(collection(db, 'hr_employees'), where('name', '==', assignedDoctor)));
+          if (!drSnap.empty) {
+            const d = drSnap.docs[0].data();
+            doctorInfo = {
+              name: assignedDoctor.replace(/^Dr\.?\s*/i, ''),
+              qualification: d.qualification || '',
+              registrationNumber: d.isDoctor ? (d.registrationNumber || '') : '',
+            };
+          }
+        }
+      }
+
+      const w = window.open('', '_blank');
+      if (!w) { setMessage({ type: 'error', text: 'Please allow pop-ups for this site to view the invoice.' }); return; }
+      w.document.write(buildMedicineSalePrintHTML(sale, doctorInfo));
+      w.document.close();
+    } catch (error) {
+      console.error('Error opening invoice:', error);
+      setMessage({ type: 'error', text: 'Failed to open invoice: ' + error.message });
+    } finally {
+      setViewingInvoice(false);
+    }
   };
 
   return (
@@ -853,7 +911,18 @@ const InventoryManagement = () => {
                                       {sales.map((s, i) => (
                                         <tr key={i}>
                                           <td className="px-3 py-2">{s.sale_date ? new Date(s.sale_date).toLocaleDateString() : '-'}</td>
-                                          <td className="px-3 py-2 font-medium text-teal-700">{s.bill_number || '-'}</td>
+                                          <td className="px-3 py-2 font-medium">
+                                            {s.bill_number && s.sale_id ? (
+                                              <button
+                                                onClick={() => handleViewInvoice(s.sale_id)}
+                                                disabled={viewingInvoice}
+                                                className="text-teal-700 underline hover:text-teal-900 disabled:opacity-50"
+                                                title="View invoice"
+                                              >
+                                                {s.bill_number}
+                                              </button>
+                                            ) : (s.bill_number || '-')}
+                                          </td>
                                           <td className="px-3 py-2">{s.customer_name || '-'}</td>
                                           <td className="px-3 py-2 text-right">{s.quantity ?? '-'}</td>
                                           <td className="px-3 py-2 text-right">₹{parseFloat(s.rate || 0).toFixed(2)}</td>
@@ -923,7 +992,7 @@ const InventoryManagement = () => {
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">Firebase Cloud Storage Active</p>
-            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month)</p>
+            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month), Invoice Number (→ shows up in Purchase History), Vendor Name (optional, separate from Company Name/manufacturer)</p>
           </div>
         </div>
       </div>
