@@ -172,7 +172,19 @@ const InventoryManagement = () => {
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { type: 'array' });
           const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+          const rawJsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+          // Spreadsheets often end with a "Total" / "Grand Total" summary row —
+          // column sums, not a real medicine. Importing it as inventory produced
+          // a phantom item whose stock/rate were sums of everything else,
+          // wrecking every value-based total (₹260K inventory value read as
+          // ₹762M+ once that row's stock × rate was added in).
+          const TOTAL_ROW_RE = /^(grand\s*)?(sub)?total:?$/i;
+          const jsonData = rawJsonData.filter(row => {
+            const name = String(row.item_name || row['Item Name'] || row.name || '').trim();
+            return name && !TOTAL_ROW_RE.test(name);
+          });
+          const skippedCount = rawJsonData.length - jsonData.length;
 
           if (jsonData.length === 0) {
             setMessage({ type: 'error', text: 'Excel file is empty!' });
@@ -180,7 +192,7 @@ const InventoryManagement = () => {
             return;
           }
 
-          setMessage({ type: 'info', text: `Found ${jsonData.length} items. Uploading to Firebase...` });
+          setMessage({ type: 'info', text: `Found ${jsonData.length} items${skippedCount ? ` (skipped ${skippedCount} total/summary row${skippedCount > 1 ? 's' : ''})` : ''}. Uploading to Firebase...` });
           setUploadProgress({ current: 0, total: jsonData.length });
 
           // Upload in batches of 500 (Firebase limit)
