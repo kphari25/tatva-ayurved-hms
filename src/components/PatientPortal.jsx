@@ -555,26 +555,38 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
           </div>
         </div>
 
-        {/* Status Tabs — discharged/checked-out patients live under Inactive */}
+        {/* Status Tabs — discharged/checked-out patients live under Inactive.
+            A search bypasses the status filter (see matchesStatus below) so
+            discharged patients stay findable by name/MRD/phone even while on
+            the Active tab; while searching, highlight "All Patients" instead
+            of the tab actually selected so what's lit up matches what's shown. */}
         <div className="flex border-b border-gray-200 mb-4">
           {[
             { key: 'active', label: 'Active', count: patients.filter(p => p.admission_status !== 'discharged').length },
             { key: 'discharged', label: 'Inactive / Discharged', count: patients.filter(p => p.admission_status === 'discharged').length },
             { key: 'all', label: 'All Patients', count: patients.length },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setFilterStatus(tab.key)}
-              className={`px-5 py-3 font-medium text-sm border-b-2 transition-colors ${
-                filterStatus === tab.key
-                  ? 'border-teal-600 text-teal-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              {tab.label} ({tab.count})
-            </button>
-          ))}
+          ].map(tab => {
+            const displayedTabKey = searchTerm.trim() ? 'all' : filterStatus;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setFilterStatus(tab.key)}
+                className={`px-5 py-3 font-medium text-sm border-b-2 transition-colors ${
+                  displayedTabKey === tab.key
+                    ? 'border-teal-600 text-teal-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            );
+          })}
         </div>
+        {searchTerm.trim() && filterStatus !== 'all' && (
+          <p className="text-xs text-gray-500 -mt-2 mb-4">
+            Searching across all patients, including Inactive/Discharged. Clear the search to return to the {filterStatus === 'active' ? 'Active' : 'Inactive / Discharged'} tab.
+          </p>
+        )}
 
         {/* Search and Filter */}
         <div className="flex items-center space-x-4">

@@ -340,7 +340,7 @@ const PrakritiAnalysis = () => {
     <div className="space-y-6">
       {/* Analysis Tools */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <button className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow text-left">
+        <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow text-left">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
               <Camera className="w-6 h-6 text-blue-600" />
@@ -351,9 +351,9 @@ const PrakritiAnalysis = () => {
           <button className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 w-full">
             Start Camera
           </button>
-        </button>
+        </div>
 
-        <button className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow text-left">
+        <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow text-left">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
               <Watch className="w-6 h-6 text-purple-600" />
@@ -364,9 +364,9 @@ const PrakritiAnalysis = () => {
           <button className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 w-full">
             Connect Device
           </button>
-        </button>
+        </div>
 
-        <button className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow text-left">
+        <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow text-left">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
               <MessageSquare className="w-6 h-6 text-green-600" />
@@ -377,7 +377,7 @@ const PrakritiAnalysis = () => {
           <button className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 w-full">
             Analyze
           </button>
-        </button>
+        </div>
       </div>
 
       {/* Prakriti Analysis */}
