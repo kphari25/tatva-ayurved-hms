@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Home, Users, Package, FileText, Receipt, TrendingUp,
   Calendar, IndianRupee, UserCog, Database, LogOut,
-  ShoppingCart, Utensils, BarChart3, Wallet, History, FileBarChart
+  ShoppingCart, Utensils, BarChart3, Wallet, History, FileBarChart,
+  Menu, X
 } from 'lucide-react';
 import { db } from './lib/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
@@ -47,6 +48,7 @@ function App() {
   const [initialPatientId, setInitialPatientId] = useState(null);
   const [initialInvoicePatientId, setInitialInvoicePatientId] = useState(null);
   const [registrationPrefillData, setRegistrationPrefillData] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
   useEffect(() => {
@@ -259,15 +261,27 @@ function App() {
 
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Mobile sidebar backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="w-64 bg-gradient-to-b from-teal-700 to-teal-800 text-white flex flex-col">
+      <div
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-gradient-to-b from-teal-700 to-teal-800 text-white flex flex-col transform transition-transform duration-200 ease-in-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:static md:translate-x-0`}
+      >
         {/* Logo */}
         <div className="p-6 border-b border-teal-600">
           <div className="flex items-center space-x-3">
             <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden">
-              <img 
-                src="/logo.png" 
-                alt="Tatva Ayurved" 
+              <img
+                src="/logo.png"
+                alt="Tatva Ayurved"
                 className="w-10 h-10 object-contain"
                 onError={(e) => {
                   e.target.style.display = 'none';
@@ -275,10 +289,16 @@ function App() {
                 }}
               />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <h1 className="text-xl font-bold">Tatva Ayurved</h1>
               <p className="text-xs text-teal-200">Hospital Management</p>
             </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden p-1 text-teal-200 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -319,7 +339,7 @@ function App() {
             return (
               <button
                 key={item.id}
-                onClick={() => setCurrentView(item.id)}
+                onClick={() => { setCurrentView(item.id); setSidebarOpen(false); }}
                 className={`w-full flex items-center space-x-3 px-4 py-3 transition-colors ${
                   isActive
                     ? 'bg-teal-600 border-l-4 border-white'
@@ -357,7 +377,18 @@ function App() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto min-w-0">
+        {/* Mobile top bar */}
+        <div className="md:hidden sticky top-0 z-20 flex items-center gap-3 bg-white border-b border-gray-200 px-4 py-3">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 -ml-2 text-gray-600 hover:text-teal-700"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+          <span className="font-semibold text-gray-800">Tatva Ayurved</span>
+        </div>
+
         {currentView === 'dashboard' && <Dashboard />}
         {currentView === 'patients' && !showRegistration && (
           <PatientPortal
