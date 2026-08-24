@@ -1,443 +1,302 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
-  Database, Download, Upload, Calendar, Clock, CheckCircle,
-  AlertTriangle, HardDrive, RefreshCw, Shield, Archive,
-  FileText, Settings, Zap, Activity, Save, RotateCcw, X
+  Database, Download, Upload, CheckCircle, AlertTriangle, Loader2, FileJson, ShieldAlert,
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { collection, getDocs, doc, writeBatch } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
-const DatabaseBackupRestore = ({ supabase, userRole }) => {
-  const [backups, setBackups] = useState([
-    {
-      id: '1',
-      filename: 'tatva-backup-2025-02-15-10-30.sql',
-      size: '45.2 MB',
-      timestamp: '2025-02-15T10:30:00',
-      type: 'auto',
-      status: 'completed',
-      tables: 156,
-      rows: 12450
-    },
-    {
-      id: '2',
-      filename: 'tatva-backup-2025-02-14-10-30.sql',
-      size: '44.8 MB',
-      timestamp: '2025-02-14T10:30:00',
-      type: 'auto',
-      status: 'completed',
-      tables: 156,
-      rows: 12280
-    },
-    {
-      id: '3',
-      filename: 'tatva-backup-manual-2025-02-13.sql',
-      size: '44.1 MB',
-      timestamp: '2025-02-13T15:45:00',
-      type: 'manual',
-      status: 'completed',
-      tables: 156,
-      rows: 12150
-    }
-  ]);
+// Every Firestore collection this app writes to, gathered by grepping the
+// codebase for collection()/doc() call sites — there's no Admin SDK here
+// (see api/_lib/firebaseAdmin.js) so there's no way to list collections at
+// runtime; this list has to be kept in sync by hand as new ones are added.
+const COLLECTIONS = [
+  'appointments', 'daily_progress', 'diet_plans', 'discharge_summaries', 'discharges',
+  'expenses', 'goods_receipt_notes', 'hr_employees', 'hr_leaves', 'hr_payroll',
+  'inventory', 'invoices', 'ip_case_sheets', 'leads', 'meal_assignments', 'meal_prices',
+  'medicine_sales', 'mess_expenses', 'op_case_sheets', 'op_visit_notes', 'packages',
+  'patients', 'purchase_entries', 'purchase_orders', 'purchase_requests', 'sms_logs',
+  'user_sessions', 'users', 'vendors',
+];
 
-  const [backupSettings, setBackupSettings] = useState({
-    autoBackup: true,
-    frequency: 'daily', // daily, weekly, monthly
-    retentionDays: 30,
-    includeFiles: true,
-    compression: true,
-    encryption: true
-  });
+const BACKUP_VERSION = 1;
+const BATCH_SIZE = 400; // Firestore's write-batch limit is 500; leave headroom.
 
-  const [isBackingUp, setIsBackingUp] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [selectedBackup, setSelectedBackup] = useState(null);
-  const [showConfirmRestore, setShowConfirmRestore] = useState(false);
+const fmt = (n) => (n ?? 0).toLocaleString('en-IN');
 
-  // Check admin access
-  if (userRole !== 'admin') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center p-8">
-        <div className="bg-white rounded-3xl shadow-2xl p-12 max-w-2xl text-center">
-          <Shield className="w-20 h-20 text-red-600 mx-auto mb-6" />
-          <h2 className="text-3xl font-bold text-red-800 mb-4">Access Restricted</h2>
-          <p className="text-red-600">Only administrators can access database backup and restore functions.</p>
-        </div>
-      </div>
-    );
-  }
+const DatabaseBackupRestore = () => {
+  const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(null);
+  const [lastExport, setLastExport] = useState(null);
+  const [exportError, setExportError] = useState('');
 
-  // Create manual backup
-  const createBackup = async () => {
-    setIsBackingUp(true);
-    
+  const [restorePreview, setRestorePreview] = useState(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(null);
+  const [restoreResult, setRestoreResult] = useState(null);
+  const [confirmChecked, setConfirmChecked] = useState(false);
+  const [fileError, setFileError] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError('');
+    setLastExport(null);
     try {
-      // In real implementation, call Supabase CLI or API
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const filename = `tatva-backup-manual-${timestamp}.sql`;
-      
-      // Simulate backup process
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const newBackup = {
-        id: Date.now().toString(),
-        filename,
-        size: '45.5 MB',
-        timestamp: new Date().toISOString(),
-        type: 'manual',
-        status: 'completed',
-        tables: 156,
-        rows: 12500
+      const backup = {
+        version: BACKUP_VERSION,
+        exportedAt: new Date().toISOString(),
+        exportedBy: JSON.parse(localStorage.getItem('currentUser') || '{}').email || '',
+        collections: {},
       };
-      
-      setBackups([newBackup, ...backups]);
-      alert('✅ Backup created successfully!');
-      
-    } catch (error) {
-      console.error('Backup error:', error);
-      alert('❌ Backup failed: ' + error.message);
-    } finally {
-      setIsBackingUp(false);
-    }
-  };
+      let totalDocs = 0;
 
-  // Download backup file
-  const downloadBackup = async (backup) => {
-    try {
-      // In real implementation:
-      // 1. Generate backup from Supabase
-      // 2. Download file
-      
-      alert(`Downloading backup: ${backup.filename}\n\nIn production, this would download the actual SQL backup file.`);
-      
-      // Example code for actual implementation:
-      /*
-      const { data, error } = await supabase
-        .from('_backups')
-        .download(backup.filename);
-      
-      if (error) throw error;
-      
-      const blob = new Blob([data], { type: 'application/sql' });
-      const url = window.URL.createObjectURL(blob);
+      for (let i = 0; i < COLLECTIONS.length; i++) {
+        const name = COLLECTIONS[i];
+        setExportProgress({ current: i + 1, total: COLLECTIONS.length, name });
+        const snap = await getDocs(collection(db, name));
+        backup.collections[name] = snap.docs.map(d => {
+          const data = d.data();
+          // Never let password hashes (or un-migrated legacy plaintext) leave
+          // the server in a downloadable file.
+          if (name === 'users' && 'password' in data) {
+            const rest = { ...data };
+            delete rest.password;
+            return { id: d.id, ...rest };
+          }
+          return { id: d.id, ...data };
+        });
+        totalDocs += snap.size;
+      }
+
+      const json = JSON.stringify(backup, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = backup.filename;
+      a.download = `tatva-backup-${backup.exportedAt.replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(a);
       a.click();
-      */
-      
-    } catch (error) {
-      console.error('Download error:', error);
-      alert('Download failed: ' + error.message);
-    }
-  };
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
-  // Restore from backup
-  const restoreBackup = async (backup) => {
-    setIsRestoring(true);
-    setShowConfirmRestore(false);
-    
-    try {
-      // CRITICAL: This will overwrite current database!
-      // In real implementation:
-      // 1. Create a backup of current state first
-      // 2. Stop all connections
-      // 3. Restore from backup file
-      // 4. Verify integrity
-      // 5. Restart connections
-      
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      alert(`✅ Database restored from backup: ${backup.filename}\n\nAll data has been restored to the state at ${new Date(backup.timestamp).toLocaleString()}`);
-      
-      // Refresh page to reload data
-      window.location.reload();
-      
-    } catch (error) {
-      console.error('Restore error:', error);
-      alert('❌ Restore failed: ' + error.message);
+      setLastExport({ collections: COLLECTIONS.length, documents: totalDocs, at: backup.exportedAt });
+    } catch (e) {
+      console.error('Backup export failed:', e);
+      setExportError(e.message || 'Export failed.');
     } finally {
-      setIsRestoring(false);
+      setExporting(false);
+      setExportProgress(null);
     }
   };
 
-  // Upload backup file
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
+  const resetRestoreState = () => {
+    setRestorePreview(null);
+    setRestoreResult(null);
+    setConfirmChecked(false);
+    setFileError('');
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files[0];
     if (!file) return;
-    
-    if (!file.name.endsWith('.sql')) {
-      alert('Please upload a .sql file');
-      return;
+    resetRestoreState();
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== 'object' || !parsed.collections || parsed.version !== BACKUP_VERSION) {
+        setFileError('This doesn’t look like a Tatva Ayurved backup file (unrecognized format or version).');
+        return;
+      }
+      const summary = Object.entries(parsed.collections)
+        .map(([name, docs]) => ({ name, count: Array.isArray(docs) ? docs.length : 0 }))
+        .filter(c => c.count > 0)
+        .sort((a, b) => b.count - a.count);
+      const totalDocs = summary.reduce((s, c) => s + c.count, 0);
+      setRestorePreview({ raw: parsed, summary, totalDocs, exportedAt: parsed.exportedAt, exportedBy: parsed.exportedBy });
+    } catch (err) {
+      setFileError('Could not read that file: ' + err.message);
     }
-    
-    alert(`Uploading backup file: ${file.name}\n\nThis will be added to your backups list and can be used for restoration.`);
-    
-    // In real implementation, upload to storage and add to backups list
   };
 
-  const stats = {
-    totalBackups: backups.length,
-    totalSize: backups.reduce((sum, b) => sum + parseFloat(b.size), 0).toFixed(1),
-    lastBackup: backups[0]?.timestamp,
-    oldestBackup: backups[backups.length - 1]?.timestamp
+  const handleRestore = async () => {
+    if (!restorePreview || !confirmChecked || restoring) return;
+    setRestoring(true);
+    setRestoreResult(null);
+    try {
+      let written = 0;
+      const totalDocs = restorePreview.totalDocs;
+
+      for (const { name } of restorePreview.summary) {
+        const docs = restorePreview.raw.collections[name] || [];
+        for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+          const chunk = docs.slice(i, i + BATCH_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach(docData => {
+            const { id, ...rest } = docData || {};
+            if (!id) return;
+            // Backups never contain passwords (stripped on export) — never
+            // let a restore create/blank one out from under an account.
+            if (name === 'users') delete rest.password;
+            // merge:true is an upsert, not a wipe-and-replace — restoring an
+            // old backup can't delete documents or fields created since it
+            // was taken, only add/overwrite what the backup itself contains.
+            batch.set(doc(db, name, id), rest, { merge: true });
+          });
+          await batch.commit();
+          written += chunk.length;
+          setRestoreProgress({ current: written, total: totalDocs, name });
+        }
+      }
+      setRestoreResult({ success: true, written });
+      setConfirmChecked(false);
+    } catch (e) {
+      console.error('Restore failed:', e);
+      setRestoreResult({ success: false, error: e.message });
+    } finally {
+      setRestoring(false);
+      setRestoreProgress(null);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-              Database Backup & Restore
-            </h1>
-            <p className="text-slate-600">Protect your data with automated backups and instant recovery</p>
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <Database className="w-6 h-6 text-teal-600" /> Database Backup
+        </h1>
+        <p className="text-gray-500 text-sm mt-1">Export a full snapshot of all data, or restore from a previously exported file.</p>
+      </div>
+
+      {/* ── Export ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <h2 className="font-semibold text-gray-800 flex items-center gap-2 mb-1">
+          <Download className="w-5 h-5 text-teal-600" /> Export Backup
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Downloads every collection ({COLLECTIONS.length} in total) as a single JSON file. User account passwords are never included.
+        </p>
+
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2"
+        >
+          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          {exporting ? 'Exporting…' : 'Download Backup Now'}
+        </button>
+
+        {exporting && exportProgress && (
+          <p className="text-xs text-gray-500 mt-2">
+            Reading {exportProgress.name}… ({exportProgress.current}/{exportProgress.total} collections)
+          </p>
+        )}
+
+        {exportError && (
+          <div className="mt-3 flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> {exportError}
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowSettings(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-semibold"
-            >
-              <Settings className="w-5 h-5" />
-              Settings
-            </button>
-            <label className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-blue-200 text-blue-600 rounded-xl hover:bg-blue-50 font-semibold cursor-pointer">
-              <Upload className="w-5 h-5" />
-              Upload Backup
+        )}
+
+        {lastExport && (
+          <div className="mt-3 flex items-start gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+            <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            Downloaded {fmt(lastExport.documents)} documents across {lastExport.collections} collections.
+          </div>
+        )}
+      </div>
+
+      {/* ── Restore ────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <h2 className="font-semibold text-gray-800 flex items-center gap-2 mb-1">
+          <Upload className="w-5 h-5 text-orange-600" /> Restore from Backup
+        </h2>
+        <div className="flex items-start gap-2 text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+          <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            Restoring writes real data into the live database. Existing records with a matching ID are overwritten
+            field-by-field; nothing is ever deleted. Review the summary below carefully before confirming.
+          </span>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json"
+          onChange={handleFileSelected}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={restoring}
+          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+        >
+          <FileJson className="w-4 h-4" /> Choose Backup File…
+        </button>
+
+        {fileError && (
+          <div className="mt-3 flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> {fileError}
+          </div>
+        )}
+
+        {restorePreview && !restoreResult && (
+          <div className="mt-4 border border-gray-200 rounded-lg p-4">
+            <p className="text-sm text-gray-700 mb-1">
+              Backup taken <strong>{restorePreview.exportedAt ? new Date(restorePreview.exportedAt).toLocaleString('en-IN') : 'unknown time'}</strong>
+              {restorePreview.exportedBy ? <> by <strong>{restorePreview.exportedBy}</strong></> : null}.
+            </p>
+            <p className="text-sm text-gray-700 mb-3">
+              Will restore <strong>{fmt(restorePreview.totalDocs)}</strong> documents across{' '}
+              <strong>{restorePreview.summary.length}</strong> non-empty collections:
+            </p>
+            <div className="max-h-40 overflow-y-auto grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 border-t border-gray-100 pt-2">
+              {restorePreview.summary.map(c => (
+                <div key={c.name} className="flex justify-between">
+                  <span>{c.name}</span>
+                  <span className="font-medium">{fmt(c.count)}</span>
+                </div>
+              ))}
+            </div>
+
+            <label className="flex items-start gap-2 mt-4 cursor-pointer select-none">
               <input
-                type="file"
-                accept=".sql"
-                onChange={handleFileUpload}
-                className="hidden"
+                type="checkbox"
+                checked={confirmChecked}
+                onChange={e => setConfirmChecked(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-orange-600"
               />
+              <span className="text-sm text-gray-700">
+                I understand this will overwrite existing records in the live database and want to proceed.
+              </span>
             </label>
+
             <button
-              onClick={createBackup}
-              disabled={isBackingUp}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 font-semibold shadow-lg disabled:opacity-50"
+              onClick={handleRestore}
+              disabled={!confirmChecked || restoring}
+              className="mt-3 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
             >
-              {isBackingUp ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin" />
-                  Creating Backup...
-                </>
-              ) : (
-                <>
-                  <Save className="w-5 h-5" />
-                  Create Backup Now
-                </>
-              )}
+              {restoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {restoring ? 'Restoring…' : 'Restore Now'}
             </button>
-          </div>
-        </div>
-      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-6 mb-8">
-        {[
-          { label: 'Total Backups', value: stats.totalBackups, icon: Database, color: 'blue' },
-          { label: 'Total Size', value: `${stats.totalSize} MB`, icon: HardDrive, color: 'purple' },
-          { label: 'Last Backup', value: new Date(stats.lastBackup).toLocaleDateString(), icon: Clock, color: 'emerald' },
-          { label: 'Auto Backup', value: backupSettings.autoBackup ? 'Enabled' : 'Disabled', icon: Zap, color: 'amber' }
-        ].map((stat, i) => (
-          <div key={i} className="bg-white rounded-2xl p-6 shadow-lg border-2 border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className={`w-14 h-14 bg-${stat.color}-100 rounded-xl flex items-center justify-center`}>
-                <stat.icon className={`w-7 h-7 text-${stat.color}-600`} />
-              </div>
-            </div>
-            <p className="text-slate-600 text-sm font-medium mb-1">{stat.label}</p>
-            <p className="text-2xl font-bold text-slate-800">{stat.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Backup Status Banner */}
-      {backupSettings.autoBackup && (
-        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl p-6 mb-8 shadow-xl">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center">
-              <CheckCircle className="w-8 h-8" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-xl font-bold mb-1">Automated Backup Active</h3>
-              <p className="text-emerald-100">
-                Your database is backed up {backupSettings.frequency} at 10:30 AM. 
-                Backups are retained for {backupSettings.retentionDays} days.
+            {restoring && restoreProgress && (
+              <p className="text-xs text-gray-500 mt-2">
+                Writing {restoreProgress.name}… ({fmt(restoreProgress.current)}/{fmt(restoreProgress.total)} documents)
               </p>
-            </div>
-            <Activity className="w-6 h-6 animate-pulse" />
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Backups List */}
-      <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b-2 border-slate-200 bg-slate-50">
-          <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <Archive className="w-6 h-6 text-blue-600" />
-            Available Backups
-          </h3>
-        </div>
-
-        <div className="divide-y divide-slate-200">
-          {backups.map((backup) => (
-            <div
-              key={backup.id}
-              className="p-6 hover:bg-blue-50 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${
-                    backup.type === 'auto' ? 'bg-blue-100' : 'bg-purple-100'
-                  }`}>
-                    <Database className={`w-7 h-7 ${
-                      backup.type === 'auto' ? 'text-blue-600' : 'text-purple-600'
-                    }`} />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <p className="font-bold text-slate-800">{backup.filename}</p>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        backup.type === 'auto' 
-                          ? 'bg-blue-100 text-blue-700' 
-                          : 'bg-purple-100 text-purple-700'
-                      }`}>
-                        {backup.type === 'auto' ? '🤖 Auto' : '👤 Manual'}
-                      </span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        backup.status === 'completed'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {backup.status === 'completed' ? '✓ Completed' : '⏳ In Progress'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-slate-600">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {new Date(backup.timestamp).toLocaleString()}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <HardDrive className="w-4 h-4" />
-                        {backup.size}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <FileText className="w-4 h-4" />
-                        {backup.tables} tables
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Activity className="w-4 h-4" />
-                        {backup.rows.toLocaleString()} rows
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => downloadBackup(backup)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-semibold"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedBackup(backup);
-                      setShowConfirmRestore(true);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 font-semibold"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    Restore
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Restore Confirmation Modal */}
-      {showConfirmRestore && selectedBackup && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full">
-            <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 rounded-t-3xl">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="w-8 h-8" />
-                <h2 className="text-2xl font-bold">Confirm Database Restore</h2>
-              </div>
-            </div>
-
-            <div className="p-8">
-              <div className="bg-red-50 border-2 border-red-300 rounded-xl p-6 mb-6">
-                <p className="font-bold text-red-800 mb-4 text-lg">⚠️ WARNING: This action cannot be undone!</p>
-                <ul className="space-y-2 text-red-700">
-                  <li>✗ All current data will be replaced</li>
-                  <li>✗ Any changes made after the backup will be lost</li>
-                  <li>✗ This process may take several minutes</li>
-                  <li>✗ All users will be temporarily disconnected</li>
-                </ul>
-              </div>
-
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-6">
-                <p className="font-semibold text-blue-800 mb-2">Restoring from:</p>
-                <p className="text-sm text-blue-700">{selectedBackup.filename}</p>
-                <p className="text-sm text-blue-600">Created: {new Date(selectedBackup.timestamp).toLocaleString()}</p>
-              </div>
-
-              <p className="text-slate-600 mb-6">
-                Before proceeding, we recommend creating a backup of the current database state.
-              </p>
-
-              <div className="flex gap-4">
-                <button
-                  onClick={() => {
-                    createBackup();
-                    setShowConfirmRestore(false);
-                  }}
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold"
-                >
-                  Backup Current State First
-                </button>
-                <button
-                  onClick={() => restoreBackup(selectedBackup)}
-                  disabled={isRestoring}
-                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-semibold disabled:opacity-50"
-                >
-                  {isRestoring ? 'Restoring...' : 'Restore Now'}
-                </button>
-                <button
-                  onClick={() => setShowConfirmRestore(false)}
-                  className="px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+        {restoreResult?.success && (
+          <div className="mt-4 flex items-start gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+            <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" /> Restored {fmt(restoreResult.written)} documents successfully.
           </div>
-        </div>
-      )}
-
-      {/* Important Notes */}
-      <div className="mt-8 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-2xl p-6 shadow-xl">
-        <div className="flex items-start gap-4">
-          <Shield className="w-8 h-8 flex-shrink-0" />
-          <div>
-            <h4 className="font-bold text-lg mb-2">Backup Best Practices</h4>
-            <ul className="space-y-1 text-blue-100 text-sm">
-              <li>• Automated backups run daily at 10:30 AM</li>
-              <li>• Download important backups to external storage</li>
-              <li>• Test restore process regularly to ensure backup integrity</li>
-              <li>• Keep at least 3 recent backups before deleting older ones</li>
-              <li>• Always backup before major system updates</li>
-            </ul>
+        )}
+        {restoreResult && !restoreResult.success && (
+          <div className="mt-4 flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> Restore failed partway through: {restoreResult.error}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

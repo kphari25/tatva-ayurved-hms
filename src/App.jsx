@@ -37,6 +37,7 @@ import UserManagement, { getUserPermissions, hasModuleAccess } from './component
 import HRPayrollModule from './components/HRPayrollModule';
 import UserActivityReport from './components/UserActivityReport';
 import Reports from './components/Reports';
+import DatabaseBackupRestore from './components/DatabaseBackupRestore';
 
 function App() {
   // DEBUG VERSION - Updated 2026-05-22 - New Patient Button Fix
@@ -420,15 +421,7 @@ function App() {
 
         {currentView === 'user-management' && <UserManagement />}
         
-        {currentView === 'database-backup' && (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">Database Backup</h1>
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <Database className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Admin Only</p>
-            </div>
-          </div>
-        )}
+        {currentView === 'database-backup' && <DatabaseBackupRestore />}
       </div>
     </div>
   );
