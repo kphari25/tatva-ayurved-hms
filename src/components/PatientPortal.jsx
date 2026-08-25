@@ -457,21 +457,21 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-4 sm:p-6 bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800 flex items-center">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 flex items-center">
               <Users className="w-8 h-8 text-teal-600 mr-3" />
               Patient Portal
             </h1>
             <p className="text-gray-600 mt-1">View and manage all registered patients</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <button
               onClick={() => setShowReturningPatient(true)}
-              className="flex items-center space-x-2 px-5 py-3 bg-white border border-teal-600 text-teal-700 rounded-lg hover:bg-teal-50 transition-colors"
+              className="flex items-center justify-center space-x-2 px-5 py-3 bg-white border border-teal-600 text-teal-700 rounded-lg hover:bg-teal-50 transition-colors"
               title="Look up an inactive patient by name + phone and check them back in"
             >
               <RotateCcw className="w-5 h-5" />
@@ -490,7 +490,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                   console.error('❌ onAddPatient is undefined!');
                 }
               }}
-              className="flex items-center space-x-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors shadow-lg"
+              className="flex items-center justify-center space-x-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors shadow-lg"
             >
               <Plus className="w-5 h-5" />
               <span>Register New Patient</span>
@@ -499,7 +499,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
@@ -560,7 +560,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
             discharged patients stay findable by name/MRD/phone even while on
             the Active tab; while searching, highlight "All Patients" instead
             of the tab actually selected so what's lit up matches what's shown. */}
-        <div className="flex border-b border-gray-200 mb-4">
+        <div className="flex flex-wrap border-b border-gray-200 mb-4">
           {[
             { key: 'active', label: 'Active', count: patients.filter(p => p.admission_status !== 'discharged').length },
             { key: 'discharged', label: 'Inactive / Discharged', count: patients.filter(p => p.admission_status === 'discharged').length },
@@ -571,7 +571,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
               <button
                 key={tab.key}
                 onClick={() => setFilterStatus(tab.key)}
-                className={`px-5 py-3 font-medium text-sm border-b-2 transition-colors ${
+                className={`px-3 sm:px-5 py-3 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
                   displayedTabKey === tab.key
                     ? 'border-teal-600 text-teal-700'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
@@ -589,7 +589,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
         )}
 
         {/* Search and Filter */}
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -601,12 +601,12 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
             />
           </div>
 
-          <div className="flex items-center space-x-2">
-            <Filter className="w-5 h-5 text-gray-600" />
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" />
             <select
               value={filterGender}
               onChange={(e) => setFilterGender(e.target.value)}
-              className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+              className="flex-1 sm:flex-none px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
             >
               <option value="all">All Genders</option>
               <option value="male">Male</option>
@@ -616,7 +616,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
             <select
               value={filterPatientType}
               onChange={(e) => setFilterPatientType(e.target.value)}
-              className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+              className="flex-1 sm:flex-none px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
             >
               <option value="all">All Types</option>
               <option value="IP">IP (In-Patient)</option>
