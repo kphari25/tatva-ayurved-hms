@@ -3,6 +3,8 @@ import { X, Printer, Save, Plus, Trash2, FileText, Receipt } from 'lucide-react'
 import { db } from '../lib/firebase';
 import { addDoc, updateDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import MedicineSaleModal from './MedicineSaleModal';
+import MedicineTable from './MedicineTable';
+import { buildMedicineItemsTableHTML } from '../lib/medicineSummary';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -89,8 +91,10 @@ const emptyForm = () => ({
   // Summary at Discharge
   summary_at_discharge: [''],
 
-  // Advise on Discharge
-  discharge_internal_medicines: [''],
+  // Advise on Discharge — structured rows (item_name/dose/frequency/
+  // instructions/days), same shape MedicineTable uses for Daily Progress's
+  // "Medicines Given" so the discharge advice prints in the same format.
+  discharge_internal_medicines: [],
   discharge_external_treatments: [''],
 
   // Pathya-Apathya
@@ -112,6 +116,17 @@ const emptyForm = () => ({
   prognosis: '',
   remarks: '',
 });
+
+// Older discharge summaries stored discharge_internal_medicines as a plain
+// string[] (free-text medicine names, no dose/frequency/days). Loading one
+// of those into the new MedicineTable rows keeps the name and leaves the
+// structured fields blank rather than trying to guess them out of the text.
+const normalizeMedicineRows = (arr) =>
+  (arr || []).filter(Boolean).map(item =>
+    typeof item === 'string'
+      ? { id: Date.now() + Math.random(), item_name: item, item_code: '', mrp: 0, dose: '', frequency: '', instructions: '', days: '' }
+      : { id: item.id || Date.now() + Math.random(), ...item }
+  );
 
 // ── List editor helper ──────────────────────────────────────────────────
 const ListEditor = ({ label, items, onChange, placeholder = 'Add item...' }) => {
@@ -290,6 +305,10 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}) => {
     table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
     table.grid th, table.grid td { border: 1px solid #aaa; padding: 4px 8px; }
     table.grid th { background: #f0f0f0; font-weight: bold; }
+
+    table.med-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 8px; }
+    table.med-table th, table.med-table td { border: 1px solid #ccc; padding: 2px 4px; text-align: left; }
+    table.med-table th { background: #f5f5f5; font-weight: 600; }
 
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
@@ -475,11 +494,11 @@ ${form.summary_at_discharge.filter(Boolean).length ? `
 ` : ''}
 
 <!-- ADVISE ON DISCHARGE -->
-${(form.discharge_internal_medicines.filter(Boolean).length || form.discharge_external_treatments.filter(Boolean).length) ? `
+${(form.discharge_internal_medicines.filter(r => r.item_name).length || form.discharge_external_treatments.filter(Boolean).length) ? `
 <div class="section-title">Advise on Discharge:</div>
-${form.discharge_internal_medicines.filter(Boolean).length ? `
+${form.discharge_internal_medicines.filter(r => r.item_name).length ? `
 <p style="font-weight:bold;margin:4px 0 2px;">INTERNAL MEDICINE</p>
-<ul>${bullet(form.discharge_internal_medicines)}</ul>` : ''}
+${buildMedicineItemsTableHTML(form.discharge_internal_medicines)}` : ''}
 ${form.discharge_external_treatments.filter(Boolean).length ? `
 <p style="font-weight:bold;margin:6px 0 2px;">EXTERNAL TREATMENT</p>
 <ul>${bullet(form.discharge_external_treatments)}</ul>` : ''}
@@ -533,7 +552,11 @@ ${form.remarks ? `<div class="section-title">Remarks</div><p>${form.remarks}</p>
 // ── Main Modal ──────────────────────────────────────────────────────────
 const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onViewCaseSheet }) => {
   const [form, setForm] = useState(() => {
-    if (existingSummary) return { ...emptyForm(), ...existingSummary };
+    if (existingSummary) return {
+      ...emptyForm(),
+      ...existingSummary,
+      discharge_internal_medicines: normalizeMedicineRows(existingSummary.discharge_internal_medicines),
+    };
     const f = emptyForm();
     f.patient_name = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim();
     f.ip_no = patient?.ip_number || '';
@@ -1271,14 +1294,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
           {/* ── DISCHARGE ADVICE ── */}
           {activeSection === 'discharge' && (
             <div className="space-y-6">
-              <MedicineListEditor
+              <MedicineTable
                 label="Advise on Discharge — Internal Medicines"
                 items={form.discharge_internal_medicines}
                 onChange={v => set('discharge_internal_medicines', v)}
-                inventory={inventory}
               />
 
-              {form.discharge_internal_medicines.filter(Boolean).length > 0 && (
+              {form.discharge_internal_medicines.filter(r => r.item_name).length > 0 && (
                 <button
                   onClick={() => setShowMedicineInvoice(true)}
                   className="flex items-center gap-2 px-3 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-sm font-medium hover:bg-teal-100"
@@ -1516,7 +1538,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
             patientId: patient?.firebaseId || patient?.id || null,
             assignedDoctor: form.doctor_in_charge && form.doctor_in_charge !== '__manual__' ? form.doctor_in_charge : '',
           }}
-          initialMedicineNames={form.discharge_internal_medicines.filter(Boolean)}
+          initialMedicineNames={form.discharge_internal_medicines.filter(r => r.item_name).map(r => r.item_name)}
         />
       )}
     </div>
