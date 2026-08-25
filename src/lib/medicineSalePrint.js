@@ -7,10 +7,19 @@ export const HOSPITAL = {
   regNo: 'BFHP03-C110100-00061-2025',
 };
 
-// Sale rate is purchase price plus a flat 2.5% CGST + 2.5% SGST — not MRP.
+// The item's own GST rate (set directly, or via its GST Category in Add/Edit
+// Medicine) — falls back to 5% for older items saved before GST categories
+// existed, matching this app's previous flat-5% assumption.
+export const gstPercentForItem = (item) => {
+  const v = parseFloat(item?.gst_percentage);
+  return Number.isFinite(v) ? v : 5;
+};
+
+// Sale rate is purchase price plus the item's own GST rate — not MRP.
 export const rateFromPurchasePrice = (item) => {
   const purchasePrice = parseFloat(item?.purchase_price ?? item?.purchase_rate) || 0;
-  return Math.round((purchasePrice + (purchasePrice * 0.025) + (purchasePrice * 0.025)) * 100) / 100;
+  const gstPct = gstPercentForItem(item);
+  return Math.round((purchasePrice * (1 + gstPct / 100)) * 100) / 100;
 };
 
 // Module-level (not a component closure) so a saved bill can be reprinted
@@ -23,6 +32,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
         <td>${r.item_code ? `<strong>${r.item_code}</strong><br><small>${r.name}</small>` : r.name}</td>
         <td style="text-align:center">${r.quantity}</td>
         <td style="text-align:right">₹${parseFloat(r.rate).toFixed(2)}</td>
+        <td style="text-align:center">${r.gst_percentage != null ? `${r.gst_percentage}%` : '—'}</td>
         <td style="text-align:right">₹${(r.quantity * r.rate).toFixed(2)}</td>
       </tr>`).join('');
 
@@ -96,6 +106,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
         <th>#</th><th>Medicine</th>
         <th style="text-align:center">Qty</th>
         <th style="text-align:right">Rate (₹)</th>
+        <th style="text-align:center">GST</th>
         <th style="text-align:right">Amount (₹)</th>
       </tr>
     </thead>
@@ -104,8 +115,14 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
 
   <div class="totals">
     <table>
+      ${saleData.cgst_amount != null ? `
+      <tr><td>Taxable Amount</td><td style="text-align:right">₹${(saleData.taxable_amount ?? saleData.subtotal).toFixed(2)}</td></tr>
+      <tr><td>CGST</td><td style="text-align:right">₹${saleData.cgst_amount.toFixed(2)}</td></tr>
+      <tr><td>SGST</td><td style="text-align:right">₹${saleData.sgst_amount.toFixed(2)}</td></tr>
+      ` : `
       <tr><td>Subtotal</td><td style="text-align:right">₹${saleData.subtotal.toFixed(2)}</td></tr>
       ${saleData.gst_percentage > 0 ? `<tr><td>GST (${saleData.gst_percentage}%)</td><td style="text-align:right">₹${saleData.gst_amount.toFixed(2)}</td></tr>` : ''}
+      `}
       ${saleData.discount > 0 ? `<tr><td style="color:red">Discount</td><td style="text-align:right;color:red">-₹${saleData.discount.toFixed(2)}</td></tr>` : ''}
       <tr class="grand"><td>TOTAL</td><td style="text-align:right">₹${saleData.total_amount.toFixed(2)}</td></tr>
     </table>

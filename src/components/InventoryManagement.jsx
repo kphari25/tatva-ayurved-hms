@@ -8,6 +8,19 @@ import {
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
 import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
+
+// Matches an Excel "GST Category" cell against a known category by key
+// ("standard"), full label ("Standard (Ayurvedic Medicine)"), or the short
+// name before the parenthetical ("Standard") — whichever the sheet used.
+const matchGSTCategory = (raw) => {
+  const v = String(raw || '').trim().toLowerCase();
+  if (!v) return '';
+  const found = GST_CATEGORIES.find(c =>
+    c.key === v || c.label.toLowerCase() === v || c.label.split(' (')[0].toLowerCase() === v
+  );
+  return found?.key || '';
+};
 
 const PAGE_SIZE = 100;
 const SEARCH_LIMIT = 50;
@@ -49,6 +62,11 @@ const InventoryManagement = () => {
   const [salesHistory, setSalesHistory] = useState(null); // null = not loaded yet
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
   const [viewingInvoice, setViewingInvoice] = useState(false);
+
+  // Bulk GST Category assignment — selection is scoped to whatever's on
+  // screen (current page or search results), not the whole collection.
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [applyingGSTCategory, setApplyingGSTCategory] = useState(false);
 
   const searchDebounce = useRef(null);
   const isSearchMode = searchTerm.trim().length > 0;
@@ -226,8 +244,17 @@ const InventoryManagement = () => {
                 }
               }
 
-              const sgst = parseFloat(row.scst || row.sgst || row['SGST'] || row.sgst_percentage || 0);
-              const cgst = parseFloat(row.cgst || row['CGST'] || row.cgst_percentage || 0);
+              // A "GST Category" column (Standard/Traditional/Ayurvedic Cosmetics)
+              // takes priority over raw SGST/CGST columns when both are present —
+              // it's the more meaningful, less error-prone source of truth.
+              const gstCategory = matchGSTCategory(row.gst_category || row['GST Category'] || row.gstCategory || '');
+              let sgst = parseFloat(row.scst || row.sgst || row['SGST'] || row.sgst_percentage || 0);
+              let cgst = parseFloat(row.cgst || row['CGST'] || row.cgst_percentage || 0);
+              if (gstCategory) {
+                const split = splitGST(rateForGSTCategory(gstCategory));
+                sgst = split.sgst;
+                cgst = split.cgst;
+              }
               const itemCode = String(row.batch_code || row['Batch Code'] || row.item_code || row['Item Code'] || row.code || '');
               const stockQuantity = parseInt(row.stock_quantity || row['Stock Quantity'] || row.quantity || 0);
               const purchaseRate = parseFloat(row.purchase_rate || row['Purchase Rate'] || row.rate || 0);
@@ -245,6 +272,7 @@ const InventoryManagement = () => {
                 stock_quantity: stockQuantity,
                 purchase_rate: purchaseRate,
                 discount_percentage: parseFloat(row.Discount || row.discount || row['Discount %'] || row.discount_percentage || 0),
+                gst_category: gstCategory,
                 sgst_percentage: sgst,
                 cgst_percentage: cgst,
                 gst_percentage: sgst + cgst,
@@ -324,7 +352,10 @@ const InventoryManagement = () => {
         'Purchase Rate': item.purchase_price || item.purchase_rate,
         'MRP': item.MRP || item.mrp,
         'Stock Value': item.stock_value,
-        'Purchase Date': item.purchase_date || item.month || ''
+        'Purchase Date': item.purchase_date || item.month || '',
+        'GST Category': item.gst_category ? (GST_CATEGORIES.find(c => c.key === item.gst_category)?.label || item.gst_category) : '',
+        'SGST': item.sgst_percentage ?? '',
+        'CGST': item.cgst_percentage ?? '',
       }));
 
       const ws = XLSX.utils.json_to_sheet(exportData);
@@ -412,6 +443,58 @@ const InventoryManagement = () => {
     const next = expandedRow === item.firebaseId ? null : item.firebaseId;
     setExpandedRow(next);
     if (next) ensureSalesHistoryLoaded();
+  };
+
+  const toggleSelected = (firebaseId) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(firebaseId)) next.delete(firebaseId); else next.add(firebaseId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds(prev =>
+      visibleItems.every(i => prev.has(i.firebaseId)) ? new Set() : new Set(visibleItems.map(i => i.firebaseId))
+    );
+  };
+
+  // Bulk-assigns a GST Category (and its derived CGST/SGST) to every
+  // selected item in one batch — the fast path for reclassifying items that
+  // were bulk-imported without a category, rather than editing them one by
+  // one in Add/Edit Medicine.
+  const applyGSTCategoryToSelected = async (categoryKey) => {
+    if (selectedIds.size === 0) return;
+    setApplyingGSTCategory(true);
+    try {
+      const rate = rateForGSTCategory(categoryKey);
+      const { cgst, sgst } = splitGST(rate);
+      const ids = Array.from(selectedIds);
+      for (let i = 0; i < ids.length; i += 400) {
+        const batch = writeBatch(db);
+        ids.slice(i, i + 400).forEach(id => {
+          batch.update(doc(db, 'inventory', id), {
+            gst_category: categoryKey,
+            gst_percentage: rate,
+            cgst_percentage: cgst,
+            sgst_percentage: sgst,
+          });
+        });
+        await batch.commit();
+      }
+      setItems(prev => prev.map(i =>
+        selectedIds.has(i.firebaseId)
+          ? { ...i, gst_category: categoryKey, gst_percentage: rate, cgst_percentage: cgst, sgst_percentage: sgst }
+          : i
+      ));
+      setMessage({ type: 'success', text: `Set "${GST_CATEGORIES.find(c => c.key === categoryKey)?.label}" (${rate}% GST) on ${ids.length} item${ids.length === 1 ? '' : 's'}.` });
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error('Error applying GST category:', error);
+      setMessage({ type: 'error', text: 'Failed to update GST category: ' + error.message });
+    } finally {
+      setApplyingGSTCategory(false);
+    }
   };
 
   // Matches by inventory_id (sales made after this feature shipped) or by
@@ -612,6 +695,32 @@ const InventoryManagement = () => {
         </div>
       </div>
 
+      {/* Bulk GST Category toolbar — appears once at least one row is checked */}
+      {selectedIds.size > 0 && (
+        <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-6 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-teal-800">
+            {selectedIds.size} item{selectedIds.size === 1 ? '' : 's'} selected — set GST Category:
+          </span>
+          {GST_CATEGORIES.map(c => (
+            <button
+              key={c.key}
+              onClick={() => applyGSTCategoryToSelected(c.key)}
+              disabled={applyingGSTCategory}
+              className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50"
+            >
+              {c.label} ({c.rate}%)
+            </button>
+          ))}
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            disabled={applyingGSTCategory}
+            className="px-3 py-1.5 text-teal-700 text-sm font-medium hover:underline disabled:opacity-50"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       {/* Inventory Table */}
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
         {loading || searching ? (
@@ -634,6 +743,15 @@ const InventoryManagement = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-3 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={visibleItems.length > 0 && visibleItems.every(i => selectedIds.has(i.firebaseId))}
+                      onChange={toggleSelectAllVisible}
+                      className="w-4 h-4 text-teal-600 rounded"
+                      title="Select all visible"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expand</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Code</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Name</th>
@@ -654,6 +772,14 @@ const InventoryManagement = () => {
                 {visibleItems.map((item, index) => (
                   <React.Fragment key={item.firebaseId || index}>
                     <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpandRow(item)}>
+                      <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.firebaseId)}
+                          onChange={() => toggleSelected(item.firebaseId)}
+                          className="w-4 h-4 text-teal-600 rounded"
+                        />
+                      </td>
                       <td className="px-6 py-4 text-sm">
                         <button className="text-blue-600 hover:text-blue-800">
                           {expandedRow === item.firebaseId ? '▼' : '▶'}
@@ -675,6 +801,9 @@ const InventoryManagement = () => {
                       <td className="px-6 py-4 text-sm text-right text-gray-700">₹{(item.MRP || item.mrp || 0).toFixed(2)}</td>
                       <td className="px-6 py-4 text-sm text-right text-gray-700">
                         {item.gst_percentage != null ? item.gst_percentage : 12}%
+                        <span className={`block text-[11px] mt-0.5 ${item.gst_category ? 'text-teal-600' : 'text-orange-500'}`}>
+                          {item.gst_category ? GST_CATEGORIES.find(c => c.key === item.gst_category)?.label.split(' (')[0] : 'Uncategorized'}
+                        </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-right text-gray-700">
                         {item.sgst_percentage != null ? `${item.sgst_percentage}%` : '-'}
@@ -708,7 +837,7 @@ const InventoryManagement = () => {
                     {/* Expanded Row with Complete Details */}
                     {expandedRow === item.firebaseId && (
                       <tr className="bg-blue-50">
-                        <td colSpan="14" className="px-6 py-6">
+                        <td colSpan="15" className="px-6 py-6">
                           <div className="grid grid-cols-3 gap-6">
                             {/* Column 1: Basic Information */}
                             <div className="space-y-3">
@@ -752,6 +881,11 @@ const InventoryManagement = () => {
 
                                 <span className="text-gray-600">Discount:</span>
                                 <span className="font-medium">{item.discount_percentage || 0}%</span>
+
+                                <span className="text-gray-600">GST Category:</span>
+                                <span className="font-medium">
+                                  {item.gst_category ? GST_CATEGORIES.find(c => c.key === item.gst_category)?.label : 'Uncategorized'}
+                                </span>
 
                                 <span className="text-gray-600">Total GST:</span>
                                 <span className="font-medium">{item.gst_percentage || 12}%</span>
@@ -1004,7 +1138,7 @@ const InventoryManagement = () => {
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">Firebase Cloud Storage Active</p>
-            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month), Invoice Number (→ shows up in Purchase History), Vendor Name (optional, separate from Company Name/manufacturer)</p>
+            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month), Invoice Number (→ shows up in Purchase History), Vendor Name (optional, separate from Company Name/manufacturer), GST Category (optional — "Standard", "Traditional", or "Ayurvedic Cosmetics"; overrides sgst/cgst columns when present)</p>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Save, X, Package, IndianRupee, Calendar, Barcode, Tag, FileText, AlertCircle, CheckCircle, Search } from 'lucide-react';
 import { collection, addDoc, updateDoc, doc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
 
 // Passing `item` switches this into edit mode for that existing inventory
 // document — same form, but it updates the item's master fields (price, MRP,
@@ -27,6 +28,7 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
     purchase_price: (item.purchase_price ?? item.purchase_rate ?? '').toString(),
     MRP: (item.MRP ?? item.mrp ?? '').toString(),
     discount_percentage: (item.discount_percentage ?? '').toString(),
+    gst_category: item.gst_category || '',
     gst_percentage: (item.gst_percentage ?? 12).toString(),
     cgst_percentage: (item.cgst_percentage ?? (item.gst_percentage ? item.gst_percentage / 2 : 6)).toString(),
     sgst_percentage: (item.sgst_percentage ?? (item.gst_percentage ? item.gst_percentage / 2 : 6)).toString(),
@@ -68,6 +70,7 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
     purchase_price: '',
     MRP: '',
     discount_percentage: '',
+    gst_category: '',
     gst_percentage: '12', // Total GST
     cgst_percentage: '6',  // Central GST (half of total)
     sgst_percentage: '6',  // State GST (half of total)
@@ -226,6 +229,7 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
       purchase_price: medicine.purchase_price?.toString() || medicine.purchase_rate?.toString() || '',
       MRP: medicine.MRP?.toString() || medicine.mrp?.toString() || '',
       discount_percentage: medicine.discount_percentage?.toString() || '',
+      gst_category: medicine.gst_category || '',
       gst_percentage: medicine.gst_percentage?.toString() || '12',
       cgst_percentage: medicine.cgst_percentage?.toString() || (medicine.gst_percentage ? (medicine.gst_percentage / 2).toString() : '6'),
       sgst_percentage: medicine.sgst_percentage?.toString() || (medicine.gst_percentage ? (medicine.gst_percentage / 2).toString() : '6'),
@@ -330,6 +334,7 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
         purchase_price: parseFloat(formData.purchase_price),
         MRP: parseFloat(formData.MRP),
         discount_percentage: parseFloat(formData.discount_percentage) || 0,
+        gst_category: formData.gst_category || '',
         gst_percentage: parseFloat(formData.gst_percentage) || 12,
         cgst_percentage: parseFloat(formData.cgst_percentage) || 6,
         sgst_percentage: parseFloat(formData.sgst_percentage) || 6,
@@ -627,6 +632,34 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="0.00"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  GST Category
+                </label>
+                <select
+                  value={formData.gst_category}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    handleChange('gst_category', key);
+                    const rate = rateForGSTCategory(key);
+                    if (rate == null) return; // "Other / Custom" — leave GST%/CGST/SGST as-is for manual entry below
+                    const { cgst, sgst } = splitGST(rate);
+                    handleChange('gst_percentage', rate.toString());
+                    handleChange('cgst_percentage', cgst.toString());
+                    handleChange('sgst_percentage', sgst.toString());
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Other / Custom</option>
+                  {GST_CATEGORIES.map(c => (
+                    <option key={c.key} value={c.key}>{c.label} — {c.rate}%</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Sets Total GST / CGST / SGST below — you can still fine-tune them manually.
+                </p>
               </div>
 
               <div>

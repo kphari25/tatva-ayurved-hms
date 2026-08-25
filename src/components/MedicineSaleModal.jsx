@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { rateFromPurchasePrice, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { rateFromPurchasePrice, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 
-const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
+const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
 // initialCustomer: optional { customer_name, mrd_number, phone, patientId, assignedDoctor } —
 // pre-fills the bill for a patient handed off from elsewhere (e.g. discharge advice).
@@ -20,7 +20,6 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
     customer_name: initialCustomer?.customer_name || '',
     mrd_number: initialCustomer?.mrd_number || '',
     phone: initialCustomer?.phone || '',
-    gst_percentage: 0,
     discount: 0,
     payment_mode: 'Cash',
     notes: '',
@@ -77,6 +76,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         item_code: matched?.item_code || '',
         quantity: 1,
         rate: matched ? rateFromPurchasePrice(matched) : 0,
+        gst_percentage: matched ? gstPercentForItem(matched) : 0,
         stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
         inventory_id: matched?.id || '',
         id: Date.now() + Math.random(),
@@ -204,6 +204,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         item_code: m.item_code || '',
         quantity: 1,
         rate: matched ? rateFromPurchasePrice(matched) : 0,
+        gst_percentage: matched ? gstPercentForItem(matched) : 0,
         stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
         inventory_id: matched?.id || '',
         id: Date.now() + Math.random(),
@@ -221,7 +222,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
     ).slice(0, 8);
 
   const handleRowNameChange = (id, value) => {
-    setRows(prev => prev.map(r => r.id === id ? { ...r, name: value, item_code: '', rate: 0, stock: null, inventory_id: '' } : r));
+    setRows(prev => prev.map(r => r.id === id ? { ...r, name: value, item_code: '', rate: 0, gst_percentage: 0, stock: null, inventory_id: '' } : r));
     setSuggestions(prev => ({ ...prev, [id]: getMedSuggestions(value) }));
     setOpenDropdown(id);
   };
@@ -235,6 +236,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               name: med.item_name || med.item_code,
               item_code: med.item_code || '',
               rate: rateFromPurchasePrice(med),
+              gst_percentage: gstPercentForItem(med),
               stock: parseFloat(med.stock_quantity) ?? null,
               inventory_id: med.id || '',
             }
@@ -257,10 +259,21 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   };
 
   // ── Calculations ────────────────────────────────────────────
+  // Each row's `rate` already has its own item's GST baked in (see
+  // rateFromPurchasePrice) — not a flat bill-wide markup, since different
+  // medicines can carry different GST rates (Standard/Traditional/Cosmetics
+  // GST Categories). To show a compliant CGST/SGST breakdown on the receipt,
+  // each line's tax-inclusive amount is decomposed back into its taxable
+  // (base) value and tax portion using that same row-level rate.
   const calcLine = (r) => (parseFloat(r.quantity) || 0) * (parseFloat(r.rate) || 0);
-  const calcSubtotal = () => rows.reduce((s, r) => s + calcLine(r), 0);
-  const calcGST = () => (calcSubtotal() * (parseFloat(formData.gst_percentage) || 0)) / 100;
-  const calcTotal = () => calcSubtotal() + calcGST() - (parseFloat(formData.discount) || 0);
+  const calcLineTaxable = (r) => calcLine(r) / (1 + (parseFloat(r.gst_percentage) || 0) / 100);
+  const calcLineTax = (r) => calcLine(r) - calcLineTaxable(r);
+  const calcSubtotal = () => rows.reduce((s, r) => s + calcLine(r), 0); // tax-inclusive
+  const calcTaxableAmount = () => rows.reduce((s, r) => s + calcLineTaxable(r), 0);
+  const calcTotalTax = () => rows.reduce((s, r) => s + calcLineTax(r), 0);
+  const calcCGST = () => calcTotalTax() / 2;
+  const calcSGST = () => calcTotalTax() / 2;
+  const calcTotal = () => calcSubtotal() - (parseFloat(formData.discount) || 0);
   const validRows = () => rows.filter(r => r.name && parseFloat(r.rate) > 0 && parseFloat(r.quantity) > 0);
 
   // ── Print ───────────────────────────────────────────────────
@@ -274,8 +287,10 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
       payment_mode: formData.payment_mode,
       items: validRows(),
       subtotal: calcSubtotal(),
-      gst_percentage: parseFloat(formData.gst_percentage) || 0,
-      gst_amount: calcGST(),
+      taxable_amount: calcTaxableAmount(),
+      cgst_amount: calcCGST(),
+      sgst_amount: calcSGST(),
+      gst_amount: calcTotalTax(),
       discount: parseFloat(formData.discount) || 0,
       total_amount: calcTotal(),
       notes: formData.notes,
@@ -305,8 +320,10 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         payment_mode: formData.payment_mode,
         items,
         subtotal: calcSubtotal(),
-        gst_percentage: parseFloat(formData.gst_percentage) || 0,
-        gst_amount: calcGST(),
+        taxable_amount: calcTaxableAmount(),
+        cgst_amount: calcCGST(),
+        sgst_amount: calcSGST(),
+        gst_amount: calcTotalTax(),
         discount: parseFloat(formData.discount) || 0,
         total_amount: calcTotal(),
         notes: formData.notes,
@@ -573,7 +590,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
                                   <div>
                                     <div className="font-medium text-sm text-gray-900">{med.item_code}</div>
                                     <div className="text-xs text-gray-500">{med.item_name}</div>
-                                    <div className="text-xs text-teal-600 mt-0.5">Rate: ₹{rateFromPurchasePrice(med).toFixed(2)} <span className="text-gray-400">(incl. GST)</span></div>
+                                    <div className="text-xs text-teal-600 mt-0.5">Rate: ₹{rateFromPurchasePrice(med).toFixed(2)} <span className="text-gray-400">(incl. {gstPercentForItem(med)}% GST)</span></div>
                                   </div>
                                   <div className={`text-xs font-semibold px-2 py-1 rounded-full ${
                                     stock === 0 ? 'bg-red-100 text-red-700' :
@@ -608,6 +625,11 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
                         onChange={e => handleRowChange(row.id, 'rate', e.target.value)}
                         className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right focus:ring-2 focus:ring-teal-500 outline-none"
                       />
+                      {row.name && (
+                        <span className="block text-[11px] text-gray-400 text-right mt-0.5">
+                          incl. {parseFloat(row.gst_percentage) || 0}% GST
+                        </span>
+                      )}
                     </div>
 
                     {/* Line total */}
@@ -636,18 +658,11 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
             </div>
           </div>
 
-          {/* ── GST / Discount ── */}
+          {/* ── Discount ── */}
+          {/* GST is no longer typed in manually — each row already carries its
+              own medicine's GST rate (via its GST Category), and the totals
+              below decompose it into CGST/SGST automatically. */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">GST (%)</label>
-              <input
-                type="number" min="0"
-                value={formData.gst_percentage}
-                onChange={e => setFormData(f => ({ ...f, gst_percentage: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-                placeholder="0"
-              />
-            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Discount (₹)</label>
               <input
@@ -676,14 +691,20 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
           <div className="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-5 rounded-xl">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>Subtotal:</span>
-                <span>₹{calcSubtotal().toFixed(2)}</span>
+                <span>Taxable Amount:</span>
+                <span>₹{calcTaxableAmount().toFixed(2)}</span>
               </div>
-              {parseFloat(formData.gst_percentage) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span>GST ({formData.gst_percentage}%):</span>
-                  <span>₹{calcGST().toFixed(2)}</span>
-                </div>
+              {calcTotalTax() > 0 && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span>CGST:</span>
+                    <span>₹{calcCGST().toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>SGST:</span>
+                    <span>₹{calcSGST().toFixed(2)}</span>
+                  </div>
+                </>
               )}
               {parseFloat(formData.discount) > 0 && (
                 <div className="flex justify-between text-sm">
