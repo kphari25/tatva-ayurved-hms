@@ -48,6 +48,10 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; color: #1a1a1a; }
     @page { size: A4; margin: 15mm 12mm; }
+    /* Reserves room at the bottom of the printed page so normal-flow
+       content (the items table, totals) doesn't run under the now-fixed
+       print-footer below. */
+    @media print { body { padding-bottom: 160px; } }
     .header { text-align: center; border-bottom: 3px solid #0d9488; padding-bottom: 14px; margin-bottom: 18px; }
     .header h1 { color: #0d9488; font-size: 26px; margin: 8px 0 4px; }
     .header .tagline { color: #666; font-size: 12px; }
@@ -66,15 +70,16 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
     .totals table { margin: 0; }
     .totals td { border: none; border-bottom: 1px solid #eee; padding: 5px 8px; }
     .totals .grand { background: #0d9488; color: #fff; font-size: 15px; font-weight: bold; }
-    /* Signature/thank-you/address block. This used to be position: fixed
-       in print so it pinned to the bottom of the page — but a fixed element
-       is positioned against the page box on every page it's printed on, and
-       on a bill long enough to spill onto a second page that can push the
-       block (and everything printed after it, however little) onto a blank-
-       looking trailing page, or overlap the last row of the items table.
-       Keeping it in normal flow avoids both failure modes at the cost of it
-       no longer being pinned to the very bottom of the last page. */
-    .print-footer { margin-top: 50px; page-break-inside: avoid; }
+    /* Signature/thank-you/address block, pinned to the bottom of the page
+       when printed. Earlier this was suspected of causing blank printed
+       pages and was switched to normal flow — the actual cause turned out
+       to be the old window.open()+document.write() print path (now
+       replaced with an iframe printed via its own contentWindow.print()),
+       so it's safe to pin this again now that that's fixed. */
+    .print-footer { margin-top: 50px; }
+    @media print {
+      .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
+    }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 12px; }
