@@ -296,6 +296,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
       notes: formData.notes,
     };
     const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups for this site to preview/print the bill.'); return; }
     w.document.write(buildMedicineSalePrintHTML(data, doctorInfo));
     w.document.close();
   };

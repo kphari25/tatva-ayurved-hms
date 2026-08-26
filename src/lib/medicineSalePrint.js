@@ -46,7 +46,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
   <title>Medicine Sale - ${saleData.bill_number}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; padding-bottom: 190px; color: #1a1a1a; }
+    body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; color: #1a1a1a; }
     @page { size: A4; margin: 15mm 12mm; }
     .header { text-align: center; border-bottom: 3px solid #0d9488; padding-bottom: 14px; margin-bottom: 18px; }
     .header h1 { color: #0d9488; font-size: 26px; margin: 8px 0 4px; }
@@ -59,17 +59,19 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
     th { background: #0d9488; color: #fff; padding: 8px 10px; text-align: left; font-size: 12px; }
     td { border: 1px solid #ddd; padding: 7px 10px; font-size: 12px; }
     tr:nth-child(even) td { background: #f0fdfa; }
-    .totals { float: right; width: 280px; }
+    .totals { float: right; width: 280px; page-break-inside: avoid; }
     .totals table { margin: 0; }
     .totals td { border: none; border-bottom: 1px solid #eee; padding: 5px 8px; }
     .totals .grand { background: #0d9488; color: #fff; font-size: 15px; font-weight: bold; }
-    /* Doctor signature + thank-you note + hospital address stay pinned to
-       the bottom of the printed page as one unit, same treatment as the
-       prescription printout, instead of trailing wherever the content ends. */
-    .print-footer { margin-top: 50px; }
-    @media print {
-      .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
-    }
+    /* Signature/thank-you/address block. This used to be position: fixed
+       in print so it pinned to the bottom of the page — but a fixed element
+       is positioned against the page box on every page it's printed on, and
+       on a bill long enough to spill onto a second page that can push the
+       block (and everything printed after it, however little) onto a blank-
+       looking trailing page, or overlap the last row of the items table.
+       Keeping it in normal flow avoids both failure modes at the cost of it
+       no longer being pinned to the very bottom of the last page. */
+    .print-footer { margin-top: 50px; page-break-inside: avoid; }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 12px; }
