@@ -55,6 +55,9 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
     .info { display: flex; justify-content: space-between; margin-bottom: 18px; }
     .info-block { font-size: 13px; line-height: 1.8; }
     .info-block b { color: #0d9488; }
+    .customer-line { font-size: 16px; font-weight: bold; }
+    .customer-line b { font-size: 13px; }
+    .mrd-line { font-size: 10px; color: #666; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
     th { background: #0d9488; color: #fff; padding: 8px 10px; text-align: left; font-size: 12px; }
     td { border: 1px solid #ddd; padding: 7px 10px; font-size: 12px; }
@@ -94,8 +97,8 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
 
   <div class="info">
     <div class="info-block">
-      <div><b>Customer:</b> ${saleData.customer_name || 'Walk-in Customer'}</div>
-      ${saleData.mrd_number ? `<div><b>MRD No:</b> ${saleData.mrd_number}</div>` : ''}
+      <div class="customer-line"><b>Customer:</b> ${saleData.customer_name || 'Walk-in Customer'}</div>
+      ${saleData.mrd_number ? `<div class="mrd-line"><b>MRD No:</b> ${saleData.mrd_number}</div>` : ''}
       ${saleData.phone ? `<div><b>Phone:</b> ${saleData.phone}</div>` : ''}
     </div>
     <div class="info-block" style="text-align:right">
