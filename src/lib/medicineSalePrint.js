@@ -26,24 +26,6 @@ export const basePriceFromMRP = (item) => {
   return Math.round((mrp - gstAmount) * 100) / 100;
 };
 
-// Opens `html` in a new tab for previewing/printing. Deliberately NOT
-// window.open('', '_blank') + document.write(html) — that pattern renders
-// fine on screen, but on real Chrome (confirmed on both Windows and Mac)
-// actually printing that tab can come out as a blank page: Chrome's print
-// pipeline doesn't reliably capture content injected into an about:blank
-// popup via document.write. Navigating the popup to a real blob: URL
-// instead makes it a normally-loaded document, which prints correctly.
-export const openPrintWindow = (html) => {
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (!win) { URL.revokeObjectURL(url); return null; }
-  // Revoking immediately would race the popup's navigation to the blob
-  // URL and could leave it blank; wait until it's actually loaded.
-  win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
-  return win;
-};
-
 // Module-level (not a component closure) so a saved bill can be reprinted
 // from anywhere — e.g. clicking a bill number in Inventory's Sales History —
 // without reopening the full Medicine Sale form.
@@ -97,7 +79,6 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
     .thank-you { text-align: center; font-size: 11px; color: #888; margin-bottom: 10px; }
     .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
     .footer-bar { height: 6px; background: #0d9488; margin-top: 10px; }
-    @media print { button { display: none; } }
   </style>
 </head>
 <body>
@@ -154,10 +135,6 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
 
   <div style="clear:both"></div>
   ${saleData.notes ? `<div style="margin-top:16px"><b>Notes:</b> ${saleData.notes}</div>` : ''}
-
-  <div style="text-align:center;margin-top:20px">
-    <button onclick="window.print()" style="padding:10px 30px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer">🖨️ Print Bill</button>
-  </div>
 
   <div class="print-footer">
     <div class="sig-block">

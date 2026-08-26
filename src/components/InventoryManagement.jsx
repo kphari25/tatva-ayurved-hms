@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, CheckCircle, EyeOff, ChevronDown } from 'lucide-react';
+import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, CheckCircle, EyeOff, ChevronDown, Printer, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, writeBatch,
@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
-import { buildMedicineSalePrintHTML, openPrintWindow } from '../lib/medicineSalePrint';
+import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
 
 // Matches an Excel "GST Category" cell against a known category by key
@@ -62,6 +62,10 @@ const InventoryManagement = () => {
   const [salesHistory, setSalesHistory] = useState(null); // null = not loaded yet
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
   const [viewingInvoice, setViewingInvoice] = useState(false);
+  // In-page iframe print preview (see MedicineSaleModal's printPreviewData
+  // comment) rather than a popup — reliable across Chrome/Safari.
+  const [invoicePreview, setInvoicePreview] = useState(null); // { sale, doctorInfo }
+  const invoicePreviewIframeRef = useRef(null);
 
   // Bulk GST Category assignment — selection is scoped to whatever's on
   // screen (current page or search results), not the whole collection.
@@ -550,14 +554,20 @@ const InventoryManagement = () => {
         }
       }
 
-      const w = openPrintWindow(buildMedicineSalePrintHTML(sale, doctorInfo));
-      if (!w) { setMessage({ type: 'error', text: 'Please allow pop-ups for this site to view the invoice.' }); return; }
+      setInvoicePreview({ sale, doctorInfo });
     } catch (error) {
       console.error('Error opening invoice:', error);
       setMessage({ type: 'error', text: 'Failed to open invoice: ' + error.message });
     } finally {
       setViewingInvoice(false);
     }
+  };
+
+  const handlePrintInvoicePreview = () => {
+    const win = invoicePreviewIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.focus();
+    win.print();
   };
 
   return (
@@ -1167,6 +1177,42 @@ const InventoryManagement = () => {
             setItems(prev => prev.map(i => i.firebaseId === updatedId ? { ...i, ...savedData } : i));
           }}
         />
+      )}
+
+      {/* Sales History invoice print preview */}
+      {invoicePreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col">
+            <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <div>
+                <h2 className="text-xl font-bold">Print Preview</h2>
+                <p className="text-teal-100 text-sm">{invoicePreview.sale.customer_name || 'Walk-in Customer'} — {invoicePreview.sale.bill_number}</p>
+              </div>
+              <button onClick={() => setInvoicePreview(null)} className="hover:bg-teal-700 p-2 rounded">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end bg-gray-50">
+              <button
+                onClick={handlePrintInvoicePreview}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+              >
+                <Printer className="w-4 h-4" /> Print
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-gray-200 p-6 flex justify-center">
+              <iframe
+                ref={invoicePreviewIframeRef}
+                title="Medicine sale bill print preview"
+                srcDoc={buildMedicineSalePrintHTML(invoicePreview.sale, invoicePreview.doctorInfo)}
+                className="bg-white shadow-lg"
+                style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

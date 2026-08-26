@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML, openPrintWindow } from '../lib/medicineSalePrint';
+import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 
 const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
@@ -45,6 +45,18 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   // Doctor signature block — only populated when a registered patient (with
   // an assigned doctor) is selected; stays blank for a true walk-in sale.
   const [doctorInfo, setDoctorInfo] = useState({ name: '', qualification: '', registrationNumber: '' });
+
+  // Print preview — an in-page iframe modal (same pattern InvoicesManagement
+  // uses for patient invoices) instead of window.open + document.write.
+  // A popup window opened that way renders fine on screen in every browser,
+  // but actually printing it is unreliable across browsers: Chrome can print
+  // a blank page, and Safari refuses to navigate a new window straight to a
+  // blob: URL at all. An iframe with srcDoc, printed via its own
+  // contentWindow.print(), sidesteps both — it's never a separate popup, so
+  // there's nothing for a browser to fail to load or a pop-up blocker to block.
+  const [printPreviewData, setPrintPreviewData] = useState(null);
+  const [closeOnPreviewDismiss, setCloseOnPreviewDismiss] = useState(false);
+  const printIframeRef = useRef(null);
 
   useEffect(() => {
     loadInventory();
@@ -295,8 +307,23 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
       total_amount: calcTotal(),
       notes: formData.notes,
     };
-    const w = openPrintWindow(buildMedicineSalePrintHTML(data, doctorInfo));
-    if (!w) { alert('Please allow pop-ups for this site to preview/print the bill.'); return; }
+    // Saving already closes this form once the preview is dismissed; a plain
+    // "Preview & Print" click should leave the form open so the user can
+    // keep editing.
+    setCloseOnPreviewDismiss(!!saleData);
+    setPrintPreviewData(data);
+  };
+
+  const handlePrintFromPreview = () => {
+    const win = printIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.focus();
+    win.print();
+  };
+
+  const handleClosePreview = () => {
+    setPrintPreviewData(null);
+    if (closeOnPreviewDismiss) onClose();
   };
 
   const handleSave = async () => {
@@ -350,7 +377,6 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
 
       if (onSave) onSave(saleData);
       handlePrint(saleData);
-      onClose();
     } catch (e) {
       console.error('Error saving medicine sale:', e);
       alert('Failed to save: ' + e.message);
@@ -387,6 +413,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
 
   // ── Render ──────────────────────────────────────────────────
   return (
+    <>
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
 
@@ -744,6 +771,45 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         </div>
       </div>
     </div>
+
+    {/* Print Preview — in-page iframe, printed via its own contentWindow,
+        rather than a popup window (see the printPreviewData comment above
+        for why: reliability across Chrome/Safari). */}
+    {printPreviewData && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col">
+          <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+            <div>
+              <h2 className="text-xl font-bold">Print Preview</h2>
+              <p className="text-teal-100 text-sm">{printPreviewData.customer_name || 'Walk-in Customer'}</p>
+            </div>
+            <button onClick={handleClosePreview} className="hover:bg-teal-700 p-2 rounded">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end bg-gray-50">
+            <button
+              onClick={handlePrintFromPreview}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+            >
+              <Printer className="w-4 h-4" /> Print
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-gray-200 p-6 flex justify-center">
+            <iframe
+              ref={printIframeRef}
+              title="Medicine sale bill print preview"
+              srcDoc={buildMedicineSalePrintHTML(printPreviewData, doctorInfo)}
+              className="bg-white shadow-lg"
+              style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
