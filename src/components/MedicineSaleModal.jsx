@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML, openPrintWindow } from '../lib/medicineSalePrint';
 
 const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
@@ -295,10 +295,8 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
       total_amount: calcTotal(),
       notes: formData.notes,
     };
-    const w = window.open('', '_blank');
+    const w = openPrintWindow(buildMedicineSalePrintHTML(data, doctorInfo));
     if (!w) { alert('Please allow pop-ups for this site to preview/print the bill.'); return; }
-    w.document.write(buildMedicineSalePrintHTML(data, doctorInfo));
-    w.document.close();
   };
 
   const handleSave = async () => {

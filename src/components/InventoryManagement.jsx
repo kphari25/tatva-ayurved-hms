@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
-import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { buildMedicineSalePrintHTML, openPrintWindow } from '../lib/medicineSalePrint';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
 
 // Matches an Excel "GST Category" cell against a known category by key
@@ -550,10 +550,8 @@ const InventoryManagement = () => {
         }
       }
 
-      const w = window.open('', '_blank');
+      const w = openPrintWindow(buildMedicineSalePrintHTML(sale, doctorInfo));
       if (!w) { setMessage({ type: 'error', text: 'Please allow pop-ups for this site to view the invoice.' }); return; }
-      w.document.write(buildMedicineSalePrintHTML(sale, doctorInfo));
-      w.document.close();
     } catch (error) {
       console.error('Error opening invoice:', error);
       setMessage({ type: 'error', text: 'Failed to open invoice: ' + error.message });

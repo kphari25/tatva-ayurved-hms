@@ -26,6 +26,24 @@ export const basePriceFromMRP = (item) => {
   return Math.round((mrp - gstAmount) * 100) / 100;
 };
 
+// Opens `html` in a new tab for previewing/printing. Deliberately NOT
+// window.open('', '_blank') + document.write(html) — that pattern renders
+// fine on screen, but on real Chrome (confirmed on both Windows and Mac)
+// actually printing that tab can come out as a blank page: Chrome's print
+// pipeline doesn't reliably capture content injected into an about:blank
+// popup via document.write. Navigating the popup to a real blob: URL
+// instead makes it a normally-loaded document, which prints correctly.
+export const openPrintWindow = (html) => {
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) { URL.revokeObjectURL(url); return null; }
+  // Revoking immediately would race the popup's navigation to the blob
+  // URL and could leave it blank; wait until it's actually loaded.
+  win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+  return win;
+};
+
 // Module-level (not a component closure) so a saved bill can be reprinted
 // from anywhere — e.g. clicking a bill number in Inventory's Sales History —
 // without reopening the full Medicine Sale form.
