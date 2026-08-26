@@ -15,11 +15,15 @@ export const gstPercentForItem = (item) => {
   return Number.isFinite(v) ? v : 5;
 };
 
-// Sale rate is purchase price plus the item's own GST rate — not MRP.
-export const rateFromPurchasePrice = (item) => {
-  const purchasePrice = parseFloat(item?.purchase_price ?? item?.purchase_rate) || 0;
+// Sale price is the item's MRP (not purchase price) — MRP is tax-inclusive,
+// so the price shown/billed per unit is MRP backed out to its GST-exclusive
+// base: GST Amount = (MRP × GST Rate) ÷ (100 + GST Rate), Base Price = MRP −
+// GST Amount. GST is added back on top per line when totals are calculated.
+export const basePriceFromMRP = (item) => {
+  const mrp = parseFloat(item?.MRP ?? item?.mrp) || 0;
   const gstPct = gstPercentForItem(item);
-  return Math.round((purchasePrice * (1 + gstPct / 100)) * 100) / 100;
+  const gstAmount = (mrp * gstPct) / (100 + gstPct);
+  return Math.round((mrp - gstAmount) * 100) / 100;
 };
 
 // Module-level (not a component closure) so a saved bill can be reprinted
@@ -105,7 +109,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
       <tr>
         <th>#</th><th>Medicine</th>
         <th style="text-align:center">Qty</th>
-        <th style="text-align:right">Rate (₹)</th>
+        <th style="text-align:right">Price (₹)</th>
         <th style="text-align:center">GST</th>
         <th style="text-align:right">Amount (₹)</th>
       </tr>

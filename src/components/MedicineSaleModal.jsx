@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { rateFromPurchasePrice, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 
 const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
@@ -75,7 +75,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         name: matched ? matched.item_name : rawName,
         item_code: matched?.item_code || '',
         quantity: 1,
-        rate: matched ? rateFromPurchasePrice(matched) : 0,
+        rate: matched ? basePriceFromMRP(matched) : 0,
         gst_percentage: matched ? gstPercentForItem(matched) : 0,
         stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
         inventory_id: matched?.id || '',
@@ -203,7 +203,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         name: m.item_name,
         item_code: m.item_code || '',
         quantity: 1,
-        rate: matched ? rateFromPurchasePrice(matched) : 0,
+        rate: matched ? basePriceFromMRP(matched) : 0,
         gst_percentage: matched ? gstPercentForItem(matched) : 0,
         stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
         inventory_id: matched?.id || '',
@@ -235,7 +235,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               ...r,
               name: med.item_name || med.item_code,
               item_code: med.item_code || '',
-              rate: rateFromPurchasePrice(med),
+              rate: basePriceFromMRP(med),
               gst_percentage: gstPercentForItem(med),
               stock: parseFloat(med.stock_quantity) ?? null,
               inventory_id: med.id || '',
@@ -259,15 +259,15 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   };
 
   // ── Calculations ────────────────────────────────────────────
-  // Each row's `rate` already has its own item's GST baked in (see
-  // rateFromPurchasePrice) — not a flat bill-wide markup, since different
-  // medicines can carry different GST rates (Standard/Traditional/Cosmetics
-  // GST Categories). To show a compliant CGST/SGST breakdown on the receipt,
-  // each line's tax-inclusive amount is decomposed back into its taxable
-  // (base) value and tax portion using that same row-level rate.
-  const calcLine = (r) => (parseFloat(r.quantity) || 0) * (parseFloat(r.rate) || 0);
-  const calcLineTaxable = (r) => calcLine(r) / (1 + (parseFloat(r.gst_percentage) || 0) / 100);
-  const calcLineTax = (r) => calcLine(r) - calcLineTaxable(r);
+  // Each row's `rate` is the item's GST-exclusive base price, backed out of
+  // its MRP (see basePriceFromMRP) — not a flat bill-wide markup, since
+  // different medicines can carry different GST rates (Standard/Traditional/
+  // Cosmetics GST Categories). GST is added back on top per line so the
+  // receipt's line "Amount" is the taxable value and the bill's CGST/SGST
+  // total up correctly even when lines mix rates.
+  const calcLineTaxable = (r) => (parseFloat(r.quantity) || 0) * (parseFloat(r.rate) || 0);
+  const calcLineTax = (r) => calcLineTaxable(r) * (parseFloat(r.gst_percentage) || 0) / 100;
+  const calcLine = (r) => calcLineTaxable(r) + calcLineTax(r); // tax-inclusive (= qty × MRP)
   const calcSubtotal = () => rows.reduce((s, r) => s + calcLine(r), 0); // tax-inclusive
   const calcTaxableAmount = () => rows.reduce((s, r) => s + calcLineTaxable(r), 0);
   const calcTotalTax = () => rows.reduce((s, r) => s + calcLineTax(r), 0);
@@ -548,7 +548,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
             <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-teal-600 text-white text-xs font-semibold rounded-t-lg">
               <div className="col-span-5">Medicine</div>
               <div className="col-span-2 text-center">Qty</div>
-              <div className="col-span-2 text-right">Rate (₹)</div>
+              <div className="col-span-2 text-right">Price (₹)</div>
               <div className="col-span-2 text-right">Amount (₹)</div>
               <div className="col-span-1"></div>
             </div>
@@ -590,7 +590,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
                                   <div>
                                     <div className="font-medium text-sm text-gray-900">{med.item_code}</div>
                                     <div className="text-xs text-gray-500">{med.item_name}</div>
-                                    <div className="text-xs text-teal-600 mt-0.5">Rate: ₹{rateFromPurchasePrice(med).toFixed(2)} <span className="text-gray-400">(incl. {gstPercentForItem(med)}% GST)</span></div>
+                                    <div className="text-xs text-teal-600 mt-0.5">Price: ₹{basePriceFromMRP(med).toFixed(2)} <span className="text-gray-400">(MRP ₹{(parseFloat(med.MRP ?? med.mrp) || 0).toFixed(2)}, + {gstPercentForItem(med)}% GST)</span></div>
                                   </div>
                                   <div className={`text-xs font-semibold px-2 py-1 rounded-full ${
                                     stock === 0 ? 'bg-red-100 text-red-700' :
@@ -617,7 +617,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
                       />
                     </div>
 
-                    {/* Rate */}
+                    {/* Price (base, GST-exclusive) */}
                     <div className="col-span-2">
                       <input
                         type="number" min="0"
@@ -627,14 +627,15 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
                       />
                       {row.name && (
                         <span className="block text-[11px] text-gray-400 text-right mt-0.5">
-                          incl. {parseFloat(row.gst_percentage) || 0}% GST
+                          + {parseFloat(row.gst_percentage) || 0}% GST
                         </span>
                       )}
                     </div>
 
-                    {/* Line total */}
+                    {/* Line total — taxable value (Price × Qty), matching the printed
+                        receipt; GST is added on top in the totals below. */}
                     <div className="col-span-2 text-right text-sm font-semibold text-gray-800 pr-1">
-                      ₹{calcLine(row).toFixed(2)}
+                      ₹{calcLineTaxable(row).toFixed(2)}
                     </div>
 
                     {/* Remove */}
