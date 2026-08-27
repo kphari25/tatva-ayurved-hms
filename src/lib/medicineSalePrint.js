@@ -33,7 +33,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
   const rowsHTML = saleData.items.map((r, i) => `
       <tr>
         <td>${i + 1}</td>
-        <td>${r.item_code ? `<strong>${r.item_code}</strong><br><small>${r.name}</small>` : r.name}</td>
+        <td>${r.name}</td>
         <td style="text-align:center">${r.quantity}</td>
         <td style="text-align:right">₹${parseFloat(r.rate).toFixed(2)}</td>
         <td style="text-align:center">${r.gst_percentage != null ? `${r.gst_percentage}%` : '—'}</td>

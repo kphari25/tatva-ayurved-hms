@@ -289,9 +289,19 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   const validRows = () => rows.filter(r => r.name && parseFloat(r.rate) > 0 && parseFloat(r.quantity) > 0);
 
   // ── Print ───────────────────────────────────────────────────
-  const handlePrint = (saleData = null) => {
+  // Same numbering handleSave uses — called here too so "Preview & Print"
+  // shows the real upcoming bill number instead of a placeholder. It's a
+  // preview of what the number *will* be, not a reservation of it, so it
+  // could in principle drift if another sale is saved in between; that's an
+  // acceptable, unlikely edge case for a display-only preview.
+  const getNextBillNumber = async () => {
+    const snap = await getDocs(collection(db, 'medicine_sales'));
+    return `MED-${new Date().getFullYear()}-${String(snap.size + 1).padStart(4, '0')}`;
+  };
+
+  const handlePrint = async (saleData = null) => {
     const data = saleData || {
-      bill_number: 'PREVIEW',
+      bill_number: await getNextBillNumber(),
       customer_name: formData.customer_name,
       mrd_number: formData.mrd_number,
       phone: formData.phone,
@@ -331,8 +341,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
     if (items.length === 0) { alert('Please add at least one medicine.'); return; }
     try {
       setSaving(true);
-      const snap = await getDocs(collection(db, 'medicine_sales'));
-      const billNumber = `MED-${new Date().getFullYear()}-${String(snap.size + 1).padStart(4, '0')}`;
+      const billNumber = await getNextBillNumber();
       const saleData = {
         bill_number: billNumber,
         // Durable link back to the patient (and therefore their
