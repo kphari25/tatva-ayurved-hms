@@ -254,16 +254,129 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
 // match the spelling used when assigning them, their lists will show empty.
 const normName = (s) => (s || '').trim().toLowerCase();
 
+// Second step of the "existing patient" appointment flow — collects Time /
+// Type / Doctor / SMS for the visit once the patient's own info has been
+// confirmed. Kept separate from AddAppointmentModal because those fields
+// live below the Patient Name search field there, so a front-desk user who
+// picks a match before touching them would otherwise book a blank-time
+// appointment with no chance to fill them in.
+const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], onCancel, onConfirm, saving }) => {
+  const [fields, setFields] = useState({
+    time: initialFields?.time || '',
+    type: initialFields?.type || '',
+    doctorId: initialFields?.doctorId || '',
+    doctorName: initialFields?.doctorName || '',
+    sendSms: initialFields?.sendSms || false,
+  });
+  const [error, setError] = useState('');
+
+  const handleDoctorChange = (e) => {
+    const selected = doctors.find(d => d.id === e.target.value);
+    setFields(f => ({ ...f, doctorId: selected ? selected.id : '', doctorName: selected ? selected.name : '' }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!fields.time) {
+      setError('Time is required.');
+      return;
+    }
+    onConfirm(fields);
+  };
+
+  const patientName = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim();
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="px-6 py-4 border-b">
+          <h3 className="text-lg font-bold text-gray-900">Schedule Visit</h3>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Booking for <span className="font-medium text-gray-700">{patientName}</span>
+            {patient?.mrd_number && <span className="text-gray-400"> · {patient.mrd_number}</span>}
+          </p>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+            <input
+              type="time"
+              value={fields.time}
+              onChange={(e) => setFields({ ...fields, time: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
+            <input
+              type="text"
+              value={fields.type}
+              onChange={(e) => setFields({ ...fields, type: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. Consultation, Ayurvedic Therapy, Follow Up"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">🩺 Doctor</label>
+            <select
+              value={fields.doctorId}
+              onChange={handleDoctorChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="">— No Doctor Assigned —</option>
+              {doctors.map(d => (
+                <option key={d.id} value={d.id}>{d.name}{d.designation ? ` (${d.designation})` : ''}</option>
+              ))}
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={fields.sendSms}
+              onChange={(e) => setFields({ ...fields, sendSms: e.target.checked })}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Send SMS confirmation to patient
+          </label>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Booking...' : 'Book Appointment'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showAddAppointment, setShowAddAppointment] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
   // Picking an existing patient while adding an appointment hands off to
-  // their full edit dialog (see AddAppointmentModal's onPickExistingPatient)
-  // — these hold the patient + the in-progress appointment fields (time,
-  // type, doctor, SMS) until that dialog reports back success or cancel.
+  // their full edit dialog (see AddAppointmentModal's onPickExistingPatient),
+  // then to a dedicated ScheduleExistingPatientModal step once that's saved
+  // — see handlePatientConfirmedForAppt for why Time/Type/Doctor are
+  // collected separately rather than trusted from the initial small form.
   const [existingPatientForAppt, setExistingPatientForAppt] = useState(null);
   const [pendingApptFields, setPendingApptFields] = useState(null);
+  const [scheduleForPatient, setScheduleForPatient] = useState(null);
   const [bookingForExistingPatient, setBookingForExistingPatient] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [doctors, setDoctors] = useState([]);
@@ -668,18 +781,40 @@ const Dashboard = () => {
 
   // Fires once the patient edit dialog saves successfully — re-reads the
   // patient doc (name/phone may have just been updated in that dialog) and
-  // books the appointment with it. No linked lead here: unlike a brand-new
-  // name typed into the quick form, this is already a registered patient.
-  const bookAppointmentForExistingPatient = async () => {
+  // moves to the Schedule Visit step, rather than booking immediately: the
+  // Time/Type/Doctor fields the user may have typed into the small form
+  // before searching for this patient are easy to have skipped entirely
+  // (Patient Name is the first field), so they're confirmed explicitly here
+  // instead of silently booking a blank-time appointment.
+  const handlePatientConfirmedForAppt = async () => {
     const patient = existingPatientForAppt;
-    const fields = pendingApptFields;
-    cancelExistingPatientAppt();
-    if (!patient || !fields) return;
+    setExistingPatientForAppt(null);
+    if (!patient) return;
     const patientId = patient.firebaseId || patient.id;
     try {
-      setBookingForExistingPatient(true);
       const snap = await getDoc(doc(db, 'patients', patientId));
-      const p = snap.exists() ? snap.data() : patient;
+      const p = snap.exists() ? { id: patientId, firebaseId: patientId, ...snap.data() } : patient;
+      setScheduleForPatient(p);
+    } catch (error) {
+      console.error('Error reloading patient before scheduling:', error);
+      setScheduleForPatient(patient);
+    }
+  };
+
+  const cancelScheduleForExistingPatient = () => {
+    setScheduleForPatient(null);
+    setPendingApptFields(null);
+  };
+
+  // No linked lead here: unlike a brand-new name typed into the quick form,
+  // this is already a registered patient.
+  const bookAppointmentForExistingPatient = async (fields) => {
+    const p = scheduleForPatient;
+    cancelScheduleForExistingPatient();
+    if (!p || !fields?.time) return;
+    const patientId = p.firebaseId || p.id;
+    try {
+      setBookingForExistingPatient(true);
       const patientName = `${p.first_name || ''} ${p.last_name || ''}`.trim();
       const today = toDateStr(new Date());
 
@@ -688,7 +823,7 @@ const Dashboard = () => {
         patient_id: patientId,
         phone: p.phone || '',
         time: fields.time,
-        type: fields.type,
+        type: fields.type || '',
         status: 'scheduled',
         contact_status: 'called_in',
         date: today,
@@ -1285,9 +1420,21 @@ const Dashboard = () => {
           <PatientRegistrationNew
             patient={existingPatientForAppt}
             onClose={cancelExistingPatientAppt}
-            onSuccess={bookAppointmentForExistingPatient}
+            onSuccess={handlePatientConfirmedForAppt}
           />
         </div>
+      )}
+
+      {/* Patient info confirmed — now collect Time/Type/Doctor for the visit. */}
+      {scheduleForPatient && (
+        <ScheduleExistingPatientModal
+          patient={scheduleForPatient}
+          initialFields={pendingApptFields}
+          doctors={doctors}
+          onCancel={cancelScheduleForExistingPatient}
+          onConfirm={bookAppointmentForExistingPatient}
+          saving={bookingForExistingPatient}
+        />
       )}
       {bookingForExistingPatient && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
