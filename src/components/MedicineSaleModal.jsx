@@ -811,6 +811,12 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               ref={printIframeRef}
               title="Medicine sale bill print preview"
               srcDoc={buildMedicineSalePrintHTML(printPreviewData, doctorInfo)}
+              // "Save & Print" should actually print, not just open a preview
+              // the user then has to print manually — fire it automatically
+              // once the bill has finished rendering in the iframe. "Preview
+              // & Print" leaves this to the Print button instead, since the
+              // whole point there is to look before printing.
+              onLoad={() => { if (closeOnPreviewDismiss) handlePrintFromPreview(); }}
               className="bg-white shadow-lg"
               style={{ width: '794px', minHeight: '1123px', border: 'none' }}
             />

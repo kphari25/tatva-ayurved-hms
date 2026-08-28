@@ -833,11 +833,11 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
       {/* Medicine Sale Modal */}
       {showMedicineSale && (
         <MedicineSaleModal
+          // MedicineSaleModal shows its own print preview after saving and
+          // calls onClose only once that's dismissed — closing here too
+          // would unmount it (and the still-unprinted preview) immediately.
           onClose={() => setShowMedicineSale(false)}
-          onSave={() => {
-            setShowMedicineSale(false);
-            loadInvoices();
-          }}
+          onSave={() => loadInvoices()}
         />
       )}
     </div>

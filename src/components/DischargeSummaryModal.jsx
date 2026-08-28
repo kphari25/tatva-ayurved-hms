@@ -1529,8 +1529,10 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
       {showMedicineInvoice && (
         <MedicineSaleModal
+          // MedicineSaleModal shows its own print preview after saving and
+          // calls onClose only once that's dismissed — closing here too
+          // would unmount it (and the still-unprinted preview) immediately.
           onClose={() => setShowMedicineInvoice(false)}
-          onSave={() => setShowMedicineInvoice(false)}
           initialCustomer={{
             customer_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
             mrd_number: form.mrd_no || patient?.mrd_number || patient?.patient_number || '',
