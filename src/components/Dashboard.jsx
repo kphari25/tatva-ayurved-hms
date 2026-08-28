@@ -50,6 +50,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
   const [formData, setFormData] = useState({
     patient: appointment?.patient || '',
     phone: appointment?.phone || '',
+    date: appointment?.date || toDateStr(new Date()),
     time: appointment?.time || '',
     type: appointment?.type || '',
     doctorId: appointment?.doctorId || '',
@@ -95,6 +96,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     setPatientSuggestions([]);
     if (onPickExistingPatient) {
       onPickExistingPatient(p, {
+        date: formData.date,
         time: formData.time,
         type: formData.type,
         doctorId: formData.doctorId,
@@ -115,8 +117,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.patient.trim() || !formData.time) {
-      setError('Patient name and time are required.');
+    if (!formData.patient.trim() || !formData.date || !formData.time) {
+      setError('Patient name, date and time are required.');
       return;
     }
     if (formData.sendSms && !formData.phone.trim()) {
@@ -130,7 +132,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-bold text-gray-900">{isEditMode ? 'Edit Appointment' : "Add Today's Appointment"}</h3>
+          <h3 className="text-lg font-bold text-gray-900">{isEditMode ? 'Edit Appointment' : 'Add Appointment'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
@@ -182,14 +184,25 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
               placeholder="e.g. 9876543210"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
-            <input
-              type="time"
-              value={formData.time}
-              onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+              <input
+                type="time"
+                value={formData.time}
+                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
@@ -262,6 +275,7 @@ const normName = (s) => (s || '').trim().toLowerCase();
 // appointment with no chance to fill them in.
 const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], onCancel, onConfirm, saving }) => {
   const [fields, setFields] = useState({
+    date: initialFields?.date || toDateStr(new Date()),
     time: initialFields?.time || '',
     type: initialFields?.type || '',
     doctorId: initialFields?.doctorId || '',
@@ -277,8 +291,8 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], on
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!fields.time) {
-      setError('Time is required.');
+    if (!fields.date || !fields.time) {
+      setError('Date and time are required.');
       return;
     }
     onConfirm(fields);
@@ -302,14 +316,25 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], on
               {error}
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
-            <input
-              type="time"
-              value={fields.time}
-              onChange={(e) => setFields({ ...fields, time: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <input
+                type="date"
+                value={fields.date}
+                onChange={(e) => setFields({ ...fields, date: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+              <input
+                type="time"
+                value={fields.time}
+                onChange={(e) => setFields({ ...fields, time: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
@@ -696,12 +721,12 @@ const Dashboard = () => {
     const isEditMode = !!editingAppointment;
     try {
       setSavingAppointment(true);
-      const today = toDateStr(new Date());
 
       if (isEditMode) {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), {
           patient: formData.patient,
           phone: formData.phone || '',
+          date: formData.date,
           time: formData.time,
           type: formData.type,
           doctorId: formData.doctorId || '',
@@ -727,7 +752,7 @@ const Dashboard = () => {
           type: formData.type,
           status: 'scheduled',
           contact_status: 'called_in',
-          date: today,
+          date: formData.date,
           doctorId: formData.doctorId || '',
           doctorName: formData.doctorName || '',
           createdAt: new Date().toISOString()
@@ -745,7 +770,7 @@ const Dashboard = () => {
           const result = await sendAppointmentSMSToPatient(formData.phone, formData.patient, {
             appointmentType: formData.type || 'appointment',
             doctorName: formData.doctorName || 'our team',
-            date: today,
+            date: formData.date,
             time: formData.time,
           });
           if (!result.success) console.warn('Appointment SMS not sent:', result.error);
@@ -811,12 +836,11 @@ const Dashboard = () => {
   const bookAppointmentForExistingPatient = async (fields) => {
     const p = scheduleForPatient;
     cancelScheduleForExistingPatient();
-    if (!p || !fields?.time) return;
+    if (!p || !fields?.date || !fields?.time) return;
     const patientId = p.firebaseId || p.id;
     try {
       setBookingForExistingPatient(true);
       const patientName = `${p.first_name || ''} ${p.last_name || ''}`.trim();
-      const today = toDateStr(new Date());
 
       await addDoc(collection(db, 'appointments'), {
         patient: patientName,
@@ -826,7 +850,7 @@ const Dashboard = () => {
         type: fields.type || '',
         status: 'scheduled',
         contact_status: 'called_in',
-        date: today,
+        date: fields.date,
         doctorId: fields.doctorId || '',
         doctorName: fields.doctorName || '',
         createdAt: new Date().toISOString(),
@@ -837,7 +861,7 @@ const Dashboard = () => {
           const result = await sendAppointmentSMSToPatient(p.phone, patientName, {
             appointmentType: fields.type || 'appointment',
             doctorName: fields.doctorName || 'our team',
-            date: today,
+            date: fields.date,
             time: fields.time,
           });
           if (!result.success) console.warn('Appointment SMS not sent:', result.error);
