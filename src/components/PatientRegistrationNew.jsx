@@ -3,20 +3,32 @@ import { UserPlus, Save, X, Receipt, CheckCircle, FileText, UserCheck } from 'lu
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
+import { daysSince } from '../lib/formatDate';
 import InvoiceModal from './InvoiceModal';
 
 // Visual/DOM order of every field in the form. Used to move focus to the next
 // field when the user presses Enter, instead of the browser's default of
 // submitting the form on Enter inside any single-line input.
 const FIELD_ORDER = [
-  'first_name', 'last_name', 'age', 'gender', 'patient_type', 'registration_fee',
+  'first_name', 'last_name', 'age', 'gender', 'patient_type', 'registration_fee', 'consultation_fees',
   'blood_group', 'phone', 'email', 'address', 'city', 'state', 'pincode',
   'emergency_contact_name', 'emergency_contact_phone',
   'allergies', 'chronic_conditions', 'current_medications', 'medical_history', 'notes'
 ];
 
-const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) => {
+// No last_visit_date on older records — best-effort estimate from whatever
+// visit-adjacent field is already on file, until this patient's next save
+// (registration or returning check-in) sets the real thing.
+const estimateLastVisit = (p) => p?.last_visit_date || p?.discharge_date || p?.admission_date || p?.updated_at || p?.created_at || null;
+
+const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, returningCheckIn = false }) => {
   const isEditMode = !!patient;
+  // Consultation fee only applies 30+ days after the patient's last visit —
+  // shown as an editable amount when it does, disabled with an explanation
+  // when it doesn't. Unknown last-visit (no data to estimate from at all)
+  // errs toward charging it.
+  const lastVisitDaysAgo = returningCheckIn ? daysSince(estimateLastVisit(patient)) : null;
+  const consultationFeeApplies = returningCheckIn && (lastVisitDaysAgo === null || lastVisitDaysAgo >= 30);
   const [loading, setLoading] = useState(false);
   const [sendWelcomeSMS, setSendWelcomeSMS] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
@@ -47,7 +59,10 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
       current_medications: patient?.current_medications || '',
       medical_history: patient?.medical_history || '',
       notes: patient?.notes || [lead?.interest ? `Inquiry: ${lead.interest}` : '', lead?.notes || ''].filter(Boolean).join('\n'),
-      registration_fee: patient?.registration_fee || ''
+      registration_fee: patient?.registration_fee || '',
+      // Always starts blank — this is a fresh per-visit charge, not a value
+      // carried over from the patient's record.
+      consultation_fees: ''
     };
   });
 
@@ -163,7 +178,24 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
         if (!patient.mrd_number) {
           updateData.mrd_number = await generateMRDNumber();
         }
+        if (returningCheckIn) {
+          // Same effect as PatientPortal's own handleReactivate, plus this
+          // is the moment that establishes an accurate last_visit_date going
+          // forward for the 30-day consultation-fee check next time.
+          updateData.admission_status = null;
+          updateData.last_visit_date = new Date().toISOString().split('T')[0];
+        }
         await updateDoc(doc(db, 'patients', patient.id), updateData);
+
+        if (returningCheckIn) {
+          // Show the same success/invoice screen a new registration gets,
+          // instead of closing immediately — the front desk still needs a
+          // chance to bill the consultation fee.
+          setSavedPatient({ id: patient.id, firebaseId: patient.id, ...patient, ...updateData });
+          setRegistrationSuccess(true);
+          return;
+        }
+
         alert(`✅ Patient updated successfully!\n\n${formData.first_name} ${formData.last_name}`);
         if (onSuccess) onSuccess();
         if (onClose) onClose();
@@ -186,6 +218,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
         ...(formData.patient_type === 'IP' ? { admission_status: 'pending_admission' } : {}),
         prescriptions: [],
         visits: [],
+        last_visit_date: new Date().toISOString().split('T')[0],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         status: 'active',
@@ -252,8 +285,9 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
     }
   };
 
-  // Success screen shown after registration
+  // Success screen shown after registration (or a returning check-in)
   if (registrationSuccess && savedPatient) {
+    const consultationFeeAmount = parseFloat(savedPatient.consultation_fees) || 0;
     return (
       <>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
@@ -261,8 +295,12 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-10 h-10 text-green-600" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Patient Registered!</h2>
-            <p className="text-gray-500 mb-6">The patient has been successfully registered in the system.</p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">{returningCheckIn ? 'Patient Checked In!' : 'Patient Registered!'}</h2>
+            <p className="text-gray-500 mb-6">
+              {returningCheckIn
+                ? 'The patient is back in the active list and their details are up to date.'
+                : 'The patient has been successfully registered in the system.'}
+            </p>
 
             <div className="bg-gray-50 rounded-xl p-4 text-left mb-6 space-y-2 text-sm">
               <div className="flex justify-between">
@@ -283,22 +321,30 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
                 <span className="text-gray-500">Phone</span>
                 <span className="font-medium text-gray-700">{savedPatient.phone || '—'}</span>
               </div>
-              {savedPatient.registration_fee > 0 && (
+              {!returningCheckIn && savedPatient.registration_fee > 0 && (
                 <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
                   <span className="text-gray-500">Registration Fee</span>
                   <span className="font-bold text-gray-800">₹{parseFloat(savedPatient.registration_fee).toFixed(2)}</span>
                 </div>
               )}
+              {returningCheckIn && consultationFeeAmount > 0 && (
+                <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+                  <span className="text-gray-500">Consultation Fee</span>
+                  <span className="font-bold text-gray-800">₹{consultationFeeAmount.toFixed(2)}</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">
-              <button
-                onClick={() => setShowInvoice(true)}
-                className="w-full py-3 px-6 bg-teal-600 text-white rounded-xl font-semibold hover:bg-teal-700 flex items-center justify-center gap-2 transition-colors"
-              >
-                <Receipt className="w-5 h-5" />
-                Generate Registration Invoice
-              </button>
+              {(!returningCheckIn || consultationFeeAmount > 0) && (
+                <button
+                  onClick={() => setShowInvoice(true)}
+                  className="w-full py-3 px-6 bg-teal-600 text-white rounded-xl font-semibold hover:bg-teal-700 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Receipt className="w-5 h-5" />
+                  {returningCheckIn ? 'Generate Consultation Invoice' : 'Generate Registration Invoice'}
+                </button>
+              )}
               <button
                 onClick={() => {
                   setRegistrationSuccess(false);
@@ -317,7 +363,8 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
         {showInvoice && (
           <InvoiceModal
             patient={savedPatient}
-            registrationFee={parseFloat(savedPatient.registration_fee) || 0}
+            registrationFee={!returningCheckIn ? (parseFloat(savedPatient.registration_fee) || 0) : 0}
+            consultationFee={returningCheckIn ? consultationFeeAmount : 0}
             onClose={() => {
               setShowInvoice(false);
             }}
@@ -343,8 +390,12 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
                 <UserPlus className="w-6 h-6 text-teal-600" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-800">{isEditMode ? 'Edit Patient' : 'New Patient Registration'}</h1>
-                <p className="text-gray-600 text-sm">{isEditMode ? 'Update patient details and medical history' : 'Complete medical history and information'}</p>
+                <h1 className="text-2xl font-bold text-gray-800">
+                  {returningCheckIn ? 'Returning Patient Check-In' : isEditMode ? 'Edit Patient' : 'New Patient Registration'}
+                </h1>
+                <p className="text-gray-600 text-sm">
+                  {returningCheckIn ? 'Review and update their details, then check them back in' : isEditMode ? 'Update patient details and medical history' : 'Complete medical history and information'}
+                </p>
                 {!isEditMode && prefillData && (
                   <p className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2.5 py-0.5 mt-1.5 inline-block">
                     {prefillData.appointmentId ? 'Registering walk-in from appointment' : 'Converting lead'}: {prefillData.name}
@@ -472,6 +523,37 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
+
+              {/* Consultation Fee — returning check-in only, active when it's
+                  been 30+ days since the patient's last visit */}
+              {returningCheckIn && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Consultation Fee (₹)
+                  </label>
+                  <input
+                    type="number"
+                    name="consultation_fees"
+                    value={formData.consultation_fees}
+                    onChange={handleChange}
+                    onKeyDown={advanceOnEnter('consultation_fees')}
+                    ref={setFieldRef('consultation_fees')}
+                    min="0"
+                    disabled={!consultationFeeApplies}
+                    placeholder={consultationFeeApplies ? 'e.g. 300' : '—'}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent ${
+                      consultationFeeApplies ? 'border-gray-300' : 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
+                    }`}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {lastVisitDaysAgo === null
+                      ? 'No prior visit on record — consultation fee applies.'
+                      : consultationFeeApplies
+                        ? `Last visit was ${lastVisitDaysAgo} days ago — consultation fee applies.`
+                        : `Last visit was ${lastVisitDaysAgo} day${lastVisitDaysAgo === 1 ? '' : 's'} ago — no consultation fee needed.`}
+                  </p>
+                </div>
+              )}
 
               {/* MRD Number - auto-generated, read-only */}
               <div>
@@ -745,12 +827,12 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess }) =>
               {loading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  {isEditMode ? 'Updating...' : 'Registering...'}
+                  {returningCheckIn ? 'Checking In...' : isEditMode ? 'Updating...' : 'Registering...'}
                 </>
               ) : (
                 <>
                   <Save className="w-5 h-5" />
-                  {isEditMode ? 'Update Patient' : 'Register Patient'}
+                  {returningCheckIn ? 'Check In Patient' : isEditMode ? 'Update Patient' : 'Register Patient'}
                 </>
               )}
             </button>

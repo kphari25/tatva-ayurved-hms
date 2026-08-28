@@ -18,8 +18,9 @@ const HOSPITAL = {
   regNo: 'BFHP03-C110100-00061-2025',
 };
 
-const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
+const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultationFee = 0 }) => {
   const isRegistrationInvoice = registrationFee > 0;
+  const isConsultationInvoice = consultationFee > 0;
   const [invoiceType, setInvoiceType] = useState(patient?.patient_type === 'IP' ? 'IP' : 'OP');
   const [saving, setSaving] = useState(false);
   const [sendingSMS, setSendingSMS] = useState(false);
@@ -119,6 +120,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     // Registration fee shown for records but deducted from balance due
     registration_fee: isRegistrationInvoice ? registrationFee : 0,
     reg_fee_already_paid: isRegistrationInvoice,
+    consultation_fees: isConsultationInvoice ? consultationFee : 0,
     room_rent: 0,
     room_type: '',
     room_number: '',
@@ -131,7 +133,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     gst_percentage: 0,
     discount: 0,
     payment_mode: 'Cash',
-    notes: isRegistrationInvoice ? 'Registration fee invoice — fee collected at time of registration.' : ''
+    notes: isRegistrationInvoice
+      ? 'Registration fee invoice — fee collected at time of registration.'
+      : isConsultationInvoice
+        ? 'Consultation fee invoice — returning patient check-in.'
+        : ''
   });
 
   const [messTab, setMessTab] = useState('patient'); // 'patient' | 'bystander'
@@ -239,6 +245,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
     gross += parseFloat(formData.doctor_fees) || 0;
     gross += parseFloat(formData.lab_test_charges) || 0;
     gross += parseFloat(formData.registration_fee) || 0;
+    gross += parseFloat(formData.consultation_fees) || 0;
     if (invoiceType === 'IP') {
       gross += (parseFloat(formData.room_rent) || 0) * (parseFloat(formData.days) || 0);
       gross += calcMessTotal(formData.patient_meals) * (parseFloat(formData.mess_days) || 0);
@@ -298,6 +305,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
         registration_fee: parseFloat(formData.registration_fee) || 0,
         reg_fee_already_paid: formData.reg_fee_already_paid,
         is_registration_invoice: isRegistrationInvoice,
+        consultation_fees: parseFloat(formData.consultation_fees) || 0,
+        is_consultation_invoice: isConsultationInvoice,
         gross_total: calculateGross(),
         subtotal: calculateSubtotal(),
         gst_percentage: parseFloat(formData.gst_percentage) || 0,
@@ -378,6 +387,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
       lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
       registration_fee: parseFloat(formData.registration_fee) || 0,
       reg_fee_already_paid: formData.reg_fee_already_paid,
+      consultation_fees: parseFloat(formData.consultation_fees) || 0,
       room_rent: parseFloat(formData.room_rent) || 0,
       room_type: formData.room_type,
       room_number: formData.room_number,
@@ -491,6 +501,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                 <td>-</td>
                 <td>-</td>
                 <td>₹${data.registration_fee.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${(data.consultation_fees || 0) > 0 ? `
+              <tr style="background:#f0fdfa;">
+                <td><strong>Consultation Fee</strong></td>
+                <td>-</td>
+                <td>-</td>
+                <td>₹${data.consultation_fees.toFixed(2)}</td>
               </tr>
             ` : ''}
             ${(data.treatment_items && data.treatment_items.length > 0) ? `
@@ -891,6 +909,16 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0 }) => {
                     type="number"
                     value={formData.lab_test_charges}
                     onChange={(e) => setFormData({ ...formData, lab_test_charges: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Consultation Fee (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.consultation_fees}
+                    onChange={(e) => setFormData({ ...formData, consultation_fees: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     placeholder="0.00"
                   />

@@ -24,3 +24,17 @@ export const addDaysToDateString = (dateStr, days) => {
   const dd = String(dt.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 };
+
+// Whole days between a plain YYYY-MM-DD (or full ISO timestamp — only the
+// leading date is used) and today, via local Date components (see note
+// above). Returns null when dateStr is missing/unparseable, so callers can
+// distinguish "0 days ago" from "unknown".
+export const daysSince = (dateStr) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr || '');
+  if (!match) return null;
+  const [, y, m, d] = match;
+  const then = new Date(Number(y), Number(m) - 1, Number(d));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.floor((today - then) / 86400000);
+};

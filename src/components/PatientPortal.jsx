@@ -46,10 +46,14 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [editingPatient, setEditingPatient] = useState(null);
 
   // Returning-patient check-in: look up by name + phone across all
-  // statuses (not just the active tab) and reactivate in one step.
+  // statuses (not just the active tab), then check them in through the full
+  // registration-style edit form (returningCheckInPatient) — same fields as
+  // New Patient Registration, plus a consultation fee when it's been 30+
+  // days since their last visit.
   const [showReturningPatient, setShowReturningPatient] = useState(false);
   const [returningName, setReturningName] = useState('');
   const [returningPhone, setReturningPhone] = useState('');
+  const [returningCheckInPatient, setReturningCheckInPatient] = useState(null);
   const [showAssignDoctor, setShowAssignDoctor] = useState(false);
   const [assignDoctorPatient, setAssignDoctorPatient] = useState(null);
   const [assignDoctorName, setAssignDoctorName] = useState('');
@@ -371,21 +375,19 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     }
   };
 
-  // Returning-patient check-in flow: reactivate (if needed) then jump
-  // straight to the patient's details so the front desk can carry on.
+  // Returning-patient check-in flow.
   const closeReturningPatientModal = () => {
     setShowReturningPatient(false);
     setReturningName('');
     setReturningPhone('');
   };
 
-  const handleCheckInReturningPatient = async (patient) => {
-    const ok = await handleReactivate(patient);
-    if (ok) {
-      closeReturningPatientModal();
-      setFilterStatus('active');
-      viewPatientDetails(patient);
-    }
+  // Opens the full registration-style edit form for this patient — actual
+  // reactivation, last_visit_date, and the consultation-fee prompt all
+  // happen inside PatientRegistrationNew once it's saved (returningCheckIn mode).
+  const openReturningCheckIn = (patient) => {
+    closeReturningPatientModal();
+    setReturningCheckInPatient(patient);
   };
 
   const returningPatientMatches = (returningName.trim() || returningPhone.trim())
@@ -1551,6 +1553,18 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
         </div>
       )}
 
+      {/* ── Returning Patient Check-In: full edit form ── */}
+      {returningCheckInPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
+          <PatientRegistrationNew
+            patient={returningCheckInPatient}
+            returningCheckIn
+            onClose={() => { setReturningCheckInPatient(null); loadPatients(); }}
+            onSuccess={() => { setReturningCheckInPatient(null); loadPatients(); }}
+          />
+        </div>
+      )}
+
       {/* ── Returning Patient Check-In Modal ── */}
       {showReturningPatient && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1615,7 +1629,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                           </span>
                           {isDischarged ? (
                             <button
-                              onClick={() => handleCheckInReturningPatient(p)}
+                              onClick={() => openReturningCheckIn(p)}
                               className="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700"
                             >
                               Check In
