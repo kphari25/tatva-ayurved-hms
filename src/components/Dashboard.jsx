@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil } from 'lucide-react';
-import { collection, getDocs, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Search } from 'lucide-react';
+import { collection, getDocs, getDoc, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { sendAppointmentSMSToPatient } from '../lib/sms';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment } from '../lib/appointmentBuckets';
+import PatientRegistrationNew from './PatientRegistrationNew';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -44,7 +45,7 @@ const formatGroupDate = (dateStr) => {
   return new Date(y, m - 1, day).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 };
 
-const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [] }) => {
+const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [], patients = [], onPickExistingPatient }) => {
   const isEditMode = !!appointment;
   const [formData, setFormData] = useState({
     patient: appointment?.patient || '',
@@ -56,6 +57,52 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     sendSms: false,
   });
   const [error, setError] = useState('');
+
+  // Existing-patient search on the Patient Name field — new appointments
+  // only; editing an already-booked appointment keeps the plain text field,
+  // since it's not tied to a real patient record either way.
+  const [patientSuggestions, setPatientSuggestions] = useState([]);
+  const [showPatientDrop, setShowPatientDrop] = useState(false);
+  const patientFieldRef = useRef(null);
+
+  useEffect(() => {
+    if (isEditMode) return;
+    const handler = (e) => {
+      if (patientFieldRef.current && !patientFieldRef.current.contains(e.target)) setShowPatientDrop(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isEditMode]);
+
+  const handlePatientNameChange = (value) => {
+    setFormData(f => ({ ...f, patient: value }));
+    if (isEditMode || value.trim().length < 2) { setPatientSuggestions([]); setShowPatientDrop(false); return; }
+    const q = value.trim().toLowerCase();
+    const matches = patients.filter(p => {
+      const fullName = `${p.first_name || ''} ${p.last_name || ''}`.toLowerCase();
+      return fullName.includes(q) || (p.mrd_number || '').toLowerCase().includes(q) || (p.phone || '').includes(q);
+    }).slice(0, 8);
+    setPatientSuggestions(matches);
+    setShowPatientDrop(true);
+  };
+
+  // Picking an existing match hands off to the full patient edit dialog
+  // (same fields as New Patient Registration, pre-filled) instead of just
+  // filling in this form — the appointment itself gets booked once that's
+  // saved, using whatever name/phone the patient record ends up with.
+  const handleSelectExistingPatient = (p) => {
+    setShowPatientDrop(false);
+    setPatientSuggestions([]);
+    if (onPickExistingPatient) {
+      onPickExistingPatient(p, {
+        time: formData.time,
+        type: formData.type,
+        doctorId: formData.doctorId,
+        doctorName: formData.doctorName,
+        sendSms: formData.sendSms,
+      });
+    }
+  };
 
   const handleDoctorChange = (e) => {
     const selected = doctors.find(d => d.id === e.target.value);
@@ -94,15 +141,36 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
               {error}
             </div>
           )}
-          <div>
+          <div className="relative" ref={patientFieldRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name</label>
-            <input
-              type="text"
-              value={formData.patient}
-              onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. Anjali Menon"
-            />
+            <div className="relative">
+              {!isEditMode && <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />}
+              <input
+                type="text"
+                value={formData.patient}
+                onChange={(e) => handlePatientNameChange(e.target.value)}
+                onFocus={() => !isEditMode && patientSuggestions.length > 0 && setShowPatientDrop(true)}
+                className={`w-full border border-gray-300 rounded-lg py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${!isEditMode ? 'pl-9 pr-3' : 'px-3'}`}
+                placeholder={isEditMode ? 'e.g. Anjali Menon' : 'Search existing patients or type a new name…'}
+              />
+            </div>
+            {!isEditMode && showPatientDrop && patientSuggestions.length > 0 && (
+              <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                {patientSuggestions.map(p => (
+                  <div
+                    key={p.firebaseId || p.id}
+                    onMouseDown={() => handleSelectExistingPatient(p)}
+                    className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
+                  >
+                    <div className="font-medium text-sm text-gray-900">{p.first_name} {p.last_name}</div>
+                    <div className="text-xs text-gray-500 flex gap-3">
+                      {p.mrd_number && <span>{p.mrd_number}</span>}
+                      {p.phone && <span>📞 {p.phone}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
@@ -190,6 +258,13 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showAddAppointment, setShowAddAppointment] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
+  // Picking an existing patient while adding an appointment hands off to
+  // their full edit dialog (see AddAppointmentModal's onPickExistingPatient)
+  // — these hold the patient + the in-progress appointment fields (time,
+  // type, doctor, SMS) until that dialog reports back success or cancel.
+  const [existingPatientForAppt, setExistingPatientForAppt] = useState(null);
+  const [pendingApptFields, setPendingApptFields] = useState(null);
+  const [bookingForExistingPatient, setBookingForExistingPatient] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [doctors, setDoctors] = useState([]);
   const [therapists, setTherapists] = useState([]);
@@ -574,6 +649,74 @@ const Dashboard = () => {
       alert('Failed to save appointment. Please try again.');
     } finally {
       setSavingAppointment(false);
+    }
+  };
+
+  // AddAppointmentModal's search matched an existing patient — swap it for
+  // the full edit dialog (pre-filled), holding onto the appointment fields
+  // already typed in (time/type/doctor/SMS) until that dialog reports back.
+  const handlePickExistingPatientForAppt = (patient, apptFields) => {
+    setShowAddAppointment(false);
+    setExistingPatientForAppt(patient);
+    setPendingApptFields(apptFields);
+  };
+
+  const cancelExistingPatientAppt = () => {
+    setExistingPatientForAppt(null);
+    setPendingApptFields(null);
+  };
+
+  // Fires once the patient edit dialog saves successfully — re-reads the
+  // patient doc (name/phone may have just been updated in that dialog) and
+  // books the appointment with it. No linked lead here: unlike a brand-new
+  // name typed into the quick form, this is already a registered patient.
+  const bookAppointmentForExistingPatient = async () => {
+    const patient = existingPatientForAppt;
+    const fields = pendingApptFields;
+    cancelExistingPatientAppt();
+    if (!patient || !fields) return;
+    const patientId = patient.firebaseId || patient.id;
+    try {
+      setBookingForExistingPatient(true);
+      const snap = await getDoc(doc(db, 'patients', patientId));
+      const p = snap.exists() ? snap.data() : patient;
+      const patientName = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+      const today = toDateStr(new Date());
+
+      await addDoc(collection(db, 'appointments'), {
+        patient: patientName,
+        patient_id: patientId,
+        phone: p.phone || '',
+        time: fields.time,
+        type: fields.type,
+        status: 'scheduled',
+        contact_status: 'called_in',
+        date: today,
+        doctorId: fields.doctorId || '',
+        doctorName: fields.doctorName || '',
+        createdAt: new Date().toISOString(),
+      });
+
+      if (fields.sendSms && p.phone) {
+        try {
+          const result = await sendAppointmentSMSToPatient(p.phone, patientName, {
+            appointmentType: fields.type || 'appointment',
+            doctorName: fields.doctorName || 'our team',
+            date: today,
+            time: fields.time,
+          });
+          if (!result.success) console.warn('Appointment SMS not sent:', result.error);
+        } catch (smsError) {
+          console.error('⚠️ Failed to send appointment SMS:', smsError);
+        }
+      }
+
+      await loadDashboardData();
+    } catch (error) {
+      console.error('Error booking appointment for existing patient:', error);
+      alert('Patient details were saved, but booking the appointment failed. Please add it manually from the Appointments panel.');
+    } finally {
+      setBookingForExistingPatient(false);
     }
   };
 
@@ -1130,7 +1273,29 @@ const Dashboard = () => {
           onSave={saveAppointment}
           saving={savingAppointment}
           doctors={doctors}
+          patients={allPatients}
+          onPickExistingPatient={handlePickExistingPatientForAppt}
         />
+      )}
+
+      {/* Existing patient picked while adding an appointment — full edit
+          dialog, same fields as New Patient Registration, pre-filled. */}
+      {existingPatientForAppt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
+          <PatientRegistrationNew
+            patient={existingPatientForAppt}
+            onClose={cancelExistingPatientAppt}
+            onSuccess={bookAppointmentForExistingPatient}
+          />
+        </div>
+      )}
+      {bookingForExistingPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl px-6 py-4 flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-gray-700">Booking appointment…</span>
+          </div>
+        </div>
       )}
     </div>
   );
