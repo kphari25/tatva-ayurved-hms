@@ -567,6 +567,12 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   });
   const [saving, setSaving] = useState(false);
   const [useLetterhead, setUseLetterhead] = useState(false);
+  // Print preview — in-page iframe printed via its own contentWindow,
+  // same pattern as MedicineSaleModal/InvoiceModal (see medicineSalePrint.js
+  // for why: window.open()+document.write() silently crashes whenever the
+  // popup is blocked, since it calls .document on the null it returns).
+  const [printPreviewHtml, setPrintPreviewHtml] = useState(null);
+  const printIframeRef = useRef(null);
   const [activeSection, setActiveSection] = useState('patient');
   const [inventory, setInventory] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -816,12 +822,14 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
       qualification: selectedDoctor.qualification || '',
       registrationNumber: selectedDoctor.isDoctor ? (selectedDoctor.registrationNumber || '') : '',
     } : {};
-    const html = buildPrintHTML(patient, form, useLetterhead, doctorInfo);
-    const win = window.open('', '_blank');
-    win.document.write(html);
-    win.document.close();
+    setPrintPreviewHtml(buildPrintHTML(patient, form, useLetterhead, doctorInfo));
+  };
+
+  const handlePrintFromPreview = () => {
+    const win = printIframeRef.current?.contentWindow;
+    if (!win) return;
     win.focus();
-    setTimeout(() => win.print(), 500);
+    win.print();
   };
 
   const handleSave = async () => {
@@ -901,6 +909,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   ];
 
   return (
+    <>
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-3">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col">
         {/* Header */}
@@ -1561,6 +1570,46 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         />
       )}
     </div>
+
+    {/* Print Preview — in-page iframe, printed via its own contentWindow,
+        rather than a popup window (see printPreviewHtml state above). */}
+    {printPreviewHtml && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col">
+          <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+            <div>
+              <h2 className="text-xl font-bold">Print Preview</h2>
+              <p className="text-teal-100 text-sm">{patient?.first_name} {patient?.last_name}</p>
+            </div>
+            <button onClick={() => setPrintPreviewHtml(null)} className="hover:bg-teal-700 p-2 rounded">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end bg-gray-50">
+            <button
+              onClick={handlePrintFromPreview}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+            >
+              <Printer className="w-4 h-4" /> Print
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-gray-200 p-6 flex justify-center">
+            <iframe
+              ref={printIframeRef}
+              title="Discharge summary print preview"
+              srcDoc={printPreviewHtml}
+              // Matches the old popup's auto-print-on-open behavior.
+              onLoad={handlePrintFromPreview}
+              className="bg-white shadow-lg"
+              style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
