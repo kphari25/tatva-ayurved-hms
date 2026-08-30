@@ -410,11 +410,12 @@ const Dashboard = () => {
   const [greeting, setGreeting] = useState(getGreeting());
   const [appointmentView, setAppointmentView] = useState('daily'); // daily | weekly | monthly
   const [panelAppointments, setPanelAppointments] = useState([]);
-  // Checked-in appointments drop off the board entirely (see
-  // handleCheckInAppointment) rather than just changing badge color — front
-  // desk wants the board to reflect who's still waiting, not everyone booked.
+  // Checked-in and cancelled appointments drop off the board entirely (see
+  // handleCheckInAppointment / handleCancelAppointment) rather than just
+  // changing badge color — front desk wants the board to reflect who's
+  // still waiting, not everyone booked or a no-show that's been dealt with.
   const visibleAppointments = useMemo(
-    () => panelAppointments.filter(apt => apt.status !== 'checked_in'),
+    () => panelAppointments.filter(apt => apt.status !== 'checked_in' && apt.status !== 'cancelled'),
     [panelAppointments]
   );
   // Live patients snapshot (admission_date / expected_stay_days come from
@@ -944,6 +945,23 @@ const Dashboard = () => {
     }
   };
 
+  // Marks a no-show as cancelled rather than deleting it outright (unlike
+  // the trash-icon delete above it) — it stays in Visit History as a
+  // cancelled visit instead of vanishing without a trace, but still drops
+  // off the board like a check-in does (see visibleAppointments).
+  const handleCancelAppointment = async (apt) => {
+    if (!window.confirm(`Mark ${apt.patient}'s appointment as cancelled (no-show)?`)) return;
+    try {
+      await updateDoc(doc(db, 'appointments', apt.id), {
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      alert('Failed to cancel. Please try again.');
+    }
+  };
+
   const admitPatient = async (patient) => {
     if (!window.confirm(`Admit ${patient.patient}?`)) return;
     try {
@@ -1157,13 +1175,22 @@ const Dashboard = () => {
                                     In Progress
                                   </span>
                                 ) : (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleCheckInAppointment(apt); }}
-                                    title="Mark arrived — removes this card from the board"
-                                    className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
-                                  >
-                                    ✓ Check In
-                                  </button>
+                                  <div className="flex items-center gap-1.5 mt-2">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleCheckInAppointment(apt); }}
+                                      title="Mark arrived — removes this card from the board"
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                                    >
+                                      ✓ Check In
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleCancelAppointment(apt); }}
+                                      title="Mark as a no-show / cancelled — removes this card from the board"
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+                                    >
+                                      ✕ Cancel
+                                    </button>
+                                  </div>
                                 )
                               ) : (
                                 <select
@@ -1253,13 +1280,22 @@ const Dashboard = () => {
                                   In Progress
                                 </span>
                               ) : (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleCheckInAppointment(apt); }}
-                                  title="Mark arrived — removes this card from the board"
-                                  className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
-                                >
-                                  ✓ Check In
-                                </button>
+                                <div className="flex items-center gap-1.5 mt-2">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCheckInAppointment(apt); }}
+                                    title="Mark arrived — removes this card from the board"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                                  >
+                                    ✓ Check In
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCancelAppointment(apt); }}
+                                    title="Mark as a no-show / cancelled — removes this card from the board"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+                                  >
+                                    ✕ Cancel
+                                  </button>
+                                </div>
                               )
                             ) : (
                               <select
