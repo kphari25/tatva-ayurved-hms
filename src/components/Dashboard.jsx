@@ -410,6 +410,13 @@ const Dashboard = () => {
   const [greeting, setGreeting] = useState(getGreeting());
   const [appointmentView, setAppointmentView] = useState('daily'); // daily | weekly | monthly
   const [panelAppointments, setPanelAppointments] = useState([]);
+  // Checked-in appointments drop off the board entirely (see
+  // handleCheckInAppointment) rather than just changing badge color — front
+  // desk wants the board to reflect who's still waiting, not everyone booked.
+  const visibleAppointments = useMemo(
+    () => panelAppointments.filter(apt => apt.status !== 'checked_in'),
+    [panelAppointments]
+  );
   // Live patients snapshot (admission_date / expected_stay_days come from
   // Patient Portal) — In-Patient Status and Discharges Today are derived
   // from this in real time instead of a one-time fetch.
@@ -920,6 +927,23 @@ const Dashboard = () => {
     }
   };
 
+  // For an already-registered patient's appointment (apt.patient_id set) —
+  // the "Called In / In the Office" dropdown above is for not-yet-registered
+  // leads and would wrongly spawn a duplicate lead here. Checking in just
+  // marks arrival and drops the card off the board (see visibleAppointments)
+  // so front desk can see who's still waiting versus already with the doctor.
+  const handleCheckInAppointment = async (apt) => {
+    try {
+      await updateDoc(doc(db, 'appointments', apt.id), {
+        status: 'checked_in',
+        checked_in_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error checking in appointment:', error);
+      alert('Failed to check in. Please try again.');
+    }
+  };
+
   const admitPatient = async (patient) => {
     if (!window.confirm(`Admit ${patient.patient}?`)) return;
     try {
@@ -1030,7 +1054,7 @@ const Dashboard = () => {
                     Add
                   </button>
                   <span className="bg-white/25 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                    {panelAppointments.length} Total
+                    {visibleAppointments.length} Total
                   </span>
                 </div>
               </div>
@@ -1065,7 +1089,7 @@ const Dashboard = () => {
               )}
             </div>
 
-            {panelAppointments.length === 0 ? (
+            {visibleAppointments.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
                 <p>No appointments scheduled for this {appointmentView === 'daily' ? 'day' : appointmentView === 'weekly' ? 'week' : 'month'}</p>
@@ -1075,7 +1099,7 @@ const Dashboard = () => {
                 {APPOINTMENT_BUCKETS.map(bucketName => {
                   const color = APPOINTMENT_TYPE_COLORS[bucketName];
                   const Icon = color.icon;
-                  const appts = panelAppointments.filter(apt => bucketForAppointment(apt) === bucketName);
+                  const appts = visibleAppointments.filter(apt => bucketForAppointment(apt) === bucketName);
                   return (
                     <div key={bucketName} className="rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col overflow-hidden">
                       <div className={`flex items-center gap-2 px-4 py-3 bg-gradient-to-r ${color.gradient}`}>
@@ -1128,13 +1152,19 @@ const Dashboard = () => {
                                 </p>
                               )}
                               {apt.patient_id ? (
-                                <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                  apt.status === 'in-progress'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
-                                </span>
+                                apt.status === 'in-progress' ? (
+                                  <span className="inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                    In Progress
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCheckInAppointment(apt); }}
+                                    title="Mark arrived — removes this card from the board"
+                                    className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                                  >
+                                    ✓ Check In
+                                  </button>
+                                )
                               ) : (
                                 <select
                                   value={apt.contact_status || 'called_in'}
@@ -1162,7 +1192,7 @@ const Dashboard = () => {
             ) : (
               <div className="p-4 space-y-5 max-h-[32rem] overflow-y-auto">
                 {Object.entries(
-                  panelAppointments.reduce((groups, apt) => {
+                  visibleAppointments.reduce((groups, apt) => {
                     const key = apt.date || 'unknown';
                     (groups[key] = groups[key] || []).push(apt);
                     return groups;
@@ -1218,13 +1248,19 @@ const Dashboard = () => {
                               </p>
                             )}
                             {apt.patient_id ? (
-                              <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                apt.status === 'in-progress'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {apt.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
-                              </span>
+                              apt.status === 'in-progress' ? (
+                                <span className="inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                  In Progress
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleCheckInAppointment(apt); }}
+                                  title="Mark arrived — removes this card from the board"
+                                  className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                                >
+                                  ✓ Check In
+                                </button>
+                              )
                             ) : (
                               <select
                                 value={apt.contact_status || 'called_in'}
