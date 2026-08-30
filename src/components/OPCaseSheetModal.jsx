@@ -3,6 +3,7 @@ import { X, Printer, Save, Plus, Trash2, Pencil } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, deleteDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import TreatmentPickerButton from './TreatmentPickerButton';
+import PackagePickerButton from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
 import InvestigationAttachments from './InvestigationAttachments';
@@ -937,13 +938,22 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                         value={visitForm.treatment_notes}
                         onChange={v => setVisitForm(p => ({ ...p, treatment_notes: v }))}
                         actions={
-                          <TreatmentPickerButton
-                            onSelect={(t) => setVisitForm(p => ({
-                              ...p,
-                              treatment_notes: appendTreatment(p.treatment_notes, t),
-                              treatment_items: [...(p.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
-                            }))}
-                          />
+                          <div className="flex items-center gap-1">
+                            <TreatmentPickerButton
+                              onSelect={(t) => setVisitForm(p => ({
+                                ...p,
+                                treatment_notes: appendTreatment(p.treatment_notes, t),
+                                treatment_items: [...(p.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
+                              }))}
+                            />
+                            <PackagePickerButton
+                              onSelect={(pkg) => setVisitForm(p => ({
+                                ...p,
+                                treatment_notes: appendTreatment(p.treatment_notes, { name: pkg.name, price: pkg.cost }),
+                                treatment_items: [...(p.treatment_items || []), { name: pkg.name, price: Number(pkg.cost) || 0 }],
+                              }))}
+                            />
+                          </div>
                         }
                       />
                       <TreatmentItemsList

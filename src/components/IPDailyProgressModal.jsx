@@ -7,6 +7,7 @@ import { collection, addDoc, getDocs, query, where, deleteDoc, doc } from 'fireb
 import { db } from '../lib/firebase';
 import { formatDateOnly } from '../lib/formatDate';
 import TreatmentPickerButton from './TreatmentPickerButton';
+import PackagePickerButton from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
 import { summarizeMedicineItems } from '../lib/medicineSummary';
@@ -197,13 +198,22 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
                   placeholder="e.g. Abhyanga, Shirodhara, Panchakarma…"
                   icon={Stethoscope}
                   actions={
-                    <TreatmentPickerButton
-                      onSelect={(t) => setForm(f => ({
-                        ...f,
-                        treatment_performed: appendTreatment(f.treatment_performed, t),
-                        treatment_items: [...(f.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
-                      }))}
-                    />
+                    <div className="flex items-center gap-1">
+                      <TreatmentPickerButton
+                        onSelect={(t) => setForm(f => ({
+                          ...f,
+                          treatment_performed: appendTreatment(f.treatment_performed, t),
+                          treatment_items: [...(f.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
+                        }))}
+                      />
+                      <PackagePickerButton
+                        onSelect={(pkg) => setForm(f => ({
+                          ...f,
+                          treatment_performed: appendTreatment(f.treatment_performed, { name: pkg.name, price: pkg.cost }),
+                          treatment_items: [...(f.treatment_items || []), { name: pkg.name, price: Number(pkg.cost) || 0 }],
+                        }))}
+                      />
+                    </div>
                   }
                 />
                 <TreatmentItemsList

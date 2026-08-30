@@ -587,7 +587,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
 
                 {priceListItems.length === 0 && additionalCharges.length === 0 && medicinesTotal === 0 && (
                   <p className="text-xs text-gray-400 mb-2">
-                    No treatments picked from the price list yet. Add treatments via "Add from Price List" in the {invoiceType} case sheet{invoiceType === 'IP' ? ' or Daily Progress' : "'s Visit Log"}, or add a charge manually below.
+                    No treatments picked yet. Add treatments via "Add from Price List" or "Add from Package" in the {invoiceType} case sheet{invoiceType === 'IP' ? ' or Daily Progress' : "'s Visit Log"}, or add a charge manually below.
                   </p>
                 )}
 

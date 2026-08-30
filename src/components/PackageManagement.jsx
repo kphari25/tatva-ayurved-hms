@@ -3,6 +3,14 @@ import { Package, Plus, Edit, Trash2, Search, IndianRupee, Clock, CheckCircle, X
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
+// Lets PackagePickerButton (used from the IP/OP case sheets and IP Daily
+// Progress) offer these same packages as a single priced line item — same
+// pattern as TreatmentCharges' fetchTreatmentCharges.
+export const fetchPackages = async () => {
+  const snap = await getDocs(collection(db, 'packages'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+};
+
 const PackageManagement = () => {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
