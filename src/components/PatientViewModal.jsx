@@ -316,8 +316,10 @@ const PatientViewModal = ({ patient, onClose, onEdit, onSendSMS }) => {
           patient={patient}
           onClose={() => setShowInvoiceModal(false)}
           onSave={() => {
-            setShowInvoiceModal(false);
-            // Optionally refresh or notify
+            // Closing happens via onClose, once InvoiceModal's own print
+            // preview is dismissed — closing here would unmount it (and the
+            // preview) before it can render, same bug the medicine-sale
+            // print flow had.
           }}
         />
       )}

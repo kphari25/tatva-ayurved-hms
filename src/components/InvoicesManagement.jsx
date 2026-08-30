@@ -65,6 +65,7 @@ const buildInvoicePrintHTML = (invoice, letterhead = false) => `
           </div>
           <div class="info-box" style="text-align: right;">
             <h3>Invoice Details:</h3>
+            ${invoice.invoice_number ? `<p><strong>Invoice No:</strong> ${invoice.invoice_number}</p>` : ''}
             <p><strong>Date:</strong> ${new Date(invoice.invoice_date).toLocaleDateString()}</p>
             <p><strong>Invoice Type:</strong> ${invoice.invoice_type}</p>
             ${invoice.invoice_type === 'IP' && invoice.admission_date ? `<p><strong>Admission Date:</strong> ${new Date(invoice.admission_date).toLocaleDateString()}</p>` : ''}
@@ -730,9 +731,10 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
             setPatientPickerSearch('');
           }}
           onSave={() => {
-            setShowInvoiceModal(false);
-            setSelectedPatient(null);
-            setPatientPickerSearch('');
+            // Closing happens via onClose, once InvoiceModal's own print
+            // preview is dismissed — closing here would unmount it (and the
+            // preview) before it can render, same bug the medicine-sale
+            // print flow had.
             loadInvoices();
           }}
         />

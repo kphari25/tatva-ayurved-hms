@@ -365,12 +365,19 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
             patient={savedPatient}
             registrationFee={!returningCheckIn ? (parseFloat(savedPatient.registration_fee) || 0) : 0}
             consultationFee={returningCheckIn ? consultationFeeAmount : 0}
-            onClose={() => {
+            onClose={(saved) => {
               setShowInvoice(false);
+              // InvoiceModal passes saved=true only when this fires after a
+              // completed Save & Print (see its handleClosePreview) — a
+              // plain Cancel/X click should just close the invoice dialog
+              // and leave the success screen up, same as before.
+              if (saved && onClose) onClose();
             }}
             onSave={() => {
-              setShowInvoice(false);
-              if (onClose) onClose();
+              // Closing happens via onClose, once InvoiceModal's own print
+              // preview is dismissed — closing here would unmount it (and
+              // the preview) before it can render, same bug the
+              // medicine-sale print flow had.
             }}
           />
         )}

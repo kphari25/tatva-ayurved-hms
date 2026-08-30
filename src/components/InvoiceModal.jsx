@@ -1,22 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, FileText, MessageSquare, Plus } from 'lucide-react';
 import { collection, addDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
 import { getRoomInfo } from '../lib/rooms';
 import { addDaysToDateString } from '../lib/formatDate';
+import { buildInvoicePrintHTML } from '../lib/invoicePrint';
 
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
-
-const HOSPITAL = {
-  name: 'Tatva Ayurved',
-  tagline: 'Ayurveda for Health & Happiness',
-  address: 'Thekkuveedu Lane, Kannur Road, Kozhikode',
-  phone: '9895112264, 0495 2766717',
-  website: 'www.tatvaayurved.com',
-  regNo: 'BFHP03-C110100-00061-2025',
-};
 
 const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultationFee = 0 }) => {
   const isRegistrationInvoice = registrationFee > 0;
@@ -26,6 +18,13 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const [sendingSMS, setSendingSMS] = useState(false);
   const [smsStatus, setSmsStatus] = useState(null); // null | 'sent' | 'failed'
   const [savedInvoiceData, setSavedInvoiceData] = useState(null);
+
+  // Print preview — in-page iframe printed via its own contentWindow, same
+  // pattern as MedicineSaleModal (see medicineSalePrint.js for why this
+  // replaced window.open()+document.write(): unreliable across Chrome/Safari).
+  const [printPreviewData, setPrintPreviewData] = useState(null);
+  const [closeOnPreviewDismiss, setCloseOnPreviewDismiss] = useState(false);
+  const printIframeRef = useRef(null);
 
   // Treatments picked from the price list on the patient's case sheet (OP or IP) — read-only, auto-synced.
   const [priceListItems, setPriceListItems] = useState([]);
@@ -269,11 +268,22 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     return calculateSubtotal() + calculateGST() - (parseFloat(formData.discount) || 0);
   };
 
+  // Same approach as MedicineSaleModal's getNextBillNumber — a plain,
+  // zero-padded running count (no year/prefix) instead of the old
+  // MED-YYYY-NNNN style, so it's short enough to read out over the phone
+  // and track against. Counted separately from medicine_sales, since these
+  // are a different invoice series.
+  const getNextInvoiceNumber = async () => {
+    const snap = await getDocs(collection(db, 'invoices'));
+    return String(snap.size + 1).padStart(4, '0');
+  };
+
   const handleSaveInvoice = async () => {
     try {
       setSaving(true);
 
       const invoiceData = {
+        invoice_number: await getNextInvoiceNumber(),
         patient_id: patient.firebaseId || patient.id,
         patient_number: patient.patient_number,
         mrd_number: patient.mrd_number || '',
@@ -370,8 +380,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     }
   };
 
-  const handlePrint = (invoiceData = null) => {
+  const handlePrint = async (invoiceData = null) => {
     const data = invoiceData || {
+      invoice_number: await getNextInvoiceNumber(),
       patient_name: `${patient.first_name} ${patient.last_name}`,
       patient_number: patient.patient_number,
       patient_phone: patient.phone,
@@ -407,265 +418,32 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       notes: formData.notes
     };
 
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice - ${data.patient_name || data.mrd_number || data.patient_number}</title>
-        <style>
-          * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; padding-bottom: 190px; }
-          @page { size: A4; margin: 15mm 12mm; }
-          .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
-          .header img { height: 42px; }
-          .header-text { text-align: left; }
-          .header h1 { color: #14b8a6; margin: 0; font-size: 18px; }
-          .header .tagline { color: #666; font-size: 10px; margin: 1px 0; }
-          .info { display: flex; justify-content: space-between; margin-bottom: 12px; }
-          .info-box { flex: 1; }
-          .info-box h3 { margin: 0 0 6px 0; color: #14b8a6; font-size: 13px; }
-          .info-box p { margin: 2px 0; }
-          .badge { display: inline-block; padding: 4px 14px; background: #14b8a6; color: white; border-radius: 5px; font-weight: bold; font-size: 12px; }
-          table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
-          th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-          th { background: #14b8a6; color: white; }
-          .totals { float: right; width: 280px; margin-top: 12px; }
-          .totals table { margin: 0; }
-          .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 15px; }
-          /* Doctor signature + thank-you note + hospital address stay pinned
-             to the bottom of the printed page as one unit, same treatment as
-             the prescription printout, instead of trailing wherever the
-             content happens to end. */
-          .print-footer { margin-top: 50px; }
-          @media print {
-            .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
-          }
-          .sig-block { text-align: right; margin-bottom: 18px; }
-          .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
-          .sig-block .doctor-name { font-weight: bold; font-size: 12px; }
-          .sig-block .reg { font-size: 10px; color: #555; }
-          .thank-you { text-align: center; font-size: 11px; color: #888; margin-bottom: 10px; }
-          .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
-          .footer-bar { height: 6px; background: #14b8a6; margin-top: 10px; }
-          @media print {
-            button { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
-          <div class="header-text">
-            <h1>${HOSPITAL.name}</h1>
-            <p class="tagline">${HOSPITAL.tagline}</p>
-          </div>
-        </div>
+    // Saving already leaves this form open (see handleSaveInvoice) so the
+    // user can still Send SMS — a plain "Preview & Print" behaves the same
+    // way either way, but "Save & Print" should close once the preview is
+    // dismissed, matching MedicineSaleModal's Save & Print.
+    setCloseOnPreviewDismiss(!!invoiceData);
+    setPrintPreviewData(data);
+  };
 
-        <div style="text-align: center; margin-bottom: 20px;">
-          <span class="badge">${data.invoice_type === 'OP' ? 'OUT PATIENT (O/P)' : 'IN PATIENT (I/P)'}</span>
-        </div>
+  const handlePrintFromPreview = () => {
+    const win = printIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.focus();
+    win.print();
+  };
 
-        <div class="info">
-          <div class="info-box">
-            <h3>Patient Details:</h3>
-            <p><strong>Name:</strong> ${data.patient_name}</p>
-            ${data.ip_number ? `<p><strong>IP No:</strong> ${data.ip_number}</p>` : ''}
-            <p><strong>Phone:</strong> ${data.patient_phone || 'N/A'}</p>
-            <p><strong>Address:</strong> ${data.patient_address || 'N/A'}</p>
-          </div>
-          <div class="info-box" style="text-align: right;">
-            <h3>Invoice Details:</h3>
-            <p><strong>Date:</strong> ${new Date(data.invoice_date).toLocaleDateString()}</p>
-            <p><strong>Invoice Type:</strong> ${data.invoice_type}</p>
-            ${data.invoice_type === 'IP' && data.admission_date ? `<p><strong>Admission Date:</strong> ${new Date(data.admission_date).toLocaleDateString()}</p>` : ''}
-            ${data.invoice_type === 'IP' && data.discharge_date ? `<p><strong>Discharge Date:</strong> ${new Date(data.discharge_date).toLocaleDateString()}</p>` : ''}
-            <p><strong>Payment Mode:</strong> ${data.payment_mode}</p>
-          </div>
-        </div>
-
-        <h3>Charges Breakdown:</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th>Quantity/Days</th>
-              <th>Rate (₹)</th>
-              <th>Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.registration_fee > 0 ? `
-              <tr style="background:#f0fdfa;">
-                <td><strong>Registration Fee</strong>${data.reg_fee_already_paid ? ' <span style="font-size:10px;color:#0d9488;font-style:italic;">(already paid at registration)</span>' : ''}</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${data.registration_fee.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            ${(data.consultation_fees || 0) > 0 ? `
-              <tr style="background:#f0fdfa;">
-                <td><strong>Consultation Fee</strong></td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${data.consultation_fees.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            ${(data.treatment_items && data.treatment_items.length > 0) ? `
-              <tr>
-                <td>Treatments</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${data.treatment_items.reduce((sum, item) => sum + (Number(item.price) || 0), 0).toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            ${(data.medicines_total || 0) > 0 ? `
-              <tr>
-                <td>Medicines Administered</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${data.medicines_total.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            ${(data.additional_charges && data.additional_charges.length > 0) ? data.additional_charges.map(charge => `
-              <tr>
-                <td>${charge.label || 'Additional Charge'}</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${Number(charge.amount || 0).toFixed(2)}</td>
-              </tr>
-            `).join('') : ''}
-            ${(!data.treatment_items?.length && !data.additional_charges?.length && !(data.medicines_total > 0) && data.treatment_charges > 0) ? `
-              <tr>
-                <td>Treatment Charges</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${data.treatment_charges.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            ${(data.nursing_fees || 0) > 0 ? `
-              <tr>
-                <td>Nursing Fees</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${data.nursing_fees.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            ${(data.doctor_fees || 0) > 0 ? `
-              <tr>
-                <td>Doctor's Fees</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${data.doctor_fees.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            ${(data.lab_test_charges || 0) > 0 ? `
-              <tr>
-                <td>Lab Test Charges</td>
-                <td>-</td>
-                <td>-</td>
-                <td>₹${data.lab_test_charges.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            
-            ${data.invoice_type === 'IP' && data.room_rent > 0 ? `
-              <tr>
-                <td>Room Rent (${data.room_type})</td>
-                <td>${data.days} days</td>
-                <td>₹${data.room_rent.toFixed(2)}</td>
-                <td>₹${(data.room_rent * data.days).toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            
-            ${data.invoice_type === 'IP' && data.patient_mess_per_day > 0 ? `
-              <tr>
-                <td>Mess Charges - Patient</td>
-                <td>${data.mess_days} days</td>
-                <td>₹${data.patient_mess_per_day.toFixed(2)}</td>
-                <td>₹${(data.patient_mess_per_day * data.mess_days).toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            ${data.invoice_type === 'IP' && data.bystander_mess_per_day > 0 ? `
-              <tr>
-                <td>Mess Charges - Bystander</td>
-                <td>${data.mess_days} days</td>
-                <td>₹${data.bystander_mess_per_day.toFixed(2)}</td>
-                <td>₹${(data.bystander_mess_per_day * data.mess_days).toFixed(2)}</td>
-              </tr>
-            ` : ''}
-          </tbody>
-        </table>
-
-        <div class="totals">
-          <table>
-            <tr>
-              <td>Gross Total:</td>
-              <td style="text-align: right;">₹${(data.gross_total || data.subtotal).toFixed(2)}</td>
-            </tr>
-            ${data.reg_fee_already_paid && data.registration_fee > 0 ? `
-            <tr style="color:#0d9488;">
-              <td>Less: Registration Fee (paid):</td>
-              <td style="text-align: right;">-₹${data.registration_fee.toFixed(2)}</td>
-            </tr>
-            ` : ''}
-            ${data.gst_percentage > 0 ? `
-            <tr>
-              <td>GST (${data.gst_percentage}%):</td>
-              <td style="text-align: right;">₹${data.gst_amount.toFixed(2)}</td>
-            </tr>
-            ` : ''}
-            ${data.discount > 0 ? `
-              <tr>
-                <td>Discount:</td>
-                <td style="text-align: right; color: red;">-₹${data.discount.toFixed(2)}</td>
-              </tr>
-            ` : ''}
-            <tr class="grand-total">
-              <td>BALANCE DUE:</td>
-              <td style="text-align: right;">₹${data.total_amount.toFixed(2)}</td>
-            </tr>
-          </table>
-        </div>
-
-        <div style="clear: both;"></div>
-
-        ${data.notes ? `
-          <div style="margin-top: 30px;">
-            <strong>Notes:</strong>
-            <p>${data.notes}</p>
-          </div>
-        ` : ''}
-
-        <div style="text-align: center; margin-top: 20px;">
-          <button onclick="window.print()" style="padding: 10px 30px; background: #14b8a6; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
-            Print Invoice
-          </button>
-        </div>
-
-        <div class="print-footer">
-          <div class="sig-block">
-            <div class="sig-line"></div>
-            ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
-            ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
-            ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
-            <p class="reg">Signature</p>
-          </div>
-          <div class="thank-you">
-            <p>Thank you for choosing ${HOSPITAL.name} Hospital</p>
-          </div>
-          <div class="page-footer">
-            ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
-            Reg No: ${HOSPITAL.regNo}
-          </div>
-          <div class="footer-bar"></div>
-        </div>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+  const handleClosePreview = () => {
+    setPrintPreviewData(null);
+    // Distinguishes "closed after Save & Print" from a plain Cancel/X click
+    // (onClick={() => onClose()} elsewhere) — callers that only want to
+    // cascade-close on an actual save (e.g. PatientRegistrationNew) check
+    // this flag rather than treating any onClose call as a completed save.
+    if (closeOnPreviewDismiss) onClose(true);
   };
 
   return (
+    <>
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -679,7 +457,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="hover:bg-teal-700 p-2 rounded">
+          <button onClick={() => onClose()} className="hover:bg-teal-700 p-2 rounded">
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -1170,7 +948,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
           {/* Action Buttons */}
           <div className="flex justify-end gap-3">
             <button
-              onClick={onClose}
+              onClick={() => onClose()}
               className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
             >
               Cancel
@@ -1226,6 +1004,51 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         </div>
       </div>
     </div>
+
+    {/* Print Preview — in-page iframe, printed via its own contentWindow,
+        rather than a popup window (see printPreviewData state above). */}
+    {printPreviewData && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col">
+          <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+            <div>
+              <h2 className="text-xl font-bold">Print Preview</h2>
+              <p className="text-teal-100 text-sm">{printPreviewData.patient_name}</p>
+            </div>
+            <button onClick={handleClosePreview} className="hover:bg-teal-700 p-2 rounded">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end bg-gray-50">
+            <button
+              onClick={handlePrintFromPreview}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+            >
+              <Printer className="w-4 h-4" /> Print
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-gray-200 p-6 flex justify-center">
+            <iframe
+              ref={printIframeRef}
+              title="Invoice print preview"
+              srcDoc={buildInvoicePrintHTML(printPreviewData, doctorInfo)}
+              // "Save & Print" should actually print, not just open a
+              // preview the user then has to print manually — fire it
+              // automatically once the invoice has finished rendering in
+              // the iframe. "Preview & Print" leaves this to the Print
+              // button instead, since the whole point there is to look
+              // before printing.
+              onLoad={() => { if (closeOnPreviewDismiss) handlePrintFromPreview(); }}
+              className="bg-white shadow-lg"
+              style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

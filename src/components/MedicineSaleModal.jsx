@@ -294,9 +294,11 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   // preview of what the number *will* be, not a reservation of it, so it
   // could in principle drift if another sale is saved in between; that's an
   // acceptable, unlikely edge case for a display-only preview.
+  // Plain zero-padded running count (no MED-/year prefix) — short enough to
+  // read out over the phone and track against.
   const getNextBillNumber = async () => {
     const snap = await getDocs(collection(db, 'medicine_sales'));
-    return `MED-${new Date().getFullYear()}-${String(snap.size + 1).padStart(4, '0')}`;
+    return String(snap.size + 1).padStart(4, '0');
   };
 
   const handlePrint = async (saleData = null) => {
