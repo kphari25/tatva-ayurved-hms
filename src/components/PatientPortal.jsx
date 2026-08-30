@@ -1575,7 +1575,19 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
           patient={dischargeSummaryPatient}
           existingSummary={dischargeSummaryExisting}
           onClose={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); setDischargeSummaryExisting(null); }}
-          onSave={() => { setShowDischargeSummary(false); setDischargeSummaryPatient(null); setDischargeSummaryExisting(null); }}
+          onSave={() => {
+            // Saving now also discharges the patient (admission_status) —
+            // patients here come from a one-time fetch, not a live listener,
+            // so patch local state right away instead of waiting for the
+            // next full reload to move them into Inactive/Discharged.
+            const patientId = dischargeSummaryPatient?.id || dischargeSummaryPatient?.firebaseId;
+            if (patientId) {
+              setPatients(prev => prev.map(p => (p.id || p.firebaseId) === patientId ? { ...p, admission_status: 'discharged' } : p));
+            }
+            setShowDischargeSummary(false);
+            setDischargeSummaryPatient(null);
+            setDischargeSummaryExisting(null);
+          }}
           onViewCaseSheet={() => {
             const p = dischargeSummaryPatient;
             setShowDischargeSummary(false); setDischargeSummaryPatient(null); setDischargeSummaryExisting(null);

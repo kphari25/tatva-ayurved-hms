@@ -441,7 +441,14 @@ ${GOOGLE_REVIEW_LINK}
           patient={summaryPatient}
           existingSummary={summaryExistingSummary}
           onClose={() => { setShowSummaryModal(false); setSummaryPatient(null); setSummaryExistingSummary(null); }}
-          onSave={() => { setShowSummaryModal(false); setSummaryPatient(null); setSummaryExistingSummary(null); }}
+          onSave={() => {
+            setShowSummaryModal(false);
+            setSummaryPatient(null);
+            setSummaryExistingSummary(null);
+            // Saving now also discharges the patient (admission_status) —
+            // reload so the picker/list reflects that right away.
+            loadData();
+          }}
         />
       )}
 

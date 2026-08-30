@@ -843,6 +843,23 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         await addDoc(collection(db, 'discharge_summaries'), data);
       }
 
+      // Saving this summary is the actual act of discharging the patient —
+      // previously nothing here touched the patient record, so they kept
+      // showing as Active in Patient Portal no matter how many times this
+      // was saved/printed. Matches the admission_status field the existing
+      // Check Out / Reactivate actions already use.
+      const patientId = patient?.id || patient?.firebaseId;
+      if (patientId) {
+        try {
+          await updateDoc(doc(db, 'patients', patientId), {
+            admission_status: 'discharged',
+            discharge_date: form.discharge_date || new Date().toISOString().split('T')[0],
+          });
+        } catch (statusError) {
+          console.error('⚠️ Failed to update patient discharge status:', statusError);
+        }
+      }
+
       // Auto-create follow-up appointment in Scheduling if a date is set
       if (form.next_review_date) {
         const apptPayload = {
