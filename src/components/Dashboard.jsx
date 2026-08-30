@@ -485,7 +485,10 @@ const Dashboard = () => {
         setTodayAppointments(appts);
         setDashboardData(prev => ({
           ...prev,
-          stats: { ...prev.stats, totalAppointments: appts.length },
+          // Excludes checked-in/cancelled, same as visibleAppointments below
+          // — this stat is captioned "Scheduled patients", and someone
+          // who's already arrived (or didn't show) isn't still "scheduled".
+          stats: { ...prev.stats, totalAppointments: appts.filter(a => a.status !== 'checked_in' && a.status !== 'cancelled').length },
         }));
       }
     );
@@ -1023,7 +1026,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <StatCard
           title="Today's Appointments"
-          value={isDoctorView ? todayAppointments.filter(a => isMine(a.doctorName)).length : dashboardData.stats.totalAppointments}
+          value={isDoctorView ? todayAppointments.filter(a => isMine(a.doctorName) && a.status !== 'checked_in' && a.status !== 'cancelled').length : dashboardData.stats.totalAppointments}
           icon={Calendar}
           color="#3b82f6"
           subtitle="Scheduled patients"
