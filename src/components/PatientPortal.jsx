@@ -7,7 +7,7 @@ import {
   ClipboardList, UserRound, BookOpen, Pill, BedDouble, LogOut, RotateCcw
 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, doc, deleteDoc, query, orderBy, addDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, query, orderBy, where, addDoc, updateDoc } from 'firebase/firestore';
 import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { addDaysToDateString, formatDateOnly } from '../lib/formatDate';
@@ -29,6 +29,12 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [filterStatus, setFilterStatus] = useState('active');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
+  // Visit History in the Patient Details modal — every appointment ever
+  // booked against this patient_id (Dashboard's existing-patient booking
+  // flow), most recent first, with a Checked In badge for whichever ones
+  // front desk actually marked arrived (see Dashboard's handleCheckInAppointment).
+  const [visitHistory, setVisitHistory] = useState([]);
+  const [visitHistoryLoading, setVisitHistoryLoading] = useState(false);
 
   // Discharge summary & daily progress state
   const [showDischargeSummary, setShowDischargeSummary] = useState(false);
@@ -332,6 +338,28 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     setSelectedPatient(patient);
     setShowDetails(true);
   };
+
+  // Loads this patient's Visit History whenever the details modal opens for
+  // them — sorted most-recent-first client-side rather than via orderBy, so
+  // it doesn't need a composite index alongside the patient_id filter.
+  useEffect(() => {
+    if (!showDetails || !selectedPatient) { setVisitHistory([]); return; }
+    const patientId = selectedPatient.id || selectedPatient.firebaseId;
+    if (!patientId) { setVisitHistory([]); return; }
+    setVisitHistoryLoading(true);
+    getDocs(query(collection(db, 'appointments'), where('patient_id', '==', patientId)))
+      .then(snap => {
+        const appts = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => `${b.date || ''} ${b.time || ''}`.localeCompare(`${a.date || ''} ${a.time || ''}`));
+        setVisitHistory(appts);
+      })
+      .catch(error => {
+        console.error('Error loading visit history:', error);
+        setVisitHistory([]);
+      })
+      .finally(() => setVisitHistoryLoading(false));
+  }, [showDetails, selectedPatient]);
 
   // Resumes an already-started Discharge Summary instead of always opening a
   // blank form (which used to create a brand-new duplicate doc on every save).
@@ -1402,6 +1430,57 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* Visit History */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-bold text-gray-800 mb-3 flex items-center">
+                  <Clock className="w-5 h-5 mr-2 text-teal-600" />
+                  Visit History
+                </h3>
+                {visitHistoryLoading ? (
+                  <p className="text-sm text-gray-500">Loading…</p>
+                ) : visitHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500">No appointments recorded for this patient yet.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-500">
+                          <th className="pb-2 pr-4 font-medium">Date</th>
+                          <th className="pb-2 pr-4 font-medium">Time</th>
+                          <th className="pb-2 pr-4 font-medium">Type</th>
+                          <th className="pb-2 pr-4 font-medium">Doctor</th>
+                          <th className="pb-2 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {visitHistory.map(v => (
+                          <tr key={v.id}>
+                            <td className="py-2 pr-4 text-gray-900">{v.date ? formatDateOnly(v.date) : '-'}</td>
+                            <td className="py-2 pr-4 text-gray-700">{v.time || '-'}</td>
+                            <td className="py-2 pr-4 text-gray-700">{v.type || '-'}</td>
+                            <td className="py-2 pr-4 text-gray-700">{v.doctorName || '-'}</td>
+                            <td className="py-2">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                v.status === 'checked_in'
+                                  ? 'bg-green-100 text-green-800'
+                                  : v.status === 'cancelled'
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-gray-200 text-gray-700'
+                              }`}>
+                                {v.status === 'checked_in' ? '✓ Checked In'
+                                  : v.status === 'in-progress' ? 'In Progress'
+                                  : v.status === 'cancelled' ? 'Cancelled'
+                                  : 'Scheduled'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* Medical Information */}
