@@ -268,14 +268,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     return calculateSubtotal() + calculateGST() - (parseFloat(formData.discount) || 0);
   };
 
-  // Same approach as MedicineSaleModal's getNextBillNumber — a plain,
-  // zero-padded running count (no year/prefix) instead of the old
-  // MED-YYYY-NNNN style, so it's short enough to read out over the phone
-  // and track against. Counted separately from medicine_sales, since these
-  // are a different invoice series.
+  // Same approach as MedicineSaleModal's getNextBillNumber — "A" + a plain,
+  // zero-padded running count instead of the old MED-YYYY-NNNN style, so
+  // it's short enough to read out over the phone and track against.
+  // Counted separately from medicine_sales, since these are a different
+  // invoice series.
   const getNextInvoiceNumber = async () => {
     const snap = await getDocs(collection(db, 'invoices'));
-    return String(snap.size + 1).padStart(4, '0');
+    return `A${String(snap.size + 1).padStart(4, '0')}`;
   };
 
   const handleSaveInvoice = async () => {
