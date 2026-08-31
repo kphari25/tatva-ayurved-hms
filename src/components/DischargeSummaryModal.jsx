@@ -581,6 +581,16 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   // popup is blocked, since it calls .document on the null it returns).
   const [printPreviewHtml, setPrintPreviewHtml] = useState(null);
   const printIframeRef = useRef(null);
+  // Blocks Save until the case-sheet fetch below has resolved at least
+  // once — Save used to be able to fire while admission_time/discharge_time
+  // still held their generic placeholder defaults ("03:00PM"/"12:00PM"),
+  // permanently persisting those instead of the real case-sheet times (this
+  // happened for real: a saved summary was found with the placeholder times
+  // even though its case sheet had different real ones). Date fields have a
+  // synchronous patient-record fallback so they can't go truly blank, but
+  // times have no equivalent source to fall back to — so this is the fix
+  // for them.
+  const [caseSheetSynced, setCaseSheetSynced] = useState(false);
   const [activeSection, setActiveSection] = useState('patient');
   const [inventory, setInventory] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -662,7 +672,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         const cs = snap.data();
         syncAdmissionDischarge(cs);
         if (!existingSummary) autoPopulateFromCaseSheet(cs);
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => setCaseSheetSynced(true));
 
       if (!existingSummary) {
         // Load OP Case Sheet vitals — takes priority over daily-progress vitals
@@ -680,7 +690,11 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         const cs = snap.data();
         syncAdmissionDischarge(cs);
         if (!existingSummary) autoPopulateFromOpCaseSheet(cs);
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => setCaseSheetSynced(true));
+    } else {
+      // No patient id to sync from at all — shouldn't normally happen, but
+      // don't leave Save permanently blocked if it does.
+      setCaseSheetSynced(true);
     }
   }, []);
 
@@ -947,10 +961,11 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
             </button>
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !caseSheetSynced}
+              title={!caseSheetSynced ? 'Syncing admission/discharge time from the case sheet…' : undefined}
               className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-400 font-medium text-sm disabled:opacity-60"
             >
-              <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
+              <Save className="w-4 h-4" /> {saving ? 'Saving...' : !caseSheetSynced ? 'Syncing...' : 'Save'}
             </button>
             <button onClick={onClose} className="p-2 text-white hover:bg-teal-600 rounded-lg">
               <X className="w-5 h-5" />
