@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, FileText, MessageSquare, Plus } from 'lucide-react';
-import { collection, addDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
 import { getRoomInfo } from '../lib/rooms';
@@ -10,11 +10,16 @@ import { buildInvoicePrintHTML } from '../lib/invoicePrint';
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
 
-const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultationFee = 0 }) => {
+const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultationFee = 0, offerCheckout = false }) => {
   const isRegistrationInvoice = registrationFee > 0;
   const isConsultationInvoice = consultationFee > 0;
   const [invoiceType, setInvoiceType] = useState(patient?.patient_type === 'IP' ? 'IP' : 'OP');
   const [saving, setSaving] = useState(false);
+  // Guards against a double-submit creating two invoices: a second click
+  // landing before React re-renders the disabled button (setSaving(true)
+  // is state, not synchronous) would otherwise slip through — this ref
+  // updates immediately, in the same tick as the first click.
+  const savingRef = useRef(false);
   const [sendingSMS, setSendingSMS] = useState(false);
   const [smsStatus, setSmsStatus] = useState(null); // null | 'sent' | 'failed'
   const [savedInvoiceData, setSavedInvoiceData] = useState(null);
@@ -25,6 +30,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const [printPreviewData, setPrintPreviewData] = useState(null);
   const [closeOnPreviewDismiss, setCloseOnPreviewDismiss] = useState(false);
   const printIframeRef = useRef(null);
+
+  // Shown after a Save & Print completes, only when opened via the
+  // Discharge shortcut (offerCheckout) — lets staff flip the patient out of
+  // the Active list right after the final invoice is printed, instead of
+  // the record silently staying "Active" until someone remembers to do it
+  // via Discharge Summary.
+  const [showCheckoutPrompt, setShowCheckoutPrompt] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
 
   // Treatments picked from the price list on the patient's case sheet (OP or IP) — read-only, auto-synced.
   const [priceListItems, setPriceListItems] = useState([]);
@@ -279,6 +292,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   };
 
   const handleSaveInvoice = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     try {
       setSaving(true);
 
@@ -348,6 +363,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       console.error('❌ Error saving invoice:', error);
       alert('Failed to save invoice: ' + error.message);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -439,7 +455,29 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     // (onClick={() => onClose()} elsewhere) — callers that only want to
     // cascade-close on an actual save (e.g. PatientRegistrationNew) check
     // this flag rather than treating any onClose call as a completed save.
-    if (closeOnPreviewDismiss) onClose(true);
+    if (!closeOnPreviewDismiss) return;
+    if (offerCheckout) {
+      setShowCheckoutPrompt(true);
+    } else {
+      onClose(true);
+    }
+  };
+
+  const handleCheckoutPatient = async () => {
+    try {
+      setCheckingOut(true);
+      await updateDoc(doc(db, 'patients', patient.firebaseId || patient.id), {
+        admission_status: 'discharged',
+        discharge_date: formData.discharge_date || new Date().toISOString().split('T')[0],
+      });
+    } catch (e) {
+      console.error('Error checking out patient:', e);
+      alert('Failed to checkout patient: ' + e.message);
+    } finally {
+      setCheckingOut(false);
+      setShowCheckoutPrompt(false);
+      onClose(true);
+    }
   };
 
   return (
@@ -1044,6 +1082,36 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
               className="bg-white shadow-lg"
               style={{ width: '794px', minHeight: '1123px', border: 'none' }}
             />
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Post-print checkout prompt — only reachable via the Discharge
+        shortcut (offerCheckout), right after a Save & Print completes. */}
+    {showCheckoutPrompt && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6">
+          <h3 className="text-lg font-bold text-gray-900 mb-2">Checkout patient?</h3>
+          <p className="text-sm text-gray-600 mb-6">
+            Invoice printed for {patient.first_name} {patient.last_name}. Checking out will move them
+            from Active to Inactive/Discharged in Patient Portal.
+          </p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => { setShowCheckoutPrompt(false); onClose(true); }}
+              disabled={checkingOut}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              Not Yet
+            </button>
+            <button
+              onClick={handleCheckoutPatient}
+              disabled={checkingOut}
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50"
+            >
+              {checkingOut ? 'Checking Out...' : 'Checkout Patient'}
+            </button>
           </div>
         </div>
       </div>

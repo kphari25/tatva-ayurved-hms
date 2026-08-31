@@ -173,6 +173,10 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [filterDate, setFilterDate] = useState('all'); // all, today, week, month
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
+  // True only when this invoice was opened via Patient Portal/Dashboard's
+  // "Discharge" shortcut below — gates the post-print "Checkout patient?"
+  // prompt so it doesn't show up for an ordinary mid-stay invoice.
+  const [isDischargeInvoice, setIsDischargeInvoice] = useState(false);
   const [showNewInvoiceChooser, setShowNewInvoiceChooser] = useState(false);
   const [showMedicineSale, setShowMedicineSale] = useState(false);
   const [patientPickerSearch, setPatientPickerSearch] = useState('');
@@ -210,6 +214,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
     if (patient) {
       setSelectedPatient(patient);
       setShowInvoiceModal(true);
+      setIsDischargeInvoice(true);
     }
     onInitialPatientHandled && onInitialPatientHandled();
   }, [initialPatientId, patients]);
@@ -725,10 +730,12 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
       {showInvoiceModal && selectedPatient && (
         <InvoiceModal
           patient={selectedPatient}
+          offerCheckout={isDischargeInvoice}
           onClose={() => {
             setShowInvoiceModal(false);
             setSelectedPatient(null);
             setPatientPickerSearch('');
+            setIsDischargeInvoice(false);
           }}
           onSave={() => {
             // Closing happens via onClose, once InvoiceModal's own print
@@ -736,6 +743,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
             // preview) before it can render, same bug the medicine-sale
             // print flow had.
             loadInvoices();
+            loadPatients();
           }}
         />
       )}
@@ -756,6 +764,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                 onClick={() => {
                   setShowNewInvoiceChooser(false);
                   setShowInvoiceModal(true);
+                  setIsDischargeInvoice(false);
                 }}
                 className="flex flex-col items-center gap-3 p-6 border-2 border-gray-200 rounded-xl hover:border-teal-500 hover:bg-teal-50 transition-all group"
               >
