@@ -117,6 +117,12 @@ const emptyForm = () => ({
   // Follow-Up Plan
   next_review: '',
   next_review_date: '',
+  // Day offset behind next_review_date when it was set via a quick-select
+  // button or the custom-days input — lets next_review_date be recomputed
+  // if discharge_date changes afterward. Null when next_review_date was
+  // set by picking a specific calendar date directly, which has no
+  // relationship to discharge_date and shouldn't be recalculated.
+  next_review_days: null,
   review_procedure: 'Tele-consultation / In-person review',
 
   // Daily treatment log: [{ date, treatment, medicines, notes }]
@@ -716,6 +722,21 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     const days = calcDurationDays(form.admission_date, form.discharge_date);
     if (days !== null) setForm(prev => (prev.duration_days === days ? prev : { ...prev, duration_days: days }));
   }, [form.admission_date, form.discharge_date]);
+
+  // A quick-select / custom-days follow-up pick (next_review_days set) is
+  // meant to track "N days after discharge" rather than a fixed calendar
+  // date — recompute it whenever discharge_date changes afterward (e.g.
+  // the case-sheet sync effect updates it, or it's corrected manually), so
+  // it doesn't silently stay anchored to whatever discharge_date was at
+  // the moment it was picked. A directly-picked calendar date
+  // (next_review_days null) is left alone — it has no such relationship.
+  useEffect(() => {
+    if (form.next_review_days == null || !form.discharge_date) return;
+    const d = new Date(form.discharge_date);
+    d.setDate(d.getDate() + form.next_review_days);
+    const iso = d.toISOString().split('T')[0];
+    setForm(prev => (prev.next_review_date === iso ? prev : { ...prev, next_review_date: iso }));
+  }, [form.discharge_date, form.next_review_days]);
 
   const autoPopulateFromCaseSheet = (cs) => {
     setForm(prev => ({
@@ -1420,22 +1441,16 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
                       { label: '6 Weeks', days: 42 },
                       { label: '2 Months', days: 60 },
                       { label: '3 Months', days: 90 },
-                    ].map(({ label, days }) => {
-                      const base = form.discharge_date ? new Date(form.discharge_date) : new Date();
-                      const calcDate = new Date(base);
-                      calcDate.setDate(calcDate.getDate() + days);
-                      const iso = calcDate.toISOString().split('T')[0];
-                      return (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={() => { set('next_review', label); set('next_review_date', iso); }}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.next_review === label ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'}`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
+                    ].map(({ label, days }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => { set('next_review', label); set('next_review_days', days); }}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.next_review === label ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -1452,11 +1467,8 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
                         onChange={e => {
                           const days = parseInt(e.target.value);
                           if (!days) return;
-                          const base = form.discharge_date ? new Date(form.discharge_date) : new Date();
-                          const d = new Date(base);
-                          d.setDate(d.getDate() + days);
                           set('next_review', `${days} days`);
-                          set('next_review_date', d.toISOString().split('T')[0]);
+                          set('next_review_days', days);
                         }}
                       />
                       <span className="text-sm text-gray-500">days after discharge</span>
@@ -1467,7 +1479,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
                     <input
                       type="date"
                       value={form.next_review_date}
-                      onChange={e => set('next_review_date', e.target.value)}
+                      onChange={e => setForm(prev => ({ ...prev, next_review_date: e.target.value, next_review_days: null }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     />
                   </div>
