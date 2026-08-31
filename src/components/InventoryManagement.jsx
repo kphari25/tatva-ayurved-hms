@@ -37,6 +37,21 @@ const getDaysInInventory = (item) => {
 
 const toItem = (d) => ({ ...d.data(), firebaseId: d.id });
 
+// Excel cells can hand back a date serial number, a string, or a real Date
+// object depending on the sheet's own cell formatting — normalize whichever
+// shows up to a plain YYYY-MM-DD string, same as every date field elsewhere
+// in this app (and what <input type="date"> expects).
+const parseExcelDate = (value) => {
+  if (!value) return null;
+  if (typeof value === 'number') {
+    const excelEpoch = new Date(1899, 11, 30);
+    return new Date(excelEpoch.getTime() + value * 86400000).toISOString().split('T')[0];
+  }
+  if (value instanceof Date) return value.toISOString().split('T')[0];
+  if (typeof value === 'string') return value;
+  return null;
+};
+
 const InventoryManagement = () => {
   const [items, setItems] = useState([]);
   const [totalCount, setTotalCount] = useState(null); // cheap aggregate count, independent of what's loaded
@@ -229,24 +244,15 @@ const InventoryManagement = () => {
               const docRef = doc(collection(db, 'inventory'));
 
               // Parse purchase date/month
-              let purchaseDate = null;
-              const dateField = row.purchase_date || row['Purchase Date'] || row.date || row.Date ||
-                               row.month || row.Month || row.purchase_month || row['Purchase Month'];
+              const purchaseDate = parseExcelDate(
+                row.purchase_date || row['Purchase Date'] || row.date || row.Date ||
+                row.month || row.Month || row.purchase_month || row['Purchase Month']
+              );
 
-              if (dateField) {
-                // Handle Excel date serial numbers
-                if (typeof dateField === 'number') {
-                  // Excel date serial to JS Date
-                  const excelEpoch = new Date(1899, 11, 30);
-                  const jsDate = new Date(excelEpoch.getTime() + dateField * 86400000);
-                  purchaseDate = jsDate.toISOString().split('T')[0]; // YYYY-MM-DD
-                } else if (typeof dateField === 'string') {
-                  // Try to parse string date
-                  purchaseDate = dateField;
-                } else if (dateField instanceof Date) {
-                  purchaseDate = dateField.toISOString().split('T')[0];
-                }
-              }
+              const expiryDate = parseExcelDate(
+                row.expiry_date || row['Expiry Date'] || row.expiry || row.Expiry ||
+                row.expiry_month || row['Expiry Month']
+              );
 
               // A "GST Category" column (Standard/Traditional/Ayurvedic Cosmetics)
               // takes priority over raw SGST/CGST columns when both are present —
@@ -289,6 +295,7 @@ const InventoryManagement = () => {
                 purchase_date: purchaseDate,
                 month: purchaseDate, // Store in both fields for compatibility
                 last_purchase_date: purchaseDate || new Date().toISOString().split('T')[0],
+                expiry_date: expiryDate,
                 imported: true,
                 imported_at: new Date().toISOString(),
                 // Recorded as a batch (same shape Goods Receipt / Import Invoice use)
@@ -299,6 +306,7 @@ const InventoryManagement = () => {
                   quantity: stockQuantity,
                   purchase_price: purchaseRate,
                   purchase_date: purchaseDate,
+                  expiry_date: expiryDate,
                   vendor_invoice_number: invoiceNumber,
                   vendor_name: vendorName,
                 }],
@@ -1146,7 +1154,7 @@ const InventoryManagement = () => {
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">Firebase Cloud Storage Active</p>
-            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month), Invoice Number (→ shows up in Purchase History), Vendor Name (optional, separate from Company Name/manufacturer), GST Category (optional — "Standard", "Traditional", or "Ayurvedic Cosmetics"; overrides sgst/cgst columns when present)</p>
+            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month), Expiry Date (optional, shows up as Batch/Expiry), Invoice Number (→ shows up in Purchase History), Vendor Name (optional, separate from Company Name/manufacturer), GST Category (optional — "Standard", "Traditional", or "Ayurvedic Cosmetics"; overrides sgst/cgst columns when present)</p>
           </div>
         </div>
       </div>
