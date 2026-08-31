@@ -29,6 +29,16 @@ const formatTime12h = (t) => {
   return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')}${period}`;
 };
 
+// Same calculation InvoiceModal's IP "Days" field uses, so this and the
+// invoice never disagree about how many days a stay covers.
+const calcDurationDays = (admissionDate, dischargeDate) => {
+  if (!admissionDate || !dischargeDate) return null;
+  const admission = new Date(admissionDate);
+  const discharge = new Date(dischargeDate);
+  if (isNaN(admission) || isNaN(discharge) || discharge < admission) return null;
+  return Math.max(1, Math.round((discharge - admission) / (1000 * 60 * 60 * 24)));
+};
+
 const emptyForm = () => ({
   // Patient identifiers (pre-filled from patient record)
   ward_no: '',
@@ -698,6 +708,15 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     }
   }, []);
 
+  // Keeps Duration of Stay in lockstep with whatever the two dates above
+  // currently are — a manual edit, the case-sheet sync effect updating
+  // them, or the initial load — rather than a separately-typed number that
+  // can silently drift out of sync with the actual date range.
+  useEffect(() => {
+    const days = calcDurationDays(form.admission_date, form.discharge_date);
+    if (days !== null) setForm(prev => (prev.duration_days === days ? prev : { ...prev, duration_days: days }));
+  }, [form.admission_date, form.discharge_date]);
+
   const autoPopulateFromCaseSheet = (cs) => {
     setForm(prev => ({
       ...prev,
@@ -1048,7 +1067,11 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
                     value={form.discharge_time} onChange={e => set('discharge_time', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration of Stay (days)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Duration of Stay (days) {calcDurationDays(form.admission_date, form.discharge_date) !== null && (
+                      <span className="text-teal-600 text-xs">(auto)</span>
+                    )}
+                  </label>
                   <input type="number" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.duration_days} onChange={e => set('duration_days', e.target.value)} />
                 </div>
