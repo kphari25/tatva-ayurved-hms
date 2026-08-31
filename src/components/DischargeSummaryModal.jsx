@@ -556,12 +556,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
       ...emptyForm(),
       ...existingSummary,
       // A summary saved before the case-sheet sync effect below finished
-      // its fetch (e.g. Save clicked right after opening) can have this
+      // its fetch (e.g. Save clicked right after opening) can have these
       // persisted blank even though the case sheet has a real value —
-      // fall back to the patient record's own admission_date the same way
-      // a brand-new draft does below, rather than showing blank until the
-      // sync effect re-fetches and corrects it a moment later.
+      // fall back to the patient record's own admission/discharge date the
+      // same way a brand-new draft does below, rather than showing blank
+      // until the sync effect re-fetches and corrects it a moment later.
       admission_date: existingSummary.admission_date || patient?.admission_date || '',
+      discharge_date: existingSummary.discharge_date || patient?.discharge_date || emptyForm().discharge_date,
       discharge_internal_medicines: normalizeMedicineRows(existingSummary.discharge_internal_medicines),
     };
     const f = emptyForm();
