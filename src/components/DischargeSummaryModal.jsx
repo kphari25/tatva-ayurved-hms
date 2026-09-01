@@ -933,6 +933,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
       // showing as Active in Patient Portal no matter how many times this
       // was saved/printed. Matches the admission_status field the existing
       // Check Out / Reactivate actions already use.
+      // wasAlreadyDischarged/statusUpdateSucceeded feed the save confirmation
+      // below — this used to flip the patient to Inactive/Discharged with no
+      // mention of it in the "Discharge summary saved!" alert, so staff had
+      // no way to know it had happened (or that it silently failed) short of
+      // separately checking Patient Portal.
+      const wasAlreadyDischarged = patient?.admission_status === 'discharged';
+      let statusUpdateSucceeded = false;
       const patientId = patient?.id || patient?.firebaseId;
       if (patientId) {
         try {
@@ -940,6 +947,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
             admission_status: 'discharged',
             discharge_date: form.discharge_date || new Date().toISOString().split('T')[0],
           });
+          statusUpdateSucceeded = true;
         } catch (statusError) {
           console.error('⚠️ Failed to update patient discharge status:', statusError);
         }
@@ -965,7 +973,12 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         await addDoc(collection(db, 'appointments'), apptPayload);
       }
 
-      alert('✅ Discharge summary saved!' + (form.next_review_date ? '\n📅 Follow-up appointment created in Scheduling.' : ''));
+      alert(
+        '✅ Discharge summary saved!' +
+        (statusUpdateSucceeded && !wasAlreadyDischarged ? '\n➡️ Patient moved from Active to Inactive/Discharged in Patient Portal.' : '') +
+        (patientId && !statusUpdateSucceeded ? '\n⚠️ Could not update the patient\'s status — check Patient Portal.' : '') +
+        (form.next_review_date ? '\n📅 Follow-up appointment created in Scheduling.' : '')
+      );
       if (onSave) onSave();
     } catch (e) {
       alert('Error saving: ' + e.message);
