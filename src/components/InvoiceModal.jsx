@@ -6,7 +6,6 @@ import { sendInvoiceSMS } from '../lib/sms';
 import { getRoomInfo } from '../lib/rooms';
 import { addDaysToDateString } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
-import MedicinePickerButton from './MedicinePickerButton';
 
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
@@ -43,14 +42,12 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   // Treatments picked from the price list on the patient's case sheet (OP or IP),
   // auto-synced but editable here — a line can be removed from just this invoice
   // (e.g. it was billed already, or picked in error) without touching the case
-  // sheet/daily progress record it came from.
+  // sheet/daily progress record it came from. Medicines are billed separately via
+  // Medicine Sale (which itself syncs from the case sheet/daily progress) rather
+  // than appearing on this invoice at all.
   const [priceListItems, setPriceListItems] = useState([]);
   // Ad-hoc charges added directly on the invoice, on top of the price-list treatments.
   const [additionalCharges, setAdditionalCharges] = useState([]);
-  // Medicines administered during the IP stay (from the case sheet + each Daily
-  // Progress entry's MedicineTable), itemized the same way as priceListItems —
-  // editable here, plus a picker to add one straight from inventory.
-  const [medicineItems, setMedicineItems] = useState([]);
 
   // Doctor signature block on the printed invoice — looked up from the
   // patient's assigned doctor, same pattern as the prescription printout.
@@ -84,19 +81,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     const loadTreatmentItems = async () => {
       try {
         const items = [];
-        const meds = [];
         const caseSheetCollection = invoiceType === 'IP' ? 'ip_case_sheets' : 'op_case_sheets';
         const caseSheetSnap = await getDoc(doc(db, caseSheetCollection, patientId));
         if (caseSheetSnap.exists()) {
           const cs = caseSheetSnap.data();
           (cs.treatment_items || []).forEach(it => items.push({ ...it, source: 'Case Sheet' }));
-          if (invoiceType === 'IP') {
-            (cs.medicine_items || []).forEach(m => meds.push({
-              name: m.item_name || m.name || 'Medicine',
-              price: Number(m.mrp) || 0,
-              source: 'Case Sheet',
-            }));
-          }
         }
 
         // IP treatments are mostly logged day-to-day; OP follow-ups are logged per visit — both should bill too.
@@ -107,17 +96,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
           const data = d.data();
           const rowSource = data.date ? `${sourceLabel} · ${data.date}` : sourceLabel;
           (data.treatment_items || []).forEach(it => items.push({ ...it, source: rowSource }));
-          if (invoiceType === 'IP') {
-            (data.medicine_items || []).forEach(m => meds.push({
-              name: m.item_name || m.name || 'Medicine',
-              price: Number(m.mrp) || 0,
-              source: rowSource,
-            }));
-          }
         });
 
         setPriceListItems(items);
-        setMedicineItems(meds);
       } catch (e) {
         console.error('Error loading treatment items:', e);
       }
@@ -131,20 +112,12 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const removeAdditionalCharge = (idx) => setAdditionalCharges(prev => prev.filter((_, i) => i !== idx));
 
   const removeTreatmentItem = (idx) => setPriceListItems(prev => prev.filter((_, i) => i !== idx));
-  const removeMedicineItem = (idx) => setMedicineItems(prev => prev.filter((_, i) => i !== idx));
-  const addMedicineItem = (med) => setMedicineItems(prev => [...prev, {
-    name: med.item_name || med.item_code || 'Medicine',
-    price: Number(med.mrp) || 0,
-    source: 'Added manually',
-  }]);
 
   const priceListTotal = priceListItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
-  const medicinesTotal = medicineItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
 
   const calculateTreatmentCharges = () =>
     priceListTotal +
-    additionalCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0) +
-    medicinesTotal;
+    additionalCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
 
   const [formData, setFormData] = useState({
     invoice_date: new Date().toISOString().split('T')[0],
@@ -333,8 +306,6 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         treatment_charges: calculateTreatmentCharges(),
         treatment_items: priceListItems,
         additional_charges: additionalCharges,
-        medicine_items: invoiceType === 'IP' ? medicineItems : [],
-        medicines_total: invoiceType === 'IP' ? medicinesTotal : 0,
         nursing_fees: parseFloat(formData.nursing_fees) || 0,
         doctor_fees: parseFloat(formData.doctor_fees) || 0,
         lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
@@ -431,8 +402,6 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       treatment_charges: calculateTreatmentCharges(),
       treatment_items: priceListItems,
       additional_charges: additionalCharges,
-      medicine_items: invoiceType === 'IP' ? medicineItems : [],
-      medicines_total: invoiceType === 'IP' ? medicinesTotal : 0,
       nursing_fees: parseFloat(formData.nursing_fees) || 0,
       doctor_fees: parseFloat(formData.doctor_fees) || 0,
       lab_test_charges: parseFloat(formData.lab_test_charges) || 0,
@@ -647,9 +616,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                   </span>
                 </div>
 
-                {priceListItems.length === 0 && medicineItems.length === 0 && additionalCharges.length === 0 && (
+                {priceListItems.length === 0 && additionalCharges.length === 0 && (
                   <p className="text-xs text-gray-400 mb-2">
-                    No treatments picked yet. Add treatments via "Add from Price List" or "Add from Package" in the {invoiceType} case sheet{invoiceType === 'IP' ? ' or Daily Progress' : "'s Visit Log"}, add a medicine below, or add a charge manually below.
+                    No treatments picked yet. Add treatments via "Add from Price List" or "Add from Package" in the {invoiceType} case sheet{invoiceType === 'IP' ? ' or Daily Progress' : "'s Visit Log"}, or add a charge manually below.
                   </p>
                 )}
 
@@ -676,39 +645,6 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {invoiceType === 'IP' && (
-                  <div className="mb-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs font-medium text-gray-500">
-                        Medicines Administered <span className="text-teal-600">(case sheet & daily progress)</span>
-                      </p>
-                      <MedicinePickerButton onSelect={addMedicineItem} />
-                    </div>
-                    {medicineItems.length === 0 ? (
-                      <p className="text-xs text-gray-400">No medicines added.</p>
-                    ) : (
-                      <div className="space-y-1">
-                        {medicineItems.map((it, idx) => (
-                          <div key={`mi-${idx}`} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-700">{it.name} <span className="text-xs text-gray-400">({it.source})</span></span>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-800">₹{Number(it.price || 0).toLocaleString('en-IN')}</span>
-                              <button
-                                type="button"
-                                onClick={() => removeMedicineItem(idx)}
-                                className="text-red-500 hover:text-red-700"
-                                title="Remove medicine"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
 

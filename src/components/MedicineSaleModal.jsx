@@ -97,6 +97,22 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
     setRows([...newRows, emptyRow()]);
   }, [inventory, initialMedicineNames]);
 
+  // Auto-sync from the patient's IP/OP case sheet & daily progress the
+  // moment this opens for a known patient (e.g. from Discharge's "Medicine
+  // Invoice" action) — same sync a mid-flow patient search already
+  // triggers below, just without needing that extra manual step first.
+  // Skipped when initialMedicineNames was also handed off (the effect
+  // above owns pre-filling rows in that case, e.g. discharge take-home
+  // advice — the two shouldn't fight over the same blank bill).
+  const initialPrescriptionSyncAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialPrescriptionSyncAppliedRef.current) return;
+    if (!initialCustomer?.patientId || initialMedicineNames?.length > 0 || inventory.length === 0) return;
+    initialPrescriptionSyncAppliedRef.current = true;
+    syncFromPrescription(initialCustomer.patientId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory, initialCustomer, initialMedicineNames]);
+
   const loadInventory = async () => {
     try {
       const snap = await getDocs(collection(db, 'inventory'));
