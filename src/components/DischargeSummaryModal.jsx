@@ -859,6 +859,16 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
       .filter(r => r.medicines_given)
       .map(r => `${new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ${r.medicines_given}`);
 
+    // "Diet and Lifestyle During Treatment" — compiled from each day's
+    // Diet / Food notes, the same way Internal Medicines compiles from
+    // medicines_given. Only used as a fallback (fill-only-if-blank, below)
+    // since this field is really discharge advice text a doctor writes,
+    // not a verbatim log — but a doctor starting from what was actually
+    // recorded is better than a blank field.
+    const dietLines = records
+      .filter(r => r.diet)
+      .map(r => `${new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ${r.diet}`);
+
     // Use last known vitals as a fallback — OP Case Sheet vitals (loaded separately)
     // take priority for "on admission", so only fill fields still blank here.
     const lastWithVitals = [...records].reverse().find(r => r.bp_morning || r.temperature);
@@ -887,6 +897,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         internal_medicines: prev.internal_medicines.filter(Boolean).length > 0
           ? prev.internal_medicines
           : medicineLines.length > 0 ? medicineLines : prev.internal_medicines,
+        diet_lifestyle: prev.diet_lifestyle || dietLines.join('\n'),
       };
     });
   };
