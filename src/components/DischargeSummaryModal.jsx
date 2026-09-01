@@ -701,13 +701,12 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         autoPopulateFromCaseSheet(cs);
       }).catch(() => {}).finally(() => setCaseSheetSynced(true));
 
-      if (!existingSummary) {
-        // Load OP Case Sheet vitals — takes priority over daily-progress vitals
-        // for "on admission" since it's recorded at the actual admitting visit.
-        getDoc(doc(db, 'op_case_sheets', patientId)).then(snap => {
-          if (snap.exists()) autoPopulateVitalsFromOpCaseSheet(snap.data());
-        }).catch(() => {});
-      }
+      // Load OP Case Sheet vitals — preferred over daily-progress vitals for
+      // "on admission" since it's recorded at the actual admitting visit.
+      // Runs for a resumed summary too — safe, see autoPopulateVitalsFromOpCaseSheet.
+      getDoc(doc(db, 'op_case_sheets', patientId)).then(snap => {
+        if (snap.exists()) autoPopulateVitalsFromOpCaseSheet(snap.data());
+      }).catch(() => {});
     } else if (patientId) {
       // OP-only patient — no IP Case Sheet exists, so admission/discharge
       // date+time, and the clinical history prefill, come from their OP
@@ -717,8 +716,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         const cs = snap.data();
         syncAdmissionDischarge(cs);
         // Same reasoning as the IP branch above — safe to re-run for a
-        // resumed summary since every field here only fills a gap.
+        // resumed summary since every field here only fills a gap. Vitals
+        // weren't synced for an OP-only patient at all before — the IP
+        // branch's admission vitals come from autoPopulateFromCaseSheet's
+        // IP Case Sheet fields, which don't exist for this patient, so
+        // autoPopulateVitalsFromOpCaseSheet is the only source here.
         autoPopulateFromOpCaseSheet(cs);
+        autoPopulateVitalsFromOpCaseSheet(cs);
       }).catch(() => {}).finally(() => setCaseSheetSynced(true));
     } else {
       // No patient id to sync from at all — shouldn't normally happen, but
@@ -754,6 +758,18 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   const autoPopulateFromCaseSheet = (cs) => {
     setForm(prev => ({
       ...prev,
+      // "Vital Parameters on Admission" — the IP Case Sheet's own General
+      // Examination fields, recorded at admission. Only fills a gap; never
+      // overwrites a value already here (from daily-progress vitals, the OP
+      // case sheet, or a manual correction), so this is safe to run on
+      // every open, not just a brand-new draft.
+      vitals: {
+        ...prev.vitals,
+        bp: prev.vitals.bp || cs.bp || '',
+        temperature: prev.vitals.temperature || cs.temperature || '',
+        pulse: prev.vitals.pulse || cs.pulse || '',
+        weight: prev.vitals.weight || cs.weight || '',
+      },
       ashtasthana: {
         nadi: prev.ashtasthana.nadi || cs.nadi || '',
         mutra: prev.ashtasthana.mutra || cs.mutra || '',
@@ -803,15 +819,26 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     }));
   };
 
+  // OP Case Sheet vitals — recorded at the actual admitting visit, so
+  // preferred for "on admission" over daily-progress vitals when both are
+  // available. Was cs.X || prev.Y (case sheet always wins), which reliably
+  // gave it priority over autoPopulateFromProgress's fill-only-if-blank
+  // regardless of which of their two independent fetches resolved first —
+  // but also meant re-running it on an existing summary would silently
+  // overwrite a vital staff had since corrected by hand. Switched to
+  // fill-only-if-blank like every other autoPopulate* function; the two
+  // fetches racing is no longer a concern since IP case sheet vitals
+  // (autoPopulateFromCaseSheet, above) use the same safe pattern, so
+  // whichever resolves first no longer "loses" to a stale overwrite.
   const autoPopulateVitalsFromOpCaseSheet = (cs) => {
     setForm(prev => ({
       ...prev,
       vitals: {
         ...prev.vitals,
-        bp: cs.bp || prev.vitals.bp,
-        temperature: cs.temperature || prev.vitals.temperature,
-        pulse: cs.pulse || prev.vitals.pulse,
-        weight: cs.weight || prev.vitals.weight,
+        bp: prev.vitals.bp || cs.bp || '',
+        temperature: prev.vitals.temperature || cs.temperature || '',
+        pulse: prev.vitals.pulse || cs.pulse || '',
+        weight: prev.vitals.weight || cs.weight || '',
       },
     }));
   };
