@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Pill } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import PrintSectionModal from './PrintSectionModal';
 import { formatDateOnly } from '../lib/formatDate';
+import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -33,11 +34,26 @@ const PrescriptionModal = ({ patient, onClose }) => {
   const isIP = patient?.patient_type === 'IP';
   const [opEntries, setOpEntries] = useState([]); // op_visit_notes with medicine_items
   const [ipEntries, setIpEntries] = useState([]); // daily_progress with medicine_items
+  // Advise on Discharge — Internal Medicines from the patient's latest
+  // Discharge Summary — kept in sync here so the printed prescription
+  // reflects whatever's currently in that table, not a separate,
+  // hand-retyped list. Shown on every print regardless of which day is
+  // picked below, since it isn't tied to a particular day.
+  const [dischargeMedicines, setDischargeMedicines] = useState([]);
+  const [dischargeDate, setDischargeDate] = useState('');
   const [complaints, setComplaints] = useState('');
   const [doctorQualification, setDoctorQualification] = useState('');
   const [doctorRegistrationNumber, setDoctorRegistrationNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [showPrintOptions, setShowPrintOptions] = useState(false);
+  // Print preview — in-page iframe printed via its own contentWindow, same
+  // pattern as MedicineSaleModal/InvoiceModal/DischargeSummaryModal (see
+  // medicineSalePrint.js for why: window.open()+document.write() silently
+  // crashes whenever the popup is blocked, since it calls .document on the
+  // null it returns — this component was the one place in the app still
+  // using that old pattern).
+  const [printPreviewHtml, setPrintPreviewHtml] = useState(null);
+  const printIframeRef = useRef(null);
 
   useEffect(() => {
     loadData();
@@ -63,6 +79,12 @@ const PrescriptionModal = ({ patient, onClose }) => {
       if (caseSheetSnap.exists()) {
         const d = caseSheetSnap.data();
         setComplaints(isIP ? (d.history_presenting_complaints || '') : (d.presenting_complaints || ''));
+      }
+
+      const latestSummary = await fetchLatestDischargeSummary(patientId);
+      if (latestSummary) {
+        setDischargeMedicines((latestSummary.discharge_internal_medicines || []).filter(m => m.item_name));
+        setDischargeDate(latestSummary.discharge_date || '');
       }
 
       if (patient?.assigned_doctor) {
@@ -197,6 +219,34 @@ const PrescriptionModal = ({ patient, onClose }) => {
     <tbody>${rowsHTML || `<tr><td colspan="${showDateColumn ? 7 : 6}" style="text-align:center;color:#888;">No medications recorded</td></tr>`}</tbody>
   </table>
 
+  ${dischargeMedicines.length > 0 ? `
+    <div class="section-title">Advised on Discharge${dischargeDate ? ` (${fmtDate(dischargeDate)})` : ''}</div>
+    <table class="grid">
+      <thead>
+        <tr>
+          <th style="width:36px;">Sl</th>
+          <th>Medicine</th>
+          <th style="width:110px;">Dose</th>
+          <th style="width:110px;">Frequency</th>
+          <th>Instructions</th>
+          <th style="width:56px;">Days</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${dischargeMedicines.map((item, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${item.item_name}</td>
+            <td>${item.dose || ''}</td>
+            <td>${item.frequency || ''}</td>
+            <td>${item.instructions || ''}</td>
+            <td>${item.days || ''}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  ` : ''}
+
   ${complaints ? `
     <div class="section-title">Presenting Complaints</div>
     <p class="section-body">${complaints}</p>
@@ -221,12 +271,14 @@ const PrescriptionModal = ({ patient, onClose }) => {
   };
 
   const printEntries = (entries) => {
-    const win = window.open('', '_blank');
-    if (!win) { alert('Please allow pop-ups for this site to print.'); return; }
-    win.document.write(buildPrintHTML(entries));
-    win.document.close();
+    setPrintPreviewHtml(buildPrintHTML(entries));
+  };
+
+  const handlePrintFromPreview = () => {
+    const win = printIframeRef.current?.contentWindow;
+    if (!win) return;
     win.focus();
-    setTimeout(() => win.print(), 300);
+    win.print();
   };
 
   // For OP there's nothing to choose — always the latest visit. For IP with
@@ -256,6 +308,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
     : [];
 
   return (
+    <>
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
 
@@ -288,7 +341,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
 
           {loading ? (
             <div className="text-center py-10 text-gray-400">Loading prescription…</div>
-          ) : previewEntries.length === 0 ? (
+          ) : previewEntries.length === 0 && dischargeMedicines.length === 0 ? (
             <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-300">
               No medications recorded yet. Add a Medication table entry in {isIP ? 'IP Daily Progress' : "the OP case sheet's Visit Log"}.
             </div>
@@ -328,6 +381,41 @@ const PrescriptionModal = ({ patient, onClose }) => {
                   </div>
                 </div>
               ))}
+
+              {dischargeMedicines.length > 0 && (
+                <div className="border border-teal-200 rounded-xl overflow-hidden">
+                  <div className="bg-teal-50 px-4 py-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-teal-700">Advised on Discharge</span>
+                    {dischargeDate && <span className="text-xs text-gray-500">{fmtDate(dischargeDate)}</span>}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white border-b border-gray-100">
+                        <tr>
+                          <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500 uppercase w-8">#</th>
+                          <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Medicine</th>
+                          <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Dose</th>
+                          <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Frequency</th>
+                          <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Instructions</th>
+                          <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500 uppercase w-16">Days</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {dischargeMedicines.map((item, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-1.5 text-gray-400">{i + 1}</td>
+                            <td className="px-3 py-1.5 text-gray-800 font-medium">{item.item_name}</td>
+                            <td className="px-3 py-1.5 text-gray-700">{item.dose}</td>
+                            <td className="px-3 py-1.5 text-gray-700">{item.frequency}</td>
+                            <td className="px-3 py-1.5 text-gray-700">{item.instructions}</td>
+                            <td className="px-3 py-1.5 text-gray-700">{item.days}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -342,6 +430,46 @@ const PrescriptionModal = ({ patient, onClose }) => {
         />
       )}
     </div>
+
+    {printPreviewHtml && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col">
+          <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+            <div>
+              <h2 className="text-xl font-bold">Print Preview</h2>
+              <p className="text-teal-100 text-sm">{patientName}</p>
+            </div>
+            <button onClick={() => setPrintPreviewHtml(null)} className="hover:bg-teal-700 p-2 rounded">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end bg-gray-50">
+            <button
+              onClick={handlePrintFromPreview}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+            >
+              <Printer className="w-4 h-4" /> Print
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-gray-200 p-6 flex justify-center">
+            <iframe
+              ref={printIframeRef}
+              title="Prescription print preview"
+              srcDoc={printPreviewHtml}
+              // Matches the old auto-print-on-open behavior — fires once the
+              // preview has finished rendering, with the header button above
+              // still there for a manual re-print.
+              onLoad={handlePrintFromPreview}
+              className="bg-white shadow-lg"
+              style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
