@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Plus, Trash2, FileText, Receipt } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { addDoc, updateDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { addDoc, updateDoc, deleteDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import MedicineSaleModal from './MedicineSaleModal';
 import MedicineTable from './MedicineTable';
 import { buildMedicineItemsTableHTML } from '../lib/medicineSummary';
@@ -922,10 +922,12 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         ...form,
         saved_at: new Date().toISOString(),
       };
-      if (existingSummary?.id) {
-        await updateDoc(doc(db, 'discharge_summaries', existingSummary.id), data);
+      let dischargeSummaryId = existingSummary?.id;
+      if (dischargeSummaryId) {
+        await updateDoc(doc(db, 'discharge_summaries', dischargeSummaryId), data);
       } else {
-        await addDoc(collection(db, 'discharge_summaries'), data);
+        const newDoc = await addDoc(collection(db, 'discharge_summaries'), data);
+        dischargeSummaryId = newDoc.id;
       }
 
       // Saving this summary is the actual act of discharging the patient —
@@ -953,7 +955,14 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         }
       }
 
-      // Auto-create follow-up appointment in Scheduling if a date is set
+      // Keep the Scheduling follow-up appointment in sync with this summary's
+      // next_review_date across repeated saves, rather than creating a fresh
+      // duplicate every single time this form is saved (which is what used
+      // to happen — a patient resaved 3 times ended up with 3 appointments).
+      // follow_up_appointment_id (persisted on the summary itself) is how a
+      // later save finds the one it already created, to update in place.
+      let followUpAppointmentId = existingSummary?.follow_up_appointment_id || null;
+      let appointmentAction = null; // 'created' | 'updated' | 'removed'
       if (form.next_review_date) {
         const apptPayload = {
           patient: `${patientName}${form.mrd_no ? ` (${form.mrd_no})` : ''}`,
@@ -961,23 +970,59 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
           date: form.next_review_date,
           time: '10:00',
           type: 'Follow-up Review',
-          status: 'scheduled',
           doctorId: '',
           doctorName: form.doctor_in_charge || '',
           therapistId: '',
           therapistName: '',
           notes: `Follow-up after discharge. ${form.review_procedure || ''}`.trim(),
           source: 'discharge_summary',
-          createdAt: new Date().toISOString(),
         };
-        await addDoc(collection(db, 'appointments'), apptPayload);
+        if (followUpAppointmentId) {
+          try {
+            // Deliberately omits `status` — if staff already marked this
+            // appointment completed/cancelled directly in Scheduling, a
+            // routine resave of the summary shouldn't silently revert that.
+            await updateDoc(doc(db, 'appointments', followUpAppointmentId), apptPayload);
+            appointmentAction = 'updated';
+          } catch (apptErr) {
+            // The appointment doc this summary remembers may have been
+            // deleted independently (e.g. removed in Scheduling) — fall
+            // back to creating a fresh one rather than losing the follow-up.
+            console.error('Error updating existing follow-up appointment, creating a new one:', apptErr);
+            followUpAppointmentId = null;
+          }
+        }
+        if (!followUpAppointmentId) {
+          const newAppt = await addDoc(collection(db, 'appointments'), {
+            ...apptPayload,
+            status: 'scheduled',
+            createdAt: new Date().toISOString(),
+          });
+          followUpAppointmentId = newAppt.id;
+          appointmentAction = 'created';
+        }
+      } else if (followUpAppointmentId) {
+        // Follow-up was cleared on this save — remove the now-stale
+        // appointment instead of leaving an orphan sitting in Scheduling.
+        try {
+          await deleteDoc(doc(db, 'appointments', followUpAppointmentId));
+          appointmentAction = 'removed';
+        } catch (apptErr) {
+          console.error('Error removing stale follow-up appointment:', apptErr);
+        }
+        followUpAppointmentId = null;
+      }
+      if (followUpAppointmentId !== (existingSummary?.follow_up_appointment_id || null)) {
+        await updateDoc(doc(db, 'discharge_summaries', dischargeSummaryId), { follow_up_appointment_id: followUpAppointmentId });
       }
 
       alert(
         '✅ Discharge summary saved!' +
         (statusUpdateSucceeded && !wasAlreadyDischarged ? '\n➡️ Patient moved from Active to Inactive/Discharged in Patient Portal.' : '') +
         (patientId && !statusUpdateSucceeded ? '\n⚠️ Could not update the patient\'s status — check Patient Portal.' : '') +
-        (form.next_review_date ? '\n📅 Follow-up appointment created in Scheduling.' : '')
+        (appointmentAction === 'created' ? '\n📅 Follow-up appointment created in Scheduling.' : '') +
+        (appointmentAction === 'updated' ? '\n📅 Follow-up appointment updated in Scheduling.' : '') +
+        (appointmentAction === 'removed' ? '\n📅 Follow-up date cleared — the appointment in Scheduling was removed.' : '')
       );
       if (onSave) onSave();
     } catch (e) {
