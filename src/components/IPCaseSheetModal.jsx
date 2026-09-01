@@ -221,7 +221,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
   ${row2('IHD', form.ihd, 'Hyperlipidemia', form.hyperlipidemia)}
 </table>
 
-<div class="section-title">Asha Sthana Pareeksha</div>
+<div class="section-title">ASHTASTHANA PAREEKSHA</div>
 <table class="grid">
   ${row2('Nadi', form.nadi, 'Sabda', form.sabda)}
   ${row2('Mutra', form.mutra, 'Sparsa', form.sparsa)}
@@ -809,7 +809,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                     <Field label="Hyperlipidemia" value={form.hyperlipidemia} onChange={v => set('hyperlipidemia', v)} />
                   </div>
 
-                  <SectionTitle>Asha Sthana Pareeksha</SectionTitle>
+                  <SectionTitle>ASHTASTHANA PAREEKSHA</SectionTitle>
                   <div className="grid grid-cols-4 gap-3">
                     <Field label="Nadi" value={form.nadi} onChange={v => set('nadi', v)} />
                     <Field label="Mutra" value={form.mutra} onChange={v => set('mutra', v)} />

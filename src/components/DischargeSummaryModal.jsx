@@ -689,11 +689,16 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
       // Load IP Case Sheet (admission-time Ayurvedic assessment & history) to
       // prefill a blank draft, and to keep admission/discharge date+time synced.
+      // autoPopulateFromCaseSheet also runs for a resumed summary, not just a
+      // new draft — e.g. Ashtasthana Pareeksha entered on the case sheet
+      // after the summary was first saved otherwise never showed up here.
+      // Safe either way: every field it sets only fills a gap, never
+      // overwrites something already recorded.
       getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
         if (!snap.exists()) return;
         const cs = snap.data();
         syncAdmissionDischarge(cs);
-        if (!existingSummary) autoPopulateFromCaseSheet(cs);
+        autoPopulateFromCaseSheet(cs);
       }).catch(() => {}).finally(() => setCaseSheetSynced(true));
 
       if (!existingSummary) {
@@ -711,7 +716,9 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         if (!snap.exists()) return;
         const cs = snap.data();
         syncAdmissionDischarge(cs);
-        if (!existingSummary) autoPopulateFromOpCaseSheet(cs);
+        // Same reasoning as the IP branch above — safe to re-run for a
+        // resumed summary since every field here only fills a gap.
+        autoPopulateFromOpCaseSheet(cs);
       }).catch(() => {}).finally(() => setCaseSheetSynced(true));
     } else {
       // No patient id to sync from at all — shouldn't normally happen, but
