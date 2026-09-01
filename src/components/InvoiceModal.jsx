@@ -6,6 +6,7 @@ import { sendInvoiceSMS } from '../lib/sms';
 import { getRoomInfo } from '../lib/rooms';
 import { addDaysToDateString } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
+import MedicinePickerButton from './MedicinePickerButton';
 
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
@@ -39,14 +40,17 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const [showCheckoutPrompt, setShowCheckoutPrompt] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
 
-  // Treatments picked from the price list on the patient's case sheet (OP or IP) — read-only, auto-synced.
+  // Treatments picked from the price list on the patient's case sheet (OP or IP),
+  // auto-synced but editable here — a line can be removed from just this invoice
+  // (e.g. it was billed already, or picked in error) without touching the case
+  // sheet/daily progress record it came from.
   const [priceListItems, setPriceListItems] = useState([]);
   // Ad-hoc charges added directly on the invoice, on top of the price-list treatments.
   const [additionalCharges, setAdditionalCharges] = useState([]);
   // Medicines administered during the IP stay (from the case sheet + each Daily
-  // Progress entry's MedicineTable) — billed as one aggregate total, not itemized,
-  // since these are clinical dosing entries rather than priced treatment picks.
-  const [medicinesTotal, setMedicinesTotal] = useState(0);
+  // Progress entry's MedicineTable), itemized the same way as priceListItems —
+  // editable here, plus a picker to add one straight from inventory.
+  const [medicineItems, setMedicineItems] = useState([]);
 
   // Doctor signature block on the printed invoice — looked up from the
   // patient's assigned doctor, same pattern as the prescription printout.
@@ -80,14 +84,18 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     const loadTreatmentItems = async () => {
       try {
         const items = [];
-        let medsTotal = 0;
+        const meds = [];
         const caseSheetCollection = invoiceType === 'IP' ? 'ip_case_sheets' : 'op_case_sheets';
         const caseSheetSnap = await getDoc(doc(db, caseSheetCollection, patientId));
         if (caseSheetSnap.exists()) {
           const cs = caseSheetSnap.data();
           (cs.treatment_items || []).forEach(it => items.push({ ...it, source: 'Case Sheet' }));
           if (invoiceType === 'IP') {
-            (cs.medicine_items || []).forEach(m => { medsTotal += Number(m.mrp) || 0; });
+            (cs.medicine_items || []).forEach(m => meds.push({
+              name: m.item_name || m.name || 'Medicine',
+              price: Number(m.mrp) || 0,
+              source: 'Case Sheet',
+            }));
           }
         }
 
@@ -97,14 +105,19 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         const sourceLabel = invoiceType === 'IP' ? 'Daily Progress' : 'Visit';
         logSnap.docs.forEach(d => {
           const data = d.data();
-          (data.treatment_items || []).forEach(it => items.push({ ...it, source: data.date ? `${sourceLabel} · ${data.date}` : sourceLabel }));
+          const rowSource = data.date ? `${sourceLabel} · ${data.date}` : sourceLabel;
+          (data.treatment_items || []).forEach(it => items.push({ ...it, source: rowSource }));
           if (invoiceType === 'IP') {
-            (data.medicine_items || []).forEach(m => { medsTotal += Number(m.mrp) || 0; });
+            (data.medicine_items || []).forEach(m => meds.push({
+              name: m.item_name || m.name || 'Medicine',
+              price: Number(m.mrp) || 0,
+              source: rowSource,
+            }));
           }
         });
 
         setPriceListItems(items);
-        setMedicinesTotal(medsTotal);
+        setMedicineItems(meds);
       } catch (e) {
         console.error('Error loading treatment items:', e);
       }
@@ -117,7 +130,16 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     setAdditionalCharges(prev => prev.map((c, i) => (i === idx ? { ...c, [field]: value } : c)));
   const removeAdditionalCharge = (idx) => setAdditionalCharges(prev => prev.filter((_, i) => i !== idx));
 
+  const removeTreatmentItem = (idx) => setPriceListItems(prev => prev.filter((_, i) => i !== idx));
+  const removeMedicineItem = (idx) => setMedicineItems(prev => prev.filter((_, i) => i !== idx));
+  const addMedicineItem = (med) => setMedicineItems(prev => [...prev, {
+    name: med.item_name || med.item_code || 'Medicine',
+    price: Number(med.mrp) || 0,
+    source: 'Added manually',
+  }]);
+
   const priceListTotal = priceListItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  const medicinesTotal = medicineItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
 
   const calculateTreatmentCharges = () =>
     priceListTotal +
@@ -311,6 +333,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         treatment_charges: calculateTreatmentCharges(),
         treatment_items: priceListItems,
         additional_charges: additionalCharges,
+        medicine_items: invoiceType === 'IP' ? medicineItems : [],
         medicines_total: invoiceType === 'IP' ? medicinesTotal : 0,
         nursing_fees: parseFloat(formData.nursing_fees) || 0,
         doctor_fees: parseFloat(formData.doctor_fees) || 0,
@@ -408,6 +431,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       treatment_charges: calculateTreatmentCharges(),
       treatment_items: priceListItems,
       additional_charges: additionalCharges,
+      medicine_items: invoiceType === 'IP' ? medicineItems : [],
       medicines_total: invoiceType === 'IP' ? medicinesTotal : 0,
       nursing_fees: parseFloat(formData.nursing_fees) || 0,
       doctor_fees: parseFloat(formData.doctor_fees) || 0,
@@ -623,28 +647,70 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                   </span>
                 </div>
 
-                {priceListItems.length === 0 && additionalCharges.length === 0 && medicinesTotal === 0 && (
+                {priceListItems.length === 0 && medicineItems.length === 0 && additionalCharges.length === 0 && (
                   <p className="text-xs text-gray-400 mb-2">
-                    No treatments picked yet. Add treatments via "Add from Price List" or "Add from Package" in the {invoiceType} case sheet{invoiceType === 'IP' ? ' or Daily Progress' : "'s Visit Log"}, or add a charge manually below.
+                    No treatments picked yet. Add treatments via "Add from Price List" or "Add from Package" in the {invoiceType} case sheet{invoiceType === 'IP' ? ' or Daily Progress' : "'s Visit Log"}, add a medicine below, or add a charge manually below.
                   </p>
                 )}
 
-                <div className="space-y-1.5 mb-2">
-                  {priceListItems.length > 0 && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">
-                        Treatments <span className="text-xs text-teal-600">({invoiceType} case sheet & {invoiceType === 'IP' ? 'daily progress' : 'visit log'})</span>
-                      </span>
-                      <span className="font-medium text-gray-800">₹{priceListTotal.toLocaleString('en-IN')}</span>
+                {priceListItems.length > 0 && (
+                  <div className="mb-2">
+                    <p className="text-xs font-medium text-gray-500 mb-1">
+                      Treatments <span className="text-teal-600">({invoiceType} case sheet & {invoiceType === 'IP' ? 'daily progress' : 'visit log'})</span>
+                    </p>
+                    <div className="space-y-1">
+                      {priceListItems.map((it, idx) => (
+                        <div key={`ti-${idx}`} className="flex items-center justify-between text-sm">
+                          <span className="text-gray-700">{it.name} <span className="text-xs text-gray-400">({it.source})</span></span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-800">₹{Number(it.price || 0).toLocaleString('en-IN')}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeTreatmentItem(idx)}
+                              className="text-red-500 hover:text-red-700"
+                              title="Remove treatment"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                  {invoiceType === 'IP' && medicinesTotal > 0 && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">Medicines Administered <span className="text-xs text-teal-600">(case sheet & daily progress)</span></span>
-                      <span className="font-medium text-gray-800">₹{medicinesTotal.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+
+                {invoiceType === 'IP' && (
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-medium text-gray-500">
+                        Medicines Administered <span className="text-teal-600">(case sheet & daily progress)</span>
+                      </p>
+                      <MedicinePickerButton onSelect={addMedicineItem} />
                     </div>
-                  )}
-                </div>
+                    {medicineItems.length === 0 ? (
+                      <p className="text-xs text-gray-400">No medicines added.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {medicineItems.map((it, idx) => (
+                          <div key={`mi-${idx}`} className="flex items-center justify-between text-sm">
+                            <span className="text-gray-700">{it.name} <span className="text-xs text-gray-400">({it.source})</span></span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-800">₹{Number(it.price || 0).toLocaleString('en-IN')}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeMedicineItem(idx)}
+                                className="text-red-500 hover:text-red-700"
+                                title="Remove medicine"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2 mb-2">
                   {additionalCharges.map((charge, idx) => (

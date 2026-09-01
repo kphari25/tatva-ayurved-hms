@@ -1,19 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Pill, Search } from 'lucide-react';
+import { ListPlus, Search } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-const stockStatus = (item) => {
-  const qty = item.stock_quantity || 0;
-  const reorderLevel = item.reorder_level || 10;
-  if (qty === 0) return { label: 'Out of stock', className: 'text-red-600' };
-  if (qty < reorderLevel) return { label: `Low stock: ${qty} ${item.unit_of_measurement || ''}`.trim(), className: 'text-orange-600' };
-  return { label: `In stock: ${qty} ${item.unit_of_measurement || ''}`.trim(), className: 'text-green-700' };
-};
-
-// Small popover button that lets a doctor search the medicine inventory and
-// insert an item name (with live stock status) into a free-text field.
-const MedicinePickerButton = ({ onSelect, label = 'Add from Inventory' }) => {
+// Small popover button that lets staff browse Inventory and add a medicine
+// (with its MRP) as a billed line item — same pattern as TreatmentPickerButton
+// / PackagePickerButton, sourced from the inventory collection instead.
+const MedicinePickerButton = ({ onSelect, label = 'Add Medicine' }) => {
   const [open, setOpen] = useState(false);
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -37,7 +30,10 @@ const MedicinePickerButton = ({ onSelect, label = 'Add from Inventory' }) => {
         const snap = await getDocs(collection(db, 'inventory'));
         // Spread first, id last: some inventory docs carry their own legacy
         // numeric `id` field, which would otherwise clobber the real doc id.
-        setMedicines(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+        const items = snap.docs
+          .map(d => ({ ...d.data(), id: d.id }))
+          .sort((a, b) => (a.item_name || '').localeCompare(b.item_name || ''));
+        setMedicines(items);
       } catch (e) {
         console.error('Error loading inventory:', e);
       } finally {
@@ -46,15 +42,22 @@ const MedicinePickerButton = ({ onSelect, label = 'Add from Inventory' }) => {
     }
   };
 
-  const filtered = medicines.filter(m => {
-    const term = search.toLowerCase();
-    return (m.item_name || '').toLowerCase().includes(term) || String(m.item_code || '').toLowerCase().includes(term);
-  }).slice(0, 20);
+  const filtered = medicines.filter(m =>
+    (m.item_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(m.item_code || '').toLowerCase().includes(search.toLowerCase())
+  ).slice(0, 50);
 
   const handlePick = (m) => {
     onSelect(m);
     setOpen(false);
     setSearch('');
+  };
+
+  const stockLabel = (item) => {
+    const qty = item.stock_quantity || 0;
+    if (qty === 0) return { text: 'Out of stock', className: 'text-red-600' };
+    if (qty < (item.reorder_level || 10)) return { text: `Low: ${qty}`, className: 'text-orange-600' };
+    return { text: `In stock: ${qty}`, className: 'text-green-700' };
   };
 
   return (
@@ -64,7 +67,7 @@ const MedicinePickerButton = ({ onSelect, label = 'Add from Inventory' }) => {
         onClick={() => (open ? setOpen(false) : handleOpen())}
         className="flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-900 hover:bg-teal-50 px-2 py-1 rounded"
       >
-        <Pill className="w-3.5 h-3.5" /> {label}
+        <ListPlus className="w-3.5 h-3.5" /> {label}
       </button>
 
       {open && (
@@ -89,7 +92,7 @@ const MedicinePickerButton = ({ onSelect, label = 'Add from Inventory' }) => {
               <p className="text-xs text-gray-400 text-center py-4">No medicines found</p>
             ) : (
               filtered.map(m => {
-                const status = stockStatus(m);
+                const st = stockLabel(m);
                 return (
                   <button
                     type="button"
@@ -98,7 +101,10 @@ const MedicinePickerButton = ({ onSelect, label = 'Add from Inventory' }) => {
                     className="w-full flex flex-col items-start px-3 py-2 text-xs text-left hover:bg-teal-50 border-b border-gray-50 last:border-0"
                   >
                     <span className="text-gray-800 font-medium">{m.item_name}</span>
-                    <span className={`mt-0.5 ${status.className}`}>{status.label}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-teal-700 font-semibold">₹{Number(m.mrp || 0).toLocaleString('en-IN')}</span>
+                      <span className={st.className}>{st.text}</span>
+                    </span>
                   </button>
                 );
               })
