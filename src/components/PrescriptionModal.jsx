@@ -102,11 +102,12 @@ const PrescriptionModal = ({ patient, onClose }) => {
     }
   };
 
-  // What's shown in the in-app preview right now — IP patients see every day
-  // at a glance here, then pick a specific day (or all of them) when they
-  // actually print; OP always shows the latest visit, matching how OP
-  // prescriptions have always worked in this app.
-  const previewEntries = isIP ? ipEntries : opEntries.slice(0, 1);
+  // Every entry (day for IP, visit for OP) shown at a glance here, then a
+  // specific one (or all of them) picked when actually printing — OP used
+  // to always show/print only the latest visit, silently dropping earlier
+  // visits' medicines from the prescription.
+  const allEntries = isIP ? ipEntries : opEntries;
+  const previewEntries = allEntries;
 
   const buildPrintHTML = (entries) => {
     // "Signed By" on the most recent entry that has one is who actually saw
@@ -281,31 +282,29 @@ const PrescriptionModal = ({ patient, onClose }) => {
     win.print();
   };
 
-  // For OP there's nothing to choose — always the latest visit. For IP with
-  // more than one day recorded, offer "All Pages" (every day combined) or a
-  // specific day, reusing the same picker used by the OP/IP case sheets.
+  // With more than one entry recorded (day for IP, visit for OP), offer
+  // "All Pages" (everything combined) or a specific one, reusing the same
+  // picker used by the OP/IP case sheets.
   const handlePrintClick = () => {
-    if (isIP && ipEntries.length > 1) {
+    if (allEntries.length > 1) {
       setShowPrintOptions(true);
     } else {
-      printEntries(isIP ? ipEntries : opEntries.slice(0, 1));
+      printEntries(allEntries);
     }
   };
 
   const handlePickSection = (sectionId) => {
     if (sectionId === 'all') {
-      printEntries(ipEntries);
+      printEntries(allEntries);
     } else {
-      printEntries(ipEntries.filter(e => e.date === sectionId));
+      printEntries(allEntries.filter(e => e.date === sectionId));
     }
   };
 
-  // A day can have more than one daily_progress entry (e.g. a morning and an
-  // evening note) — collapse to one picker option per distinct date, since
-  // "print this day" already combines every entry recorded on it.
-  const daySections = isIP
-    ? [...new Set(ipEntries.map(e => e.date))].map(date => ({ id: date, label: fmtDate(date) }))
-    : [];
+  // A day/visit can have more than one entry (e.g. a morning and an evening
+  // IP note) — collapse to one picker option per distinct date, since
+  // "print this one" already combines every entry recorded on it.
+  const daySections = [...new Set(allEntries.map(e => e.date))].map(date => ({ id: date, label: fmtDate(date) }));
 
   return (
     <>
@@ -336,7 +335,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
           <p className="text-xs text-gray-500 mb-4">
             {isIP
               ? 'Automatically compiled from the Medication table entered in IP Daily Progress. Choose which day (or all days) to print above.'
-              : 'Automatically compiled from the Medication table entered in the latest OP Visit Log entry.'}
+              : 'Automatically compiled from the Medication table entered in every OP Visit Log entry. Choose which visit (or all visits) to print above.'}
           </p>
 
           {loading ? (
