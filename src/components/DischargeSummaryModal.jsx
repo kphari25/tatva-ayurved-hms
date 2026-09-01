@@ -676,7 +676,13 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         const records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         records.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
         setDailyProgress(records);
-        if (records.length > 0 && !existingSummary) {
+        // Runs for a resumed summary too, not just a brand-new draft — a
+        // Daily Progress entry added after the summary was first saved
+        // (a real, common case: more days pass before discharge is
+        // actually finalized) otherwise never showed up here. Safe either
+        // way: see autoPopulateFromProgress, which only fills gaps rather
+        // than overwriting anything already recorded.
+        if (records.length > 0) {
           autoPopulateFromProgress(records);
         }
       }).catch(() => {}).finally(() => setLoadingProgress(false));
@@ -823,23 +829,32 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     // take priority for "on admission", so only fill fields still blank here.
     const lastWithVitals = [...records].reverse().find(r => r.bp_morning || r.temperature);
 
-    setForm(prev => ({
-      ...prev,
-      vitals: {
-        ...prev.vitals,
-        bp: prev.vitals.bp || lastWithVitals?.bp_morning || '',
-        temperature: prev.vitals.temperature || lastWithVitals?.temperature || '',
-        pulse: prev.vitals.pulse || lastWithVitals?.pulse || '',
-        spo2: prev.vitals.spo2 || lastWithVitals?.spo2 || '',
-        weight: prev.vitals.weight || lastWithVitals?.weight || '',
-      },
-      daily_treatments: (prev.daily_treatments || []).length > 0
-        ? prev.daily_treatments
-        : dailyEntries,
-      internal_medicines: prev.internal_medicines.filter(Boolean).length > 0
-        ? prev.internal_medicines
-        : medicineLines.length > 0 ? medicineLines : prev.internal_medicines,
-    }));
+    setForm(prev => {
+      // Merge in only the dates not already logged, rather than an
+      // all-or-nothing fill — this is what lets a Daily Progress entry
+      // added after the summary's first save still show up here on a
+      // later open, without disturbing any row already recorded
+      // (including one a user has since hand-edited).
+      const existingDates = new Set((prev.daily_treatments || []).map(e => e.date));
+      const newDailyEntries = dailyEntries.filter(e => !existingDates.has(e.date));
+      return {
+        ...prev,
+        vitals: {
+          ...prev.vitals,
+          bp: prev.vitals.bp || lastWithVitals?.bp_morning || '',
+          temperature: prev.vitals.temperature || lastWithVitals?.temperature || '',
+          pulse: prev.vitals.pulse || lastWithVitals?.pulse || '',
+          spo2: prev.vitals.spo2 || lastWithVitals?.spo2 || '',
+          weight: prev.vitals.weight || lastWithVitals?.weight || '',
+        },
+        daily_treatments: newDailyEntries.length > 0
+          ? [...(prev.daily_treatments || []), ...newDailyEntries]
+          : (prev.daily_treatments || []),
+        internal_medicines: prev.internal_medicines.filter(Boolean).length > 0
+          ? prev.internal_medicines
+          : medicineLines.length > 0 ? medicineLines : prev.internal_medicines,
+      };
+    });
   };
 
   const set = (path, val) => {
