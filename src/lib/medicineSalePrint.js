@@ -136,7 +136,8 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
       <tr><td>Subtotal</td><td style="text-align:right">₹${saleData.subtotal.toFixed(2)}</td></tr>
       ${saleData.gst_percentage > 0 ? `<tr><td>GST (${saleData.gst_percentage}%)</td><td style="text-align:right">₹${saleData.gst_amount.toFixed(2)}</td></tr>` : ''}
       `}
-      ${saleData.discount > 0 ? `<tr><td style="color:red">Discount</td><td style="text-align:right;color:red">-₹${saleData.discount.toFixed(2)}</td></tr>` : ''}
+      ${saleData.discount > 0 ? `<tr><td style="color:red">Discount${saleData.discount_percentage ? ` (${saleData.discount_percentage}%)` : ''}</td><td style="text-align:right;color:red">-₹${saleData.discount.toFixed(2)}</td></tr>` : ''}
+      ${saleData.round_off ? `<tr><td>Round Off</td><td style="text-align:right">${saleData.round_off > 0 ? '+' : '-'}₹${Math.abs(saleData.round_off).toFixed(2)}</td></tr>` : ''}
       <tr class="grand"><td>TOTAL</td><td style="text-align:right">₹${saleData.total_amount.toFixed(2)}</td></tr>
     </table>
   </div>

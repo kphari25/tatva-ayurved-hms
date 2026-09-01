@@ -285,7 +285,20 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   const calcTotalTax = () => rows.reduce((s, r) => s + calcLineTax(r), 0);
   const calcCGST = () => calcTotalTax() / 2;
   const calcSGST = () => calcTotalTax() / 2;
-  const calcTotal = () => calcSubtotal() - (parseFloat(formData.discount) || 0);
+  // Discount is entered as a percentage of the subtotal, not a flat ₹ amount.
+  const calcDiscountAmount = () => calcSubtotal() * (parseFloat(formData.discount) || 0) / 100;
+  const calcRawTotal = () => calcSubtotal() - calcDiscountAmount();
+  // The amount actually charged is rounded to the nearest rupee (standard
+  // "round half up": .50 and above rounds up, matches Math.round for a
+  // positive number) — paise aren't handled in cash at the counter. The
+  // difference from the exact figure shows as its own Round Off line below,
+  // so the totals still add up transparently on the printed bill.
+  const calcTotal = () => Math.round(calcRawTotal());
+  // Rounded to the nearest paisa itself — the raw subtraction can leave a
+  // sub-paisa float remainder (GST on a fractional base price rarely lands
+  // on an exact paisa), which would otherwise still count as "nonzero" and
+  // show a "Round Off: +₹0.00" line that reads as a no-op adjustment.
+  const calcRoundOff = () => Math.round((calcTotal() - calcRawTotal()) * 100) / 100;
   const validRows = () => rows.filter(r => r.name && parseFloat(r.rate) > 0 && parseFloat(r.quantity) > 0);
 
   // ── Print ───────────────────────────────────────────────────
@@ -315,7 +328,9 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
       cgst_amount: calcCGST(),
       sgst_amount: calcSGST(),
       gst_amount: calcTotalTax(),
-      discount: parseFloat(formData.discount) || 0,
+      discount_percentage: parseFloat(formData.discount) || 0,
+      discount: calcDiscountAmount(),
+      round_off: calcRoundOff(),
       total_amount: calcTotal(),
       notes: formData.notes,
     };
@@ -361,7 +376,9 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         cgst_amount: calcCGST(),
         sgst_amount: calcSGST(),
         gst_amount: calcTotalTax(),
-        discount: parseFloat(formData.discount) || 0,
+        discount_percentage: parseFloat(formData.discount) || 0,
+        discount: calcDiscountAmount(),
+        round_off: calcRoundOff(),
         total_amount: calcTotal(),
         notes: formData.notes,
         created_at: new Date().toISOString(),
@@ -702,13 +719,13 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               below decompose it into CGST/SGST automatically. */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Discount (₹)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Discount (%)</label>
               <input
-                type="number" min="0"
+                type="number" min="0" max="100" step="0.01"
                 value={formData.discount}
                 onChange={e => setFormData(f => ({ ...f, discount: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-                placeholder="0.00"
+                placeholder="0"
               />
             </div>
           </div>
@@ -746,8 +763,14 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               )}
               {parseFloat(formData.discount) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Discount:</span>
-                  <span>-₹{parseFloat(formData.discount).toFixed(2)}</span>
+                  <span>Discount ({parseFloat(formData.discount)}%):</span>
+                  <span>-₹{calcDiscountAmount().toFixed(2)}</span>
+                </div>
+              )}
+              {calcRoundOff() !== 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Round Off:</span>
+                  <span>{calcRoundOff() > 0 ? '+' : '-'}₹{Math.abs(calcRoundOff()).toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-2xl font-bold pt-2 border-t border-teal-500">
