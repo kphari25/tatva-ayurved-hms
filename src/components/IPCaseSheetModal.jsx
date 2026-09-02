@@ -4,7 +4,7 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import InvestigationAttachments from './InvestigationAttachments';
 import TreatmentPickerButton from './TreatmentPickerButton';
-import PackagePickerButton from './PackagePickerButton';
+import PackagePickerButton, { packageTreatmentDetails } from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
 import PrintSectionModal from './PrintSectionModal';
@@ -26,7 +26,7 @@ const PRINT_SECTIONS = [
 const TREATMENT_DAYS_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
 const appendTreatment = (currentText, treatment) => {
-  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
+  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})${treatment.details ? ` — ${treatment.details}` : ''}`;
   return currentText ? `${currentText}, ${entry}` : entry;
 };
 
@@ -905,7 +905,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                             <PackagePickerButton
                               onSelect={(pkg) => setDailyForm(p => ({
                                 ...p,
-                                treatment_performed: appendTreatment(p.treatment_performed, { name: pkg.name, price: pkg.cost }),
+                                treatment_performed: appendTreatment(p.treatment_performed, { name: pkg.name, price: pkg.cost, details: packageTreatmentDetails(pkg) }),
                                 treatment_items: [...(p.treatment_items || []), { name: pkg.name, price: Number(pkg.cost) || 0 }],
                               }))}
                             />

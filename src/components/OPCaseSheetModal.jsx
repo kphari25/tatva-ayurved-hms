@@ -3,7 +3,7 @@ import { X, Printer, Save, Plus, Trash2, Pencil } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, deleteDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import TreatmentPickerButton from './TreatmentPickerButton';
-import PackagePickerButton from './PackagePickerButton';
+import PackagePickerButton, { packageTreatmentDetails } from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
 import InvestigationAttachments from './InvestigationAttachments';
@@ -22,7 +22,7 @@ const PRINT_SECTIONS = [
 const TAB_SEQUENCE = ['assessment', 'history'];
 
 const appendTreatment = (currentText, treatment) => {
-  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
+  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})${treatment.details ? ` — ${treatment.details}` : ''}`;
   return currentText ? `${currentText}, ${entry}` : entry;
 };
 
@@ -949,7 +949,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                             <PackagePickerButton
                               onSelect={(pkg) => setVisitForm(p => ({
                                 ...p,
-                                treatment_notes: appendTreatment(p.treatment_notes, { name: pkg.name, price: pkg.cost }),
+                                treatment_notes: appendTreatment(p.treatment_notes, { name: pkg.name, price: pkg.cost, details: packageTreatmentDetails(pkg) }),
                                 treatment_items: [...(p.treatment_items || []), { name: pkg.name, price: Number(pkg.cost) || 0 }],
                               }))}
                             />

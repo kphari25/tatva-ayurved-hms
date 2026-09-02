@@ -7,7 +7,7 @@ import { collection, addDoc, getDocs, query, where, deleteDoc, doc } from 'fireb
 import { db } from '../lib/firebase';
 import { formatDateOnly } from '../lib/formatDate';
 import TreatmentPickerButton from './TreatmentPickerButton';
-import PackagePickerButton from './PackagePickerButton';
+import PackagePickerButton, { packageTreatmentDetails } from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
 import { summarizeMedicineItems } from '../lib/medicineSummary';
@@ -15,7 +15,7 @@ import { summarizeMedicineItems } from '../lib/medicineSummary';
 const today = () => new Date().toISOString().split('T')[0];
 
 const appendTreatment = (currentText, treatment) => {
-  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})`;
+  const entry = `${treatment.name} (₹${Number(treatment.price || 0).toLocaleString('en-IN')})${treatment.details ? ` — ${treatment.details}` : ''}`;
   return currentText ? `${currentText}, ${entry}` : entry;
 };
 
@@ -209,7 +209,7 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
                       <PackagePickerButton
                         onSelect={(pkg) => setForm(f => ({
                           ...f,
-                          treatment_performed: appendTreatment(f.treatment_performed, { name: pkg.name, price: pkg.cost }),
+                          treatment_performed: appendTreatment(f.treatment_performed, { name: pkg.name, price: pkg.cost, details: packageTreatmentDetails(pkg) }),
                           treatment_items: [...(f.treatment_items || []), { name: pkg.name, price: Number(pkg.cost) || 0 }],
                         }))}
                       />

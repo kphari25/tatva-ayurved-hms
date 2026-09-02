@@ -2,6 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Package, Search } from 'lucide-react';
 import { fetchPackages } from './PackageManagement';
 
+// A snapshot of what the package actually included at pick time — duration
+// and inclusions — formatted for appending after the "Name (₹price)" text
+// each caller already builds. Package definitions can change later (price,
+// inclusions, or be deleted outright); without this, the clinical record
+// would have no way to show what the package meant on the day it was
+// picked, only its bare name and price.
+export const packageTreatmentDetails = (pkg) => {
+  const parts = [];
+  if (pkg.duration) parts.push(`${pkg.duration} ${pkg.duration_unit || 'days'}`);
+  if ((pkg.inclusions || []).some(Boolean)) parts.push(`Includes: ${pkg.inclusions.filter(Boolean).join('; ')}`);
+  return parts.join(' — ');
+};
+
 // Sibling to TreatmentPickerButton, sourced from Treatment Packages instead
 // of the Treatment Charges price list. A package has one bundled cost (not
 // per-inclusion pricing), so picking one inserts a single line item — same
