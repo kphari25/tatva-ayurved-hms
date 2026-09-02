@@ -9,6 +9,13 @@ import { collection, addDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { generateMRDNumber, generateIPNumber, generatePatientNumber } from './patientNumbers';
 
+// Returns the new patient doc's id — callers must link it back onto the
+// appointment as patient_id, so the appointment is treated as "for a known
+// patient" everywhere else in the app (most importantly, Dashboard's "Called
+// In / In the Office" walk-in flow only fires for appointments with no
+// patient_id; without the link it would register a second, disconnected
+// patient the moment front desk processes the walk-in, leaving this
+// placeholder orphaned at pending_admission forever).
 export const createPendingIPPatient = async (name, phone) => {
   const trimmed = (name || '').trim();
   const [first_name, ...rest] = trimmed.split(/\s+/);
@@ -19,7 +26,7 @@ export const createPendingIPPatient = async (name, phone) => {
     generateIPNumber(),
   ]);
   const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-  await addDoc(collection(db, 'patients'), {
+  const docRef = await addDoc(collection(db, 'patients'), {
     first_name: first_name || trimmed,
     last_name,
     phone: phone || '',
@@ -36,4 +43,5 @@ export const createPendingIPPatient = async (name, phone) => {
     status: 'active',
     created_by: currentUser.email || 'admin',
   });
+  return docRef.id;
 };

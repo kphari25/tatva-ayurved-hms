@@ -801,7 +801,8 @@ const Dashboard = () => {
 
         if (formData.type === 'IP') {
           try {
-            await createPendingIPPatient(formData.patient, formData.phone);
+            const newPatientId = await createPendingIPPatient(formData.patient, formData.phone);
+            await updateDoc(doc(db, 'appointments', apptRef.id), { patient_id: newPatientId });
           } catch (patientError) {
             console.error('⚠️ Failed to create pending-admission patient record:', patientError);
           }

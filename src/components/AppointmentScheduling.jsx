@@ -693,11 +693,12 @@ const AppointmentScheduling = () => {
       if (editingAppointment) {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), payload);
       } else {
-        await addDoc(collection(db, 'appointments'), { ...payload, createdAt: new Date().toISOString() });
+        const newApptRef = await addDoc(collection(db, 'appointments'), { ...payload, createdAt: new Date().toISOString() });
 
         if (formData.type === 'IP') {
           try {
-            await createPendingIPPatient(formData.patient, '');
+            const newPatientId = await createPendingIPPatient(formData.patient, '');
+            await updateDoc(doc(db, 'appointments', newApptRef.id), { patient_id: newPatientId });
           } catch (patientError) {
             console.error('⚠️ Failed to create pending-admission patient record:', patientError);
           }
