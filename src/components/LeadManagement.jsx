@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, MessageSquare, Users, TrendingUp, Plus, Search, Filter, CheckCircle, Clock, X, Send, XCircle, Trash2, Pencil } from 'lucide-react';
+import { Phone, MessageSquare, Users, TrendingUp, Plus, Search, Filter, CheckCircle, Clock, X, Send, XCircle, Trash2, Pencil, Calendar } from 'lucide-react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
+import { createPendingIPPatient } from '../lib/pendingIPPatient';
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'New' },
@@ -21,6 +23,8 @@ const LeadManagement = () => {
   const [editingLead, setEditingLead] = useState(null);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [whatsAppLead, setWhatsAppLead] = useState(null);
+  const [bookingLead, setBookingLead] = useState(null);
+  const [bookingSaving, setBookingSaving] = useState(false);
 
   useEffect(() => {
     loadLeads();
@@ -133,6 +137,48 @@ const LeadManagement = () => {
     } catch (error) {
       console.error('Error deleting lead:', error);
       alert('Failed to delete: ' + error.message);
+    }
+  };
+
+  // Books a real appointment straight from a lead — the reverse of what
+  // Dashboard's Add Appointment already does (create appointment -> auto
+  // lead). Kept separate from the "Converted" status handoff, which is for
+  // completing the patient's full registration once they actually show up;
+  // this just needs to get the call itself onto the Appointments board. If
+  // it's an IP-type booking, mirrors Dashboard/Scheduling's own behavior:
+  // auto-create a pending-admission patient and link it via patient_id so
+  // the appointment is treated as "for a known patient" everywhere else.
+  const bookAppointmentForLead = async (lead, fields) => {
+    try {
+      setBookingSaving(true);
+      const apptRef = await addDoc(collection(db, 'appointments'), {
+        patient: lead.name,
+        phone: lead.phone || '',
+        date: fields.date,
+        time: fields.time,
+        type: fields.type,
+        status: 'scheduled',
+        contact_status: 'called_in',
+        lead_id: lead.id,
+        createdAt: new Date().toISOString(),
+      });
+
+      if (fields.type === 'IP') {
+        try {
+          const newPatientId = await createPendingIPPatient(lead.name, lead.phone);
+          await updateDoc(doc(db, 'appointments', apptRef.id), { patient_id: newPatientId });
+        } catch (patientError) {
+          console.error('⚠️ Failed to create pending-admission patient record:', patientError);
+        }
+      }
+
+      setBookingLead(null);
+      alert(`✅ Appointment booked for ${lead.name} — it'll show up in Appointments.`);
+    } catch (error) {
+      console.error('Error booking appointment from lead:', error);
+      alert('Failed to book appointment: ' + error.message);
+    } finally {
+      setBookingSaving(false);
     }
   };
 
@@ -362,6 +408,13 @@ const LeadManagement = () => {
                           ))}
                         </select>
                         <button
+                          onClick={() => setBookingLead(lead)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Book Appointment"
+                        >
+                          <Calendar className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => {
                             setWhatsAppLead(lead);
                             setShowWhatsAppModal(true);
@@ -408,6 +461,16 @@ const LeadManagement = () => {
         />
       )}
 
+      {/* Book Appointment Modal */}
+      {bookingLead && (
+        <BookAppointmentModal
+          lead={bookingLead}
+          onClose={() => setBookingLead(null)}
+          onSave={(fields) => bookAppointmentForLead(bookingLead, fields)}
+          saving={bookingSaving}
+        />
+      )}
+
       {/* WhatsApp Follow-up Modal */}
       {showWhatsAppModal && whatsAppLead && (
         <LeadWhatsAppModal
@@ -418,6 +481,103 @@ const LeadManagement = () => {
           }}
         />
       )}
+    </div>
+  );
+};
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
+// Books a real appointment for a lead — same Type options as Dashboard/
+// Scheduling's Add Appointment, kept intentionally small (just date/time/
+// type) since the lead already carries name/phone.
+const BookAppointmentModal = ({ lead, onClose, onSave, saving }) => {
+  const [fields, setFields] = useState({ date: todayStr(), time: '', type: '' });
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!fields.date || !fields.time || !fields.type) {
+      setError('Date, time and appointment type are required.');
+      return;
+    }
+    onSave(fields);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h3 className="text-lg font-bold text-gray-900">Book Appointment</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <p className="text-sm text-gray-500">
+            For <span className="font-medium text-gray-700">{lead.name}</span>
+            {lead.phone && <span className="text-gray-400"> · {lead.phone}</span>}
+          </p>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <input
+                type="date"
+                value={fields.date}
+                onChange={(e) => setFields({ ...fields, date: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+              <input
+                type="time"
+                value={fields.time}
+                onChange={(e) => setFields({ ...fields, time: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
+            <select
+              value={fields.type}
+              onChange={(e) => setFields({ ...fields, type: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="">— Select Type —</option>
+              {APPOINTMENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            {fields.type === 'IP' && (
+              <p className="text-xs text-amber-700 mt-1">This will also add {lead.name} to Pending Admissions.</p>
+            )}
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            >
+              {saving ? 'Booking...' : 'Book Appointment'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
