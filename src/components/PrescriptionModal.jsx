@@ -44,6 +44,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
   const [complaints, setComplaints] = useState('');
   const [doctorDesignation, setDoctorDesignation] = useState('');
   const [doctorRegistrationNumber, setDoctorRegistrationNumber] = useState('');
+  const [printPageSize, setPrintPageSize] = useState('A4');
   const [loading, setLoading] = useState(true);
   const [showPrintOptions, setShowPrintOptions] = useState(false);
   // Print preview — in-page iframe printed via its own contentWindow, same
@@ -121,7 +122,13 @@ const PrescriptionModal = ({ patient, onClose }) => {
   const allEntries = isIP ? ipEntries : opEntries;
   const previewEntries = allEntries;
 
-  const buildPrintHTML = (entries) => {
+  const buildPrintHTML = (entries, pageSize = 'A4') => {
+    // A5 is roughly half of A4 (148 x 210mm vs 210 x 297mm) — most
+    // prescriptions here are short enough to fit on it, so margins shrink
+    // to match rather than eating into the smaller page. .print-footer's
+    // fixed bottom/left/right must track the same numbers so it still lines
+    // up with the page's own margins once pinned to the bottom for print.
+    const pageMargin = pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' };
     // "Signed By" on the most recent entry that has one is who actually saw
     // the patient for this prescription — a closer match than the patient's
     // general assigned_doctor, which may be unset or belong to someone else.
@@ -166,7 +173,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; font-size: 12px; color: #000; background: #fff; padding-bottom: 160px; }
-    @page { size: A4; margin: 15mm 12mm; }
+    @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     @media print { body { -webkit-print-color-adjust: exact; } }
     /* Doctor's signature + hospital address stay pinned to the bottom of the
        page as one unit — with only a couple of medicine rows the rest of
@@ -174,7 +181,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
        flow happened to end, leaving a big gap below it instead of above it. */
     .print-footer { margin-top: 50px; }
     @media print {
-      .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
+      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; }
     }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 12px; }
     .logo-block { min-width: 160px; }
@@ -284,7 +291,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
   };
 
   const printEntries = (entries) => {
-    setPrintPreviewHtml(buildPrintHTML(entries));
+    setPrintPreviewHtml(buildPrintHTML(entries, printPageSize));
   };
 
   const handlePrintFromPreview = () => {
@@ -336,6 +343,17 @@ const PrescriptionModal = ({ patient, onClose }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex items-center bg-teal-700 rounded-lg p-0.5 text-xs font-medium" title="Paper size for printing">
+              {['A4', 'A5'].map(size => (
+                <button
+                  key={size}
+                  onClick={() => setPrintPageSize(size)}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${printPageSize === size ? 'bg-white text-teal-700' : 'text-teal-100 hover:bg-teal-600'}`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
             <button
               onClick={handlePrintClick}
               disabled={loading}
@@ -453,7 +471,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
           <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
             <div>
               <h2 className="text-xl font-bold">Print Preview</h2>
-              <p className="text-teal-100 text-sm">{patientName}</p>
+              <p className="text-teal-100 text-sm">{patientName} · {printPageSize} paper</p>
             </div>
             <button onClick={() => setPrintPreviewHtml(null)} className="hover:bg-teal-700 p-2 rounded">
               <X className="w-6 h-6" />
@@ -479,7 +497,9 @@ const PrescriptionModal = ({ patient, onClose }) => {
               // still there for a manual re-print.
               onLoad={handlePrintFromPreview}
               className="bg-white shadow-lg"
-              style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+              style={printPageSize === 'A5'
+                ? { width: '559px', minHeight: '794px', border: 'none' }
+                : { width: '794px', minHeight: '1123px', border: 'none' }}
             />
           </div>
         </div>
