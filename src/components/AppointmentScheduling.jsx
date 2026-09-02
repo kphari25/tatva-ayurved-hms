@@ -4,6 +4,7 @@ import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } 
 import { db } from '../lib/firebase';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
+import { withDrPrefix } from '../lib/formatDoctorName';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
 const STATUS_OPTIONS = ['scheduled', 'in-progress', 'completed', 'cancelled'];
@@ -1059,7 +1060,7 @@ const AppointmentScheduling = () => {
                                 )}
                                 {apt.doctorName && (
                                   <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
-                                    🩺 Dr. {apt.doctorName}
+                                    🩺 {withDrPrefix(apt.doctorName)}
                                   </p>
                                 )}
                                 {(apt.therapistNames?.length > 0 || apt.therapistName) && (

@@ -9,6 +9,7 @@ import {
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, where, addDoc, updateDoc } from 'firebase/firestore';
 import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
+import { withDrPrefix } from '../lib/formatDoctorName';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { addDaysToDateString, formatDateOnly } from '../lib/formatDate';
 import DischargeSummaryModal from './DischargeSummaryModal';
@@ -1013,7 +1014,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                     {apptForm.send_sms_doctor && (
                       <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${apptSMSStatus.doctor === 'sent' ? 'bg-green-50 text-green-700' : apptSMSStatus.doctor === 'failed' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500'}`}>
                         {apptSMSStatus.doctor === 'sent' ? <CheckCircle className="w-4 h-4" /> : apptSMSStatus.doctor === 'failed' ? <AlertCircle className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
-                        SMS to Dr. {savedAppt.doctor_name} ({savedAppt.doctor_phone || 'no phone'}): {apptSMSStatus.doctor === 'sent' ? 'Sent' : apptSMSStatus.doctor === 'failed' ? 'Failed (check MSG91 config)' : 'No phone number'}
+                        SMS to {withDrPrefix(savedAppt.doctor_name)} ({savedAppt.doctor_phone || 'no phone'}): {apptSMSStatus.doctor === 'sent' ? 'Sent' : apptSMSStatus.doctor === 'failed' ? 'Failed (check MSG91 config)' : 'No phone number'}
                       </div>
                     )}
                   </div>

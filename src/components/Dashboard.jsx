@@ -6,6 +6,7 @@ import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { sendAppointmentSMSToPatient } from '../lib/sms';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
+import { withDrPrefix } from '../lib/formatDoctorName';
 import PatientRegistrationNew from './PatientRegistrationNew';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
@@ -410,6 +411,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showAddAppointment, setShowAddAppointment] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
+  const [showPendingAdmissions, setShowPendingAdmissions] = useState(false);
   // Picking an existing patient while adding an appointment hands off to
   // their full edit dialog (see AddAppointmentModal's onPickExistingPatient),
   // then to a dedicated ScheduleExistingPatientModal step once that's saved
@@ -1023,8 +1025,12 @@ const Dashboard = () => {
     }
   };
 
-  const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }) => (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 border-l-4 hover:shadow-md transition-shadow" style={{ borderLeftColor: color }}>
+  const StatCard = ({ title, value, icon: Icon, color, subtitle, trend, onClick }) => (
+    <div
+      onClick={onClick}
+      className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 border-l-4 hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer' : ''}`}
+      style={{ borderLeftColor: color }}
+    >
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm font-medium text-gray-600">{title}</p>
         <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
@@ -1087,6 +1093,7 @@ const Dashboard = () => {
           icon={Users}
           color="#f59e0b"
           subtitle="Awaiting admission"
+          onClick={dashboardData.stats.pendingAdmissionsCount > 0 ? () => setShowPendingAdmissions(true) : undefined}
         />
         <StatCard
           title="Outstanding Payments"
@@ -1207,7 +1214,7 @@ const Dashboard = () => {
                               )}
                               {apt.doctorName && (
                                 <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
-                                  🩺 Dr. {apt.doctorName}
+                                  🩺 {withDrPrefix(apt.doctorName)}
                                 </p>
                               )}
                               {(apt.therapistNames?.length > 0 || apt.therapistName) && (
@@ -1312,7 +1319,7 @@ const Dashboard = () => {
                             )}
                             {apt.doctorName && (
                               <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
-                                🩺 Dr. {apt.doctorName}
+                                🩺 {withDrPrefix(apt.doctorName)}
                               </p>
                             )}
                             {(apt.therapistNames?.length > 0 || apt.therapistName) && (
@@ -1585,6 +1592,44 @@ const Dashboard = () => {
           <div className="bg-white rounded-xl shadow-xl px-6 py-4 flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
             <span className="text-sm text-gray-700">Booking appointment…</span>
+          </div>
+        </div>
+      )}
+
+      {showPendingAdmissions && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-bold text-gray-900">Pending Admissions</h3>
+              <button onClick={() => setShowPendingAdmissions(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
+              {dashboardData.pendingAdmissions.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">No pending admissions.</p>
+              ) : (
+                dashboardData.pendingAdmissions.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setShowPendingAdmissions(false);
+                      window.dispatchEvent(new CustomEvent('viewPatient', { detail: p.id }));
+                    }}
+                    className="w-full text-left px-6 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900 text-sm">{p.patient || 'Unnamed patient'}</p>
+                      <p className="text-xs text-gray-500 flex gap-2">
+                        {p.mrd_number && <span>{p.mrd_number}</span>}
+                        {p.requested_at && <span>Requested {formatDateOnly(p.requested_at)}</span>}
+                      </p>
+                    </div>
+                    <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-semibold shrink-0">View</span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}

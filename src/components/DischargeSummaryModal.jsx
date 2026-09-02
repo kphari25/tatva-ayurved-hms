@@ -3,6 +3,7 @@ import { X, Printer, Save, Plus, Trash2, FileText, Receipt } from 'lucide-react'
 import { db } from '../lib/firebase';
 import { addDoc, updateDoc, deleteDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import MedicineSaleModal from './MedicineSaleModal';
+import { withDrPrefix } from '../lib/formatDoctorName';
 import MedicineTable from './MedicineTable';
 import { buildMedicineItemsTableHTML } from '../lib/medicineSummary';
 
@@ -1612,7 +1613,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
                         {new Date(form.next_review_date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                       </p>
                       {form.doctor_in_charge && form.doctor_in_charge !== '__manual__' && (
-                        <p className="text-xs text-gray-500 mt-0.5">with Dr. {form.doctor_in_charge}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">with {withDrPrefix(form.doctor_in_charge)}</p>
                       )}
                     </div>
                     <div className="text-3xl">📅</div>
