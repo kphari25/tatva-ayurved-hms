@@ -4,8 +4,49 @@ import { collection, getDocs, getDoc, query, where, orderBy, addDoc, updateDoc, 
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { sendAppointmentSMSToPatient } from '../lib/sms';
-import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment } from '../lib/appointmentBuckets';
+import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
+import { generateMRDNumber, generateIPNumber, generatePatientNumber } from '../lib/patientNumbers';
 import PatientRegistrationNew from './PatientRegistrationNew';
+
+// Shared by both appointment modals' Therapist field — toggles t in/out of
+// the (id/name) array pair, capped at 3 selections.
+const toggleTherapistInFields = (fields, t, max = 3) => {
+  const idx = fields.therapistIds.indexOf(t.id);
+  if (idx !== -1) {
+    return {
+      ...fields,
+      therapistIds: fields.therapistIds.filter(id => id !== t.id),
+      therapistNames: fields.therapistNames.filter((_, i) => i !== idx),
+    };
+  }
+  if (fields.therapistIds.length >= max) return fields;
+  return { ...fields, therapistIds: [...fields.therapistIds, t.id], therapistNames: [...fields.therapistNames, t.name] };
+};
+
+const TherapistMultiSelect = ({ therapists, selectedIds, onToggle }) => (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">👤 Therapist(s) <span className="text-gray-400 font-normal">(up to 3)</span></label>
+    <div className="border border-gray-300 rounded-lg p-2 max-h-32 overflow-y-auto space-y-1">
+      {therapists.length === 0 && <p className="text-xs text-gray-400 px-1 py-0.5">No therapists found</p>}
+      {therapists.map(t => {
+        const checked = selectedIds.includes(t.id);
+        const disabled = !checked && selectedIds.length >= 3;
+        return (
+          <label key={t.id} className={`flex items-center gap-2 text-sm px-1 py-0.5 rounded ${disabled ? 'text-gray-300' : 'text-gray-700'}`}>
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={() => onToggle(t)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+            />
+            {t.name}
+          </label>
+        );
+      })}
+    </div>
+  </div>
+);
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -45,7 +86,7 @@ const formatGroupDate = (dateStr) => {
   return new Date(y, m - 1, day).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 };
 
-const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [], patients = [], onPickExistingPatient }) => {
+const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [], therapists = [], patients = [], onPickExistingPatient }) => {
   const isEditMode = !!appointment;
   const [formData, setFormData] = useState({
     patient: appointment?.patient || '',
@@ -55,6 +96,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     type: appointment?.type || '',
     doctorId: appointment?.doctorId || '',
     doctorName: appointment?.doctorName || '',
+    therapistIds: appointment?.therapistIds || (appointment?.therapistId ? [appointment.therapistId] : []),
+    therapistNames: appointment?.therapistNames || (appointment?.therapistName ? [appointment.therapistName] : []),
     sendSms: false,
   });
   const [error, setError] = useState('');
@@ -101,6 +144,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
         type: formData.type,
         doctorId: formData.doctorId,
         doctorName: formData.doctorName,
+        therapistIds: formData.therapistIds,
+        therapistNames: formData.therapistNames,
         sendSms: formData.sendSms,
       });
     }
@@ -114,6 +159,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
       doctorName: selected ? selected.name : '',
     });
   };
+
+  const handleToggleTherapist = (t) => setFormData(f => toggleTherapistInFields(f, t));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -206,13 +253,14 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
-            <input
-              type="text"
+            <select
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. Consultation, Ayurvedic Therapy, Follow Up"
-            />
+            >
+              <option value="">— Select Type —</option>
+              {APPOINTMENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">🩺 Doctor</label>
@@ -227,6 +275,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
               ))}
             </select>
           </div>
+          <TherapistMultiSelect therapists={therapists} selectedIds={formData.therapistIds} onToggle={handleToggleTherapist} />
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -273,13 +322,15 @@ const normName = (s) => (s || '').trim().toLowerCase();
 // live below the Patient Name search field there, so a front-desk user who
 // picks a match before touching them would otherwise book a blank-time
 // appointment with no chance to fill them in.
-const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], onCancel, onConfirm, saving }) => {
+const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], therapists = [], onCancel, onConfirm, saving }) => {
   const [fields, setFields] = useState({
     date: initialFields?.date || toDateStr(new Date()),
     time: initialFields?.time || '',
     type: initialFields?.type || '',
     doctorId: initialFields?.doctorId || '',
     doctorName: initialFields?.doctorName || '',
+    therapistIds: initialFields?.therapistIds || [],
+    therapistNames: initialFields?.therapistNames || [],
     sendSms: initialFields?.sendSms || false,
   });
   const [error, setError] = useState('');
@@ -288,6 +339,8 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], on
     const selected = doctors.find(d => d.id === e.target.value);
     setFields(f => ({ ...f, doctorId: selected ? selected.id : '', doctorName: selected ? selected.name : '' }));
   };
+
+  const handleToggleTherapist = (t) => setFields(f => toggleTherapistInFields(f, t));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -338,13 +391,14 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], on
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
-            <input
-              type="text"
+            <select
               value={fields.type}
               onChange={(e) => setFields({ ...fields, type: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. Consultation, Ayurvedic Therapy, Follow Up"
-            />
+            >
+              <option value="">— Select Type —</option>
+              {APPOINTMENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">🩺 Doctor</label>
@@ -359,6 +413,7 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], on
               ))}
             </select>
           </div>
+          <TherapistMultiSelect therapists={therapists} selectedIds={fields.therapistIds} onToggle={handleToggleTherapist} />
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -582,10 +637,12 @@ const Dashboard = () => {
   useEffect(() => {
     const sessionsByTherapist = {};
     todayAppointments.forEach(a => {
-      if (!a.therapistId) return;
-      if (!sessionsByTherapist[a.therapistId]) sessionsByTherapist[a.therapistId] = { sessions: 0, nextSlot: null };
-      sessionsByTherapist[a.therapistId].sessions += 1;
-      if (!sessionsByTherapist[a.therapistId].nextSlot) sessionsByTherapist[a.therapistId].nextSlot = a.time;
+      const ids = (a.therapistIds && a.therapistIds.length) ? a.therapistIds : (a.therapistId ? [a.therapistId] : []);
+      ids.forEach(id => {
+        if (!sessionsByTherapist[id]) sessionsByTherapist[id] = { sessions: 0, nextSlot: null };
+        sessionsByTherapist[id].sessions += 1;
+        if (!sessionsByTherapist[id].nextSlot) sessionsByTherapist[id].nextSlot = a.time;
+      });
     });
     const therapistSchedule = therapists.map(t => {
       const s = sessionsByTherapist[t.id];
@@ -728,6 +785,40 @@ const Dashboard = () => {
     return leadRef.id;
   };
 
+  // Booking an IP-type appointment for a caller who isn't a registered
+  // patient yet — create a bare-bones pending-admission record right away so
+  // Pending Admissions reflects the call immediately; front desk fills in
+  // the rest of the file once the patient actually arrives (same fields New
+  // Patient Registration would set for a fresh IP registration).
+  const createPendingIPPatient = async (name, phone) => {
+    const trimmed = (name || '').trim();
+    const [first_name, ...rest] = trimmed.split(/\s+/);
+    const last_name = rest.join(' ');
+    const [patientNumber, mrdNumber, ipNumber] = await Promise.all([
+      generatePatientNumber(),
+      generateMRDNumber(),
+      generateIPNumber(),
+    ]);
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    await addDoc(collection(db, 'patients'), {
+      first_name: first_name || trimmed,
+      last_name,
+      phone: phone || '',
+      patient_type: 'IP',
+      admission_status: 'pending_admission',
+      patient_number: patientNumber,
+      mrd_number: mrdNumber,
+      ip_number: ipNumber,
+      prescriptions: [],
+      visits: [],
+      last_visit_date: new Date().toISOString().split('T')[0],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      status: 'active',
+      created_by: currentUser.email || 'admin',
+    });
+  };
+
   const saveAppointment = async (formData) => {
     const isEditMode = !!editingAppointment;
     try {
@@ -742,6 +833,8 @@ const Dashboard = () => {
           type: formData.type,
           doctorId: formData.doctorId || '',
           doctorName: formData.doctorName || '',
+          therapistIds: formData.therapistIds || [],
+          therapistNames: formData.therapistNames || [],
         });
 
         if (editingAppointment.lead_id) {
@@ -766,6 +859,8 @@ const Dashboard = () => {
           date: formData.date,
           doctorId: formData.doctorId || '',
           doctorName: formData.doctorName || '',
+          therapistIds: formData.therapistIds || [],
+          therapistNames: formData.therapistNames || [],
           createdAt: new Date().toISOString()
         });
 
@@ -773,6 +868,14 @@ const Dashboard = () => {
           await createLinkedLead(apptRef.id, { patient: formData.patient, phone: formData.phone, type: formData.type }, 'new');
         } catch (leadError) {
           console.error('⚠️ Failed to create linked lead:', leadError);
+        }
+
+        if (formData.type === 'IP') {
+          try {
+            await createPendingIPPatient(formData.patient, formData.phone);
+          } catch (patientError) {
+            console.error('⚠️ Failed to create pending-admission patient record:', patientError);
+          }
         }
       }
 
@@ -864,8 +967,21 @@ const Dashboard = () => {
         date: fields.date,
         doctorId: fields.doctorId || '',
         doctorName: fields.doctorName || '',
+        therapistIds: fields.therapistIds || [],
+        therapistNames: fields.therapistNames || [],
         createdAt: new Date().toISOString(),
       });
+
+      if (fields.type === 'IP' && p.admission_status !== 'admitted' && p.admission_status !== 'pending_admission') {
+        try {
+          await updateDoc(doc(db, 'patients', patientId), {
+            patient_type: 'IP',
+            admission_status: 'pending_admission',
+          });
+        } catch (statusError) {
+          console.error('⚠️ Failed to flag patient as pending admission:', statusError);
+        }
+      }
 
       if (fields.sendSms && p.phone) {
         try {
@@ -1167,9 +1283,9 @@ const Dashboard = () => {
                                   🩺 Dr. {apt.doctorName}
                                 </p>
                               )}
-                              {apt.therapistName && (
+                              {(apt.therapistNames?.length > 0 || apt.therapistName) && (
                                 <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
-                                  👤 {apt.therapistName}
+                                  👤 {apt.therapistNames?.length > 0 ? apt.therapistNames.join(', ') : apt.therapistName}
                                 </p>
                               )}
                               {apt.patient_id ? (
@@ -1272,9 +1388,9 @@ const Dashboard = () => {
                                 🩺 Dr. {apt.doctorName}
                               </p>
                             )}
-                            {apt.therapistName && (
+                            {(apt.therapistNames?.length > 0 || apt.therapistName) && (
                               <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
-                                👤 {apt.therapistName}
+                                👤 {apt.therapistNames?.length > 0 ? apt.therapistNames.join(', ') : apt.therapistName}
                               </p>
                             )}
                             {apt.patient_id ? (
@@ -1507,6 +1623,7 @@ const Dashboard = () => {
           onSave={saveAppointment}
           saving={savingAppointment}
           doctors={doctors}
+          therapists={therapists}
           patients={allPatients}
           onPickExistingPatient={handlePickExistingPatientForAppt}
         />
@@ -1530,6 +1647,7 @@ const Dashboard = () => {
           patient={scheduleForPatient}
           initialFields={pendingApptFields}
           doctors={doctors}
+          therapists={therapists}
           onCancel={cancelScheduleForExistingPatient}
           onConfirm={bookAppointmentForExistingPatient}
           saving={bookingForExistingPatient}

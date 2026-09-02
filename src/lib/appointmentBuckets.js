@@ -9,6 +9,13 @@ import { Stethoscope, Leaf, CalendarClock } from 'lucide-react';
 // nothing is ever hidden.
 export const APPOINTMENT_BUCKETS = ['Consultation', 'Ayurvedic Therapy', 'Follow Up'];
 
+// Fixed options for the Dashboard's "Add Appointment" Type dropdown. Kept
+// separate from APPOINTMENT_BUCKETS above (the display grouping) since
+// "Therapy"/"OP"/"IP" all still fall into the Ayurvedic Therapy bucket via
+// the keyword matching below — this list is only about what front desk is
+// allowed to pick when booking, not how it's later displayed.
+export const APPOINTMENT_TYPE_OPTIONS = ['Consultation', 'Therapy', 'Follow up', 'OP', 'IP'];
+
 export const bucketForAppointment = (apt) => {
   const t = (apt.type || '').toLowerCase();
   if (t.includes('consult')) return 'Consultation';
