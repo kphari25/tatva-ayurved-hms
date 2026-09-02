@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User, LayoutGrid, List, BarChart3 } from 'lucide-react';
 import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS } from '../lib/appointmentBuckets';
+import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
+import { createPendingIPPatient } from '../lib/pendingIPPatient';
+import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
 const STATUS_OPTIONS = ['scheduled', 'in-progress', 'completed', 'cancelled'];
 
@@ -55,18 +57,17 @@ const outcomeQuickRanges = {
 // ─── Appointment Modal ────────────────────────────────────────────────────────
 const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, doctors }) => {
   const [formData, setFormData] = useState(
-    initialData || { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled', therapistId: '', therapistName: '', doctorId: '', doctorName: '' }
+    initialData
+      ? {
+          ...initialData,
+          therapistIds: initialData.therapistIds || (initialData.therapistId ? [initialData.therapistId] : []),
+          therapistNames: initialData.therapistNames || (initialData.therapistName ? [initialData.therapistName] : []),
+        }
+      : { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled', therapistIds: [], therapistNames: [], doctorId: '', doctorName: '' }
   );
   const [error, setError] = useState('');
 
-  const handleTherapistChange = (e) => {
-    const selected = therapists.find(t => t.id === e.target.value);
-    setFormData({
-      ...formData,
-      therapistId: selected ? selected.id : '',
-      therapistName: selected ? selected.name : '',
-    });
-  };
+  const handleToggleTherapist = (t) => setFormData(f => toggleTherapistInFields(f, t));
 
   const handleDoctorChange = (e) => {
     const selected = doctors.find(d => d.id === e.target.value);
@@ -135,13 +136,14 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
-            <input
-              type="text"
+            <select
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. Consultation, Ayurvedic Therapy, Follow Up"
-            />
+            >
+              <option value="">— Select Type —</option>
+              {APPOINTMENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
 
           {/* Doctor */}
@@ -159,20 +161,7 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
             </select>
           </div>
 
-          {/* Therapist */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">👤 Assign Therapist</label>
-            <select
-              value={formData.therapistId}
-              onChange={handleTherapistChange}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">— Unassigned —</option>
-              {therapists.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
+          <TherapistMultiSelect therapists={therapists} selectedIds={formData.therapistIds} onToggle={handleToggleTherapist} />
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
@@ -287,12 +276,16 @@ const WeeklyGridView = ({ therapists, allAppointments, weekBase, setWeekBase, on
 
   const weekLabel = `${new Date(weekDates[0] + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${new Date(weekDates[6] + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
-  // lookup: date → therapistId → time → appointment
+  // lookup: date → therapistId → time → appointment. A multi-therapist
+  // appointment occupies the slot for every therapist assigned to it.
   const lookup = {};
   allAppointments.forEach(a => {
-    if (!lookup[a.date]) lookup[a.date] = {};
-    if (!lookup[a.date][a.therapistId]) lookup[a.date][a.therapistId] = {};
-    lookup[a.date][a.therapistId][a.time] = a;
+    const ids = (a.therapistIds && a.therapistIds.length) ? a.therapistIds : (a.therapistId ? [a.therapistId] : []);
+    ids.forEach(id => {
+      if (!lookup[a.date]) lookup[a.date] = {};
+      if (!lookup[a.date][id]) lookup[a.date][id] = {};
+      lookup[a.date][id][a.time] = a;
+    });
   });
 
   const getApt = (date, therapistId, time) => lookup[date]?.[therapistId]?.[time];
@@ -447,12 +440,16 @@ const MonthlyCalendarView = ({ therapists, allAppointments, calendarMonth, setCa
 
   const monthLabel = calendarMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
-  // Build lookup: date → therapistId → appointments[]
+  // Build lookup: date → therapistId → appointments[]. A multi-therapist
+  // appointment is counted against every therapist assigned to it.
   const lookup = {};
   allAppointments.forEach(a => {
-    if (!lookup[a.date]) lookup[a.date] = {};
-    if (!lookup[a.date][a.therapistId]) lookup[a.date][a.therapistId] = [];
-    lookup[a.date][a.therapistId].push(a);
+    const ids = (a.therapistIds && a.therapistIds.length) ? a.therapistIds : (a.therapistId ? [a.therapistId] : []);
+    ids.forEach(id => {
+      if (!lookup[a.date]) lookup[a.date] = {};
+      if (!lookup[a.date][id]) lookup[a.date][id] = [];
+      lookup[a.date][id].push(a);
+    });
   });
 
   const getCell = (date, therapistId) => lookup[date]?.[therapistId] || [];
@@ -687,8 +684,8 @@ const AppointmentScheduling = () => {
         type: formData.type,
         date: formData.date,
         status: formData.status,
-        therapistId: formData.therapistId || '',
-        therapistName: formData.therapistName || '',
+        therapistIds: formData.therapistIds || [],
+        therapistNames: formData.therapistNames || [],
         doctorId: formData.doctorId || '',
         doctorName: formData.doctorName || '',
       };
@@ -696,6 +693,14 @@ const AppointmentScheduling = () => {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), payload);
       } else {
         await addDoc(collection(db, 'appointments'), { ...payload, createdAt: new Date().toISOString() });
+
+        if (formData.type === 'IP') {
+          try {
+            await createPendingIPPatient(formData.patient, '');
+          } catch (patientError) {
+            console.error('⚠️ Failed to create pending-admission patient record:', patientError);
+          }
+        }
       }
       setShowModal(false);
       setEditingAppointment(null);
@@ -1057,10 +1062,10 @@ const AppointmentScheduling = () => {
                                     🩺 Dr. {apt.doctorName}
                                   </p>
                                 )}
-                                {apt.therapistName && (
+                                {(apt.therapistNames?.length > 0 || apt.therapistName) && (
                                   <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
                                     <User className="w-3 h-3" />
-                                    {apt.therapistName}
+                                    {apt.therapistNames?.length > 0 ? apt.therapistNames.join(', ') : apt.therapistName}
                                   </p>
                                 )}
                                 <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[apt.status] || STATUS_STYLES.scheduled}`}>
@@ -1090,7 +1095,7 @@ const AppointmentScheduling = () => {
                   </div>
                 ) : (
                   therapists.map(t => {
-                    const apts = appointments.filter(a => a.therapistId === t.id);
+                    const apts = appointments.filter(a => (a.therapistIds?.length ? a.therapistIds.includes(t.id) : a.therapistId === t.id));
                     const isBusy = apts.length > 0;
                     return (
                       <div key={t.id} className="p-4">

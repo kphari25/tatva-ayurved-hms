@@ -5,48 +5,9 @@ import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { sendAppointmentSMSToPatient } from '../lib/sms';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
-import { generateMRDNumber, generateIPNumber, generatePatientNumber } from '../lib/patientNumbers';
+import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import PatientRegistrationNew from './PatientRegistrationNew';
-
-// Shared by both appointment modals' Therapist field — toggles t in/out of
-// the (id/name) array pair, capped at 3 selections.
-const toggleTherapistInFields = (fields, t, max = 3) => {
-  const idx = fields.therapistIds.indexOf(t.id);
-  if (idx !== -1) {
-    return {
-      ...fields,
-      therapistIds: fields.therapistIds.filter(id => id !== t.id),
-      therapistNames: fields.therapistNames.filter((_, i) => i !== idx),
-    };
-  }
-  if (fields.therapistIds.length >= max) return fields;
-  return { ...fields, therapistIds: [...fields.therapistIds, t.id], therapistNames: [...fields.therapistNames, t.name] };
-};
-
-const TherapistMultiSelect = ({ therapists, selectedIds, onToggle }) => (
-  <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">👤 Therapist(s) <span className="text-gray-400 font-normal">(up to 3)</span></label>
-    <div className="border border-gray-300 rounded-lg p-2 max-h-32 overflow-y-auto space-y-1">
-      {therapists.length === 0 && <p className="text-xs text-gray-400 px-1 py-0.5">No therapists found</p>}
-      {therapists.map(t => {
-        const checked = selectedIds.includes(t.id);
-        const disabled = !checked && selectedIds.length >= 3;
-        return (
-          <label key={t.id} className={`flex items-center gap-2 text-sm px-1 py-0.5 rounded ${disabled ? 'text-gray-300' : 'text-gray-700'}`}>
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={disabled}
-              onChange={() => onToggle(t)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
-            />
-            {t.name}
-          </label>
-        );
-      })}
-    </div>
-  </div>
-);
+import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -783,40 +744,6 @@ const Dashboard = () => {
     });
     await updateDoc(doc(db, 'appointments', appointmentId), { lead_id: leadRef.id });
     return leadRef.id;
-  };
-
-  // Booking an IP-type appointment for a caller who isn't a registered
-  // patient yet — create a bare-bones pending-admission record right away so
-  // Pending Admissions reflects the call immediately; front desk fills in
-  // the rest of the file once the patient actually arrives (same fields New
-  // Patient Registration would set for a fresh IP registration).
-  const createPendingIPPatient = async (name, phone) => {
-    const trimmed = (name || '').trim();
-    const [first_name, ...rest] = trimmed.split(/\s+/);
-    const last_name = rest.join(' ');
-    const [patientNumber, mrdNumber, ipNumber] = await Promise.all([
-      generatePatientNumber(),
-      generateMRDNumber(),
-      generateIPNumber(),
-    ]);
-    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-    await addDoc(collection(db, 'patients'), {
-      first_name: first_name || trimmed,
-      last_name,
-      phone: phone || '',
-      patient_type: 'IP',
-      admission_status: 'pending_admission',
-      patient_number: patientNumber,
-      mrd_number: mrdNumber,
-      ip_number: ipNumber,
-      prescriptions: [],
-      visits: [],
-      last_visit_date: new Date().toISOString().split('T')[0],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      status: 'active',
-      created_by: currentUser.email || 'admin',
-    });
   };
 
   const saveAppointment = async (formData) => {
