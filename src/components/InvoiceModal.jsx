@@ -3,7 +3,7 @@ import { X, Printer, Save, FileText, MessageSquare, Plus } from 'lucide-react';
 import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
-import { getRoomInfo } from '../lib/rooms';
+import { getRoomInfo, ROOMS } from '../lib/rooms';
 import { addDaysToDateString } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
 
@@ -777,29 +777,39 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                       value={formData.room_type}
                       onChange={(e) => {
                         const type = e.target.value;
-                        const rent = type === 'A/C' ? 1000 : type === 'Non-A/C' ? 700 : formData.room_rent;
-                        setFormData({ ...formData, room_type: type, room_rent: rent });
+                        // A default rate for browsing by type before a specific
+                        // room is picked below — that Room Number selection is
+                        // what actually finalizes type + rate together, from
+                        // the same ROOMS list, so the two can never disagree.
+                        const match = ROOMS.find(r => r.type === type);
+                        setFormData({ ...formData, room_type: type, room_rent: match ? match.rate : formData.room_rent });
                       }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                     >
                       <option value="">Select Type</option>
-                      <option value="A/C">A/C</option>
-                      <option value="Non-A/C">Non-A/C</option>
+                      {[...new Set(ROOMS.map(r => r.type))].map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Room Number</label>
                     <select
                       value={formData.room_number || ''}
-                      onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
+                      onChange={(e) => {
+                        const room = getRoomInfo(e.target.value);
+                        setFormData({
+                          ...formData,
+                          room_number: e.target.value,
+                          ...(room ? { room_type: room.type, room_rent: room.rate } : {}),
+                        });
+                      }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                     >
                       <option value="">Select</option>
-                      <option value="21">21</option>
-                      <option value="22">22</option>
-                      <option value="23">23</option>
-                      <option value="24">24</option>
-                      <option value="25">25</option>
+                      {ROOMS.map(r => (
+                        <option key={r.number} value={r.number}>{r.number}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
