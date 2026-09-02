@@ -42,7 +42,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
   const [dischargeMedicines, setDischargeMedicines] = useState([]);
   const [dischargeDate, setDischargeDate] = useState('');
   const [complaints, setComplaints] = useState('');
-  const [doctorQualification, setDoctorQualification] = useState('');
+  const [doctorDesignation, setDoctorDesignation] = useState('');
   const [doctorRegistrationNumber, setDoctorRegistrationNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [showPrintOptions, setShowPrintOptions] = useState(false);
@@ -88,11 +88,23 @@ const PrescriptionModal = ({ patient, onClose }) => {
       }
 
       if (patient?.assigned_doctor) {
-        const doctorSnap = await getDocs(query(collection(db, 'hr_employees'), where('name', '==', patient.assigned_doctor)));
-        if (!doctorSnap.empty) {
-          const doctorData = doctorSnap.docs[0].data();
-          setDoctorQualification(doctorData.qualification || '');
-          setDoctorRegistrationNumber(doctorData.isDoctor ? (doctorData.registrationNumber || '') : '');
+        // An exact match on `name` is fragile — patients often carry a
+        // shorter form of the doctor's name (e.g. "Dr. Satheesh") than the
+        // full name on their HR record ("Dr. Satheesh Kumar"), so a strict
+        // where('name', '==', ...) silently finds nothing for names like
+        // that. Compare normalized (no "Dr." prefix, case-insensitive) and
+        // accept a prefix match either direction instead.
+        const normalizeDocName = (s) => (s || '').replace(/^dr\.?\s*/i, '').trim().toLowerCase();
+        const target = normalizeDocName(patient.assigned_doctor);
+        const doctorSnap = await getDocs(query(collection(db, 'hr_employees'), where('isDoctor', '==', true)));
+        const match = doctorSnap.docs.find(d => {
+          const n = normalizeDocName(d.data().name);
+          return n && target && (n === target || n.startsWith(target) || target.startsWith(n));
+        });
+        if (match) {
+          const doctorData = match.data();
+          setDoctorDesignation(doctorData.designation || '');
+          setDoctorRegistrationNumber(doctorData.registrationNumber || '');
         }
       }
     } catch (e) {
@@ -257,7 +269,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
     <div class="sig-block">
       <div class="sig-line"></div>
       ${attendingDoctor ? `<p class="doctor-name" style="margin-top:4px;">Dr. ${attendingDoctor}</p>` : ''}
-      ${doctorQualification ? `<p class="reg">${doctorQualification}</p>` : ''}
+      ${doctorDesignation ? `<p class="reg">${doctorDesignation}</p>` : ''}
       ${doctorRegistrationNumber ? `<p class="reg">Reg No: ${doctorRegistrationNumber}</p>` : ''}
       <p style="font-size:10px;">Signature of Physician</p>
     </div>
@@ -324,7 +336,12 @@ const PrescriptionModal = ({ patient, onClose }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handlePrintClick} className="flex items-center gap-1 px-3 py-1.5 bg-white text-teal-700 rounded-lg text-sm font-medium hover:bg-teal-50">
+            <button
+              onClick={handlePrintClick}
+              disabled={loading}
+              title={loading ? 'Still loading the doctor\'s details…' : undefined}
+              className="flex items-center gap-1 px-3 py-1.5 bg-white text-teal-700 rounded-lg text-sm font-medium hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Printer className="w-4 h-4" /> Print
             </button>
             <button onClick={onClose} className="hover:bg-teal-700 p-2 rounded"><X className="w-5 h-5" /></button>
