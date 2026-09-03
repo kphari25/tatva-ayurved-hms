@@ -3,7 +3,7 @@ import { UserPlus, Save, X, Receipt, CheckCircle, FileText, UserCheck } from 'lu
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
-import { daysSince } from '../lib/formatDate';
+import { daysSince, todayLocalDateStr } from '../lib/formatDate';
 import { generateMRDNumber, generateIPNumber, generatePatientNumber } from '../lib/patientNumbers';
 import InvoiceModal from './InvoiceModal';
 
@@ -128,7 +128,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
           // is the moment that establishes an accurate last_visit_date going
           // forward for the 30-day consultation-fee check next time.
           updateData.admission_status = null;
-          updateData.last_visit_date = new Date().toISOString().split('T')[0];
+          updateData.last_visit_date = todayLocalDateStr();
         }
         await updateDoc(doc(db, 'patients', patient.id), updateData);
 
@@ -163,7 +163,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
         ...(formData.patient_type === 'IP' ? { admission_status: 'pending_admission' } : {}),
         prescriptions: [],
         visits: [],
-        last_visit_date: new Date().toISOString().split('T')[0],
+        last_visit_date: todayLocalDateStr(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         status: 'active',
