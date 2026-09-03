@@ -991,30 +991,11 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         dischargeSummaryId = newDoc.id;
       }
 
-      // Saving this summary is the actual act of discharging the patient —
-      // previously nothing here touched the patient record, so they kept
-      // showing as Active in Patient Portal no matter how many times this
-      // was saved/printed. Matches the admission_status field the existing
-      // Check Out / Reactivate actions already use.
-      // wasAlreadyDischarged/statusUpdateSucceeded feed the save confirmation
-      // below — this used to flip the patient to Inactive/Discharged with no
-      // mention of it in the "Discharge summary saved!" alert, so staff had
-      // no way to know it had happened (or that it silently failed) short of
-      // separately checking Patient Portal.
-      const wasAlreadyDischarged = patient?.admission_status === 'discharged';
-      let statusUpdateSucceeded = false;
-      const patientId = patient?.id || patient?.firebaseId;
-      if (patientId) {
-        try {
-          await updateDoc(doc(db, 'patients', patientId), {
-            admission_status: 'discharged',
-            discharge_date: form.discharge_date || todayLocalDateStr(),
-          });
-          statusUpdateSucceeded = true;
-        } catch (statusError) {
-          console.error('⚠️ Failed to update patient discharge status:', statusError);
-        }
-      }
+      // Saving this summary is drafting/documenting the clinical record —
+      // it does NOT discharge the patient. admission_status only changes
+      // when front desk actually performs the discharge from the Discharge
+      // Management portal (billing/checkout), so a summary can be saved and
+      // re-saved while the patient is still physically admitted.
 
       // Keep the Scheduling follow-up appointment in sync with this summary's
       // next_review_date across repeated saves, rather than creating a fresh
@@ -1079,8 +1060,6 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
       alert(
         '✅ Discharge summary saved!' +
-        (statusUpdateSucceeded && !wasAlreadyDischarged ? '\n➡️ Patient moved from Active to Inactive/Discharged in Patient Portal.' : '') +
-        (patientId && !statusUpdateSucceeded ? '\n⚠️ Could not update the patient\'s status — check Patient Portal.' : '') +
         (appointmentAction === 'created' ? '\n📅 Follow-up appointment created in Scheduling.' : '') +
         (appointmentAction === 'updated' ? '\n📅 Follow-up appointment updated in Scheduling.' : '') +
         (appointmentAction === 'removed' ? '\n📅 Follow-up date cleared — the appointment in Scheduling was removed.' : '')
