@@ -29,7 +29,13 @@ export const basePriceFromMRP = (item) => {
 // Module-level (not a component closure) so a saved bill can be reprinted
 // from anywhere — e.g. clicking a bill number in Inventory's Sales History —
 // without reopening the full Medicine Sale form.
-export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
+export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}, pageSize = 'A4') => {
+  // A5 is roughly half of A4 (148 x 210mm vs 210 x 297mm) — short bills
+  // (a handful of items) fit comfortably on it, so margins shrink to match
+  // rather than eating into the smaller page. .print-footer's fixed
+  // left/right/bottom must track the same numbers so it still lines up
+  // with the page's own margins once pinned to the bottom for print.
+  const pageMargin = pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' };
   const rowsHTML = saleData.items.map((r, i) => `
       <tr>
         <td>${i + 1}</td>
@@ -47,7 +53,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; color: #1a1a1a; }
-    @page { size: A4; margin: 15mm 12mm; }
+    @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     /* Reserves room at the bottom of the printed page so normal-flow
        content (the items table, totals) doesn't run under the now-fixed
        print-footer below. */
@@ -78,7 +84,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}) => {
        so it's safe to pin this again now that that's fixed. */
     .print-footer { margin-top: 50px; }
     @media print {
-      .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
+      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; }
     }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }

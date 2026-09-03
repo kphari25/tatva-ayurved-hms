@@ -3,6 +3,7 @@ import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } fr
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { todayLocalDateStr } from '../lib/formatDate';
 
 const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
@@ -16,7 +17,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   const [inventory, setInventory] = useState([]);
   const [patients, setPatients] = useState([]);
   const [formData, setFormData] = useState({
-    sale_date: new Date().toISOString().split('T')[0],
+    sale_date: todayLocalDateStr(),
     customer_name: initialCustomer?.customer_name || '',
     mrd_number: initialCustomer?.mrd_number || '',
     phone: initialCustomer?.phone || '',
@@ -55,6 +56,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   // contentWindow.print(), sidesteps both — it's never a separate popup, so
   // there's nothing for a browser to fail to load or a pop-up blocker to block.
   const [printPreviewData, setPrintPreviewData] = useState(null);
+  const [printPageSize, setPrintPageSize] = useState('A4');
   const [closeOnPreviewDismiss, setCloseOnPreviewDismiss] = useState(false);
   const printIframeRef = useRef(null);
 
@@ -797,7 +799,18 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
           </div>
 
           {/* ── Actions ── */}
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end items-center gap-3">
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium mr-auto" title="Paper size for printing">
+              {['A4', 'A5'].map(size => (
+                <button
+                  key={size}
+                  onClick={() => setPrintPageSize(size)}
+                  className={`px-2.5 py-1.5 rounded-md transition-colors ${printPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
             <button onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
               Cancel
             </button>
@@ -831,7 +844,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
           <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
             <div>
               <h2 className="text-xl font-bold">Print Preview</h2>
-              <p className="text-teal-100 text-sm">{printPreviewData.customer_name || 'Walk-in Customer'}</p>
+              <p className="text-teal-100 text-sm">{printPreviewData.customer_name || 'Walk-in Customer'} · {printPageSize} paper</p>
             </div>
             <button onClick={handleClosePreview} className="hover:bg-teal-700 p-2 rounded">
               <X className="w-6 h-6" />
@@ -851,7 +864,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
             <iframe
               ref={printIframeRef}
               title="Medicine sale bill print preview"
-              srcDoc={buildMedicineSalePrintHTML(printPreviewData, doctorInfo)}
+              srcDoc={buildMedicineSalePrintHTML(printPreviewData, doctorInfo, printPageSize)}
               // "Save & Print" should actually print, not just open a preview
               // the user then has to print manually — fire it automatically
               // once the bill has finished rendering in the iframe. "Preview
@@ -859,7 +872,9 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               // whole point there is to look before printing.
               onLoad={() => { if (closeOnPreviewDismiss) handlePrintFromPreview(); }}
               className="bg-white shadow-lg"
-              style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+              style={printPageSize === 'A5'
+                ? { width: '559px', minHeight: '794px', border: 'none' }
+                : { width: '794px', minHeight: '1123px', border: 'none' }}
             />
           </div>
         </div>

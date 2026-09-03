@@ -80,6 +80,7 @@ const InventoryManagement = () => {
   // In-page iframe print preview (see MedicineSaleModal's printPreviewData
   // comment) rather than a popup — reliable across Chrome/Safari.
   const [invoicePreview, setInvoicePreview] = useState(null); // { sale, doctorInfo }
+  const [invoicePreviewPageSize, setInvoicePreviewPageSize] = useState('A4');
   const invoicePreviewIframeRef = useRef(null);
 
   // Bulk GST Category assignment — selection is scoped to whatever's on
@@ -562,6 +563,7 @@ const InventoryManagement = () => {
         }
       }
 
+      setInvoicePreviewPageSize('A4');
       setInvoicePreview({ sale, doctorInfo });
     } catch (error) {
       console.error('Error opening invoice:', error);
@@ -1201,7 +1203,18 @@ const InventoryManagement = () => {
               </button>
             </div>
 
-            <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end bg-gray-50">
+            <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper size for printing">
+                {['A4', 'A5'].map(size => (
+                  <button
+                    key={size}
+                    onClick={() => setInvoicePreviewPageSize(size)}
+                    className={`px-2.5 py-1.5 rounded-md transition-colors ${invoicePreviewPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={handlePrintInvoicePreview}
                 className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
@@ -1214,9 +1227,11 @@ const InventoryManagement = () => {
               <iframe
                 ref={invoicePreviewIframeRef}
                 title="Medicine sale bill print preview"
-                srcDoc={buildMedicineSalePrintHTML(invoicePreview.sale, invoicePreview.doctorInfo)}
+                srcDoc={buildMedicineSalePrintHTML(invoicePreview.sale, invoicePreview.doctorInfo, invoicePreviewPageSize)}
                 className="bg-white shadow-lg"
-                style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+                style={invoicePreviewPageSize === 'A5'
+                  ? { width: '559px', minHeight: '794px', border: 'none' }
+                  : { width: '794px', minHeight: '1123px', border: 'none' }}
               />
             </div>
           </div>
