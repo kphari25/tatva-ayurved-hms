@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { addDoc, updateDoc, deleteDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import MedicineSaleModal from './MedicineSaleModal';
 import { withDrPrefix } from '../lib/formatDoctorName';
+import { todayLocalDateStr, addDaysToDateString } from '../lib/formatDate';
 import MedicineTable from './MedicineTable';
 import { buildMedicineItemsTableHTML } from '../lib/medicineSummary';
 
@@ -47,7 +48,7 @@ const emptyForm = () => ({
   mrd_no: '',
   admission_date: '',
   admission_time: '03:00PM',
-  discharge_date: new Date().toISOString().split('T')[0],
+  discharge_date: todayLocalDateStr(),
   discharge_time: '12:00PM',
   duration_days: '',
   doctor_in_charge: '',
@@ -276,7 +277,12 @@ const MedicineListEditor = ({ label, items, onChange, inventory }) => {
 // letterhead=true skips the logo/contact header (already pre-printed on the
 // hospital's letterhead stock) and pushes page-1 content down to clear that
 // artwork — only page 1 gets the extra top margin; page 2+ print normally.
-const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}) => {
+const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, pageSize = 'A4') => {
+  // A5 is roughly half of A4 — a short OP-style discharge summary can fit,
+  // though a full clinical discharge summary with treatments/medicines is
+  // long enough that it will likely still span multiple A5 pages; that's an
+  // accepted tradeoff, same as the other print options in this app.
+  const pageMargin = pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' };
   const patientName = `${patient?.title || ''} ${patient?.first_name || ''} ${patient?.last_name || ''}`.trim().toUpperCase();
   const address = [patient?.address, patient?.city, patient?.state, patient?.pincode].filter(Boolean).join(', ').toUpperCase();
   const age = patient?.age || '';
@@ -296,7 +302,7 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}) => {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; padding-bottom: 140px; }
-    @page { size: A4; margin: 15mm 12mm; }
+    @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     @media print { body { -webkit-print-color-adjust: exact; } }
 
@@ -334,7 +340,7 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}) => {
        trailing wherever the content happens to end. */
     .footer { margin-top: 50px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
     @media print {
-      .footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; background: #fff; }
+      .footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; background: #fff; }
     }
     .sig-block { text-align: right; }
     .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
@@ -556,7 +562,7 @@ ${form.remarks ? `<div class="section-title">Remarks</div><p>${form.remarks}</p>
   <div class="sig-block">
     <div class="sig-line"></div>
     ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
-    ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
+    ${doctorInfo.designation ? `<p class="reg">${doctorInfo.designation}</p>` : ''}
     ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
     <p style="font-size:10px;margin-top:2px;">Signature of Medical Superintendent</p>
   </div>
@@ -592,6 +598,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   });
   const [saving, setSaving] = useState(false);
   const [useLetterhead, setUseLetterhead] = useState(false);
+  const [printPageSize, setPrintPageSize] = useState('A4');
   // Print preview — in-page iframe printed via its own contentWindow,
   // same pattern as MedicineSaleModal/InvoiceModal (see medicineSalePrint.js
   // for why: window.open()+document.write() silently crashes whenever the
@@ -750,9 +757,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   // (next_review_days null) is left alone — it has no such relationship.
   useEffect(() => {
     if (form.next_review_days == null || !form.discharge_date) return;
-    const d = new Date(form.discharge_date);
-    d.setDate(d.getDate() + form.next_review_days);
-    const iso = d.toISOString().split('T')[0];
+    const iso = addDaysToDateString(form.discharge_date, form.next_review_days);
     setForm(prev => (prev.next_review_date === iso ? prev : { ...prev, next_review_date: iso }));
   }, [form.discharge_date, form.next_review_days]);
 
@@ -919,7 +924,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
   // Daily treatment helpers
   const addDailyTreatment = () => {
-    set('daily_treatments', [...(form.daily_treatments || []), { date: new Date().toISOString().split('T')[0], treatment: '', medicines: '', notes: '' }]);
+    set('daily_treatments', [...(form.daily_treatments || []), { date: todayLocalDateStr(), treatment: '', medicines: '', notes: '' }]);
   };
   const updateDailyTreatment = (idx, field, val) => {
     const arr = [...(form.daily_treatments || [])];
@@ -939,13 +944,23 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     ).slice(0, 6);
 
   const handlePrint = () => {
-    const selectedDoctor = doctors.find(d => (`${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name) === form.doctor_in_charge);
+    // Exact-match against the dropdown's own derived name misses whenever
+    // doctor_in_charge came from elsewhere with a shorter name (e.g.
+    // auto-populated from the patient's assigned_doctor, "Dr. Satheesh",
+    // vs the HR record's full "Dr. Satheesh Kumar") — normalize and accept
+    // a prefix match either direction, same fix as the prescription print.
+    const normalizeDocName = (s) => (s || '').replace(/^dr\.?\s*/i, '').trim().toLowerCase();
+    const target = normalizeDocName(form.doctor_in_charge);
+    const selectedDoctor = doctors.find(d => {
+      const n = normalizeDocName(`${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name);
+      return n && target && (n === target || n.startsWith(target) || target.startsWith(n));
+    });
     const doctorInfo = selectedDoctor ? {
       name: form.doctor_in_charge.replace(/^Dr\.?\s*/i, ''),
-      qualification: selectedDoctor.qualification || '',
+      designation: selectedDoctor.designation || '',
       registrationNumber: selectedDoctor.isDoctor ? (selectedDoctor.registrationNumber || '') : '',
     } : {};
-    setPrintPreviewHtml(buildPrintHTML(patient, form, useLetterhead, doctorInfo));
+    setPrintPreviewHtml(buildPrintHTML(patient, form, useLetterhead, doctorInfo, printPageSize));
   };
 
   const handlePrintFromPreview = () => {
@@ -993,7 +1008,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         try {
           await updateDoc(doc(db, 'patients', patientId), {
             admission_status: 'discharged',
-            discharge_date: form.discharge_date || new Date().toISOString().split('T')[0],
+            discharge_date: form.discharge_date || todayLocalDateStr(),
           });
           statusUpdateSucceeded = true;
         } catch (statusError) {
@@ -1713,15 +1728,28 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
         {/* Bottom nav */}
         <div className="flex-shrink-0 border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={useLetterhead}
-              onChange={e => setUseLetterhead(e.target.checked)}
-              className="w-4 h-4 accent-teal-600"
-            />
-            Print on letterhead <span className="text-gray-400">(skips logo/contact header, page 1 only — pages 2+ print normally)</span>
-          </label>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={useLetterhead}
+                onChange={e => setUseLetterhead(e.target.checked)}
+                className="w-4 h-4 accent-teal-600"
+              />
+              Print on letterhead <span className="text-gray-400">(skips logo/contact header, page 1 only — pages 2+ print normally)</span>
+            </label>
+            <div className="flex items-center bg-gray-200 rounded-lg p-0.5 text-xs font-medium" title="Paper size for printing">
+              {['A4', 'A5'].map(size => (
+                <button
+                  key={size}
+                  onClick={() => setPrintPageSize(size)}
+                  className={`px-2.5 py-1.5 rounded-md transition-colors ${printPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-2">
             <button onClick={handlePrint} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
               <Printer className="w-4 h-4" /> Print Discharge Summary
@@ -1756,7 +1784,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
           <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
             <div>
               <h2 className="text-xl font-bold">Print Preview</h2>
-              <p className="text-teal-100 text-sm">{patient?.first_name} {patient?.last_name}</p>
+              <p className="text-teal-100 text-sm">{patient?.first_name} {patient?.last_name} · {printPageSize} paper</p>
             </div>
             <button onClick={() => setPrintPreviewHtml(null)} className="hover:bg-teal-700 p-2 rounded">
               <X className="w-6 h-6" />
@@ -1780,7 +1808,9 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
               // Matches the old popup's auto-print-on-open behavior.
               onLoad={handlePrintFromPreview}
               className="bg-white shadow-lg"
-              style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+              style={printPageSize === 'A5'
+                ? { width: '559px', minHeight: '794px', border: 'none' }
+                : { width: '794px', minHeight: '1123px', border: 'none' }}
             />
           </div>
         </div>
