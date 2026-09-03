@@ -441,6 +441,7 @@ const Dashboard = () => {
   // from this in real time instead of a one-time fetch.
   const [allPatients, setAllPatients] = useState([]);
   const [ipCaseSheetsById, setIpCaseSheetsById] = useState({});
+  const [allDischarges, setAllDischarges] = useState([]);
   const [dashboardData, setDashboardData] = useState({
     todayAppointments: [],
     ipPatients: [],
@@ -514,9 +515,10 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Real-time listener for patients — In-Patient Status / Discharges Today
-  // stay in sync the moment admission_date or expected_stay_days changes in
-  // Patient Portal, without needing a manual Dashboard refresh.
+  // Real-time listener for patients — In-Patient Status / Pending Admissions
+  // stay in sync the moment admission_date, expected_stay_days or
+  // admission_status changes in Patient Portal, without needing a manual
+  // Dashboard refresh.
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'patients'), (snap) => {
       setAllPatients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -526,6 +528,18 @@ const Dashboard = () => {
       snap.docs.forEach(d => { byId[d.id] = d.data(); });
       setIpCaseSheetsById(byId);
     }).catch(() => {});
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time listener for discharge records — Discharges Today reflects
+  // patients actually discharged today (Discharge Management's own
+  // discharges collection), not just an admission-time estimate of when
+  // they'd likely check out, so it updates the moment front desk saves or
+  // completes a discharge.
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'discharges'), (snap) => {
+      setAllDischarges(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
     return () => unsubscribe();
   }, []);
 
@@ -574,11 +588,24 @@ const Dashboard = () => {
         requested_at: p.created_at,
       }));
 
-    // Discharges Today — driven by each IP patient's own computed checkout
-    // date (admission_date + expected_stay_days), not a separately-tracked
-    // discharges collection that only reflects paperwork someone already
-    // started.
-    const todayDischarges = ipPatients.filter(p => p.checkoutDate === today);
+    // Discharges Today — patients actually discharged today, from Discharge
+    // Management's own discharges collection (real-time via the listener
+    // above), not the admission-time estimate (admission_date +
+    // expected_stay_days) used to still drive this — that's a forward
+    // planning guess that's rarely revised, and could silently drift from
+    // what actually happened.
+    const patientsById = {};
+    allPatients.forEach(p => { patientsById[p.id] = p; });
+    const todayDischarges = allDischarges
+      .filter(d => d.discharge_date === today)
+      .filter(d => isMine(patientsById[d.patient_id]?.assigned_doctor))
+      .map(d => ({
+        id: d.id,
+        patientId: d.patient_id,
+        name: d.patient_name || `${patientsById[d.patient_id]?.first_name || ''} ${patientsById[d.patient_id]?.last_name || ''}`.trim() || 'Unknown',
+        status: d.status || 'pending',
+        pendingAmount: d.pending_amount || 0,
+      }));
 
     setDashboardData(prev => ({
       ...prev,
@@ -592,7 +619,7 @@ const Dashboard = () => {
         todayDischargesCount: todayDischarges.length,
       }
     }));
-  }, [allPatients, ipCaseSheetsById]);
+  }, [allPatients, ipCaseSheetsById, allDischarges]);
 
   // Therapist schedule — derived from the full roster + today's appointments,
   // so it stays correct regardless of which of those two loads/updates first
@@ -1480,20 +1507,27 @@ const Dashboard = () => {
             </div>
             <div className="p-4 space-y-3">
               {dashboardData.todayDischarges.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">No discharges scheduled</p>
+                <p className="text-sm text-gray-500 text-center py-4">No discharges yet today</p>
               ) : (
-                dashboardData.todayDischarges.map(patient => (
-                  <div key={patient.id} className="p-3 bg-green-50 rounded-lg border border-green-200">
-                    <p className="font-semibold text-gray-900 text-sm">{patient.name}</p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {patient.expectedStayDays} day{patient.expectedStayDays === 1 ? '' : 's'} · Admitted {patient.admission ? formatDateOnly(patient.admission) : '—'}
-                    </p>
-                    <button
-                      onClick={() => window.dispatchEvent(new CustomEvent('startDischarge', { detail: patient.id }))}
-                      className="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 w-full"
-                    >
-                      Start Discharge
-                    </button>
+                dashboardData.todayDischarges.map(discharge => (
+                  <div key={discharge.id} className="p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-gray-900 text-sm">{discharge.name}</p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${discharge.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                        {discharge.status === 'completed' ? 'Completed' : 'Pending'}
+                      </span>
+                    </div>
+                    {discharge.pendingAmount > 0 && (
+                      <p className="text-xs text-red-600 mt-1">₹{discharge.pendingAmount.toLocaleString()} pending</p>
+                    )}
+                    {discharge.status !== 'completed' && (
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('startDischarge', { detail: discharge.patientId }))}
+                        className="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 w-full"
+                      >
+                        Complete Discharge
+                      </button>
+                    )}
                   </div>
                 ))
               )}

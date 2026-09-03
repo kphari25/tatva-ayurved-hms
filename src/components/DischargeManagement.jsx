@@ -4,6 +4,7 @@ import { collection, getDocs, addDoc, updateDoc, doc, query, where, orderBy } fr
 import { db } from '../lib/firebase';
 import DischargeSummaryModal from './DischargeSummaryModal';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
+import { todayLocalDateStr } from '../lib/formatDate';
 
 const DischargeManagement = () => {
   const [patients, setPatients] = useState([]);
@@ -563,8 +564,8 @@ const DischargeModal = ({ patient, patients, onClose, onSave }) => {
   }, [selectedPatient]);
 
   const [formData, setFormData] = useState({
-    admission_date: patient?.dischargeData?.admission_date || new Date().toISOString().split('T')[0],
-    discharge_date: patient?.dischargeData?.discharge_date || new Date().toISOString().split('T')[0],
+    admission_date: patient?.dischargeData?.admission_date || todayLocalDateStr(),
+    discharge_date: patient?.dischargeData?.discharge_date || todayLocalDateStr(),
     room_charges: patient?.dischargeData?.room_charges || 0,
     room_days: patient?.dischargeData?.room_days || 0,
     room_rate: patient?.dischargeData?.room_rate || 0,

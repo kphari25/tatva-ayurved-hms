@@ -1,3 +1,17 @@
+// Today's date as YYYY-MM-DD from local components — not
+// `new Date().toISOString().split('T')[0]`, which reads the UTC date and
+// silently shows tomorrow's (or yesterday's) date instead of today's during
+// the hours where local and UTC calendar dates differ (e.g. the first ~5.5
+// hours of the day in IST, UTC+5:30, still show the previous UTC date; the
+// reverse can happen in timezones behind UTC).
+export const todayLocalDateStr = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 // Formats a plain YYYY-MM-DD date string (as produced by <input type="date">)
 // without shifting across a day boundary. `new Date('YYYY-MM-DD')` parses the
 // string as UTC midnight, which can display as the previous day in any
