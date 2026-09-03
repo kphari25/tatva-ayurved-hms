@@ -442,6 +442,7 @@ const Dashboard = () => {
   const [allPatients, setAllPatients] = useState([]);
   const [ipCaseSheetsById, setIpCaseSheetsById] = useState({});
   const [allDischarges, setAllDischarges] = useState([]);
+  const [ipAppointments, setIpAppointments] = useState([]);
   const [dashboardData, setDashboardData] = useState({
     todayAppointments: [],
     ipPatients: [],
@@ -543,6 +544,16 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
+  // Real-time listener for IP-type appointments — Pending Admissions shows
+  // the date each patient is actually due to be admitted (the appointment
+  // they were booked in for), not just when the pending record was created.
+  useEffect(() => {
+    const unsubscribe = onSnapshot(query(collection(db, 'appointments'), where('type', '==', 'IP')), (snap) => {
+      setIpAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Recomputes In-Patient Status / Pending Admissions / Discharges Today
   // whenever the live patients snapshot (or the once-loaded case sheet
   // lookup) changes.
@@ -578,15 +589,24 @@ const Dashboard = () => {
       });
 
     // Pending admission requests — new IP registrations awaiting approval.
+    // admissionDate comes from whichever IP appointment this patient is
+    // linked to (patient_id) — the date they actually said they'd come in —
+    // falling back to when the pending record itself was created for the
+    // rare case of a patient registered directly with no booked appointment.
     const pendingAdmissions = allPatients
       .filter(p => p.patient_type === 'IP' && p.admission_status === 'pending_admission')
       .filter(p => isMine(p.assigned_doctor))
-      .map(p => ({
-        id: p.id,
-        patient: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-        mrd_number: p.mrd_number || p.patient_number || '',
-        requested_at: p.created_at,
-      }));
+      .map(p => {
+        const linkedAppt = ipAppointments.find(a => a.patient_id === p.id);
+        return {
+          id: p.id,
+          patient: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+          mrd_number: p.mrd_number || p.patient_number || '',
+          admissionDate: linkedAppt?.date || null,
+          requested_at: p.created_at,
+        };
+      })
+      .sort((a, b) => (a.admissionDate || '9999-99-99').localeCompare(b.admissionDate || '9999-99-99'));
 
     // Discharges Today — patients actually discharged today, from Discharge
     // Management's own discharges collection (real-time via the listener
@@ -619,7 +639,7 @@ const Dashboard = () => {
         todayDischargesCount: todayDischarges.length,
       }
     }));
-  }, [allPatients, ipCaseSheetsById, allDischarges]);
+  }, [allPatients, ipCaseSheetsById, allDischarges, ipAppointments]);
 
   // Therapist schedule — derived from the full roster + today's appointments,
   // so it stays correct regardless of which of those two loads/updates first
@@ -1657,7 +1677,11 @@ const Dashboard = () => {
                       <p className="font-medium text-gray-900 text-sm">{p.patient || 'Unnamed patient'}</p>
                       <p className="text-xs text-gray-500 flex gap-2">
                         {p.mrd_number && <span>{p.mrd_number}</span>}
-                        {p.requested_at && <span>Requested {formatDateOnly(p.requested_at)}</span>}
+                        {p.admissionDate ? (
+                          <span className="text-amber-700 font-medium">Admission: {formatGroupDate(p.admissionDate)}</span>
+                        ) : (
+                          p.requested_at && <span>Requested {formatDateOnly(p.requested_at)}</span>
+                        )}
                       </p>
                     </div>
                     <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-semibold shrink-0">View</span>
