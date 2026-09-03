@@ -4,7 +4,7 @@ import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } fro
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
 import { getRoomInfo, ROOMS } from '../lib/rooms';
-import { addDaysToDateString } from '../lib/formatDate';
+import { addDaysToDateString, todayLocalDateStr } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
 
 const DOCTOR_FEE_PER_DAY = 200;
@@ -28,6 +28,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   // pattern as MedicineSaleModal (see medicineSalePrint.js for why this
   // replaced window.open()+document.write(): unreliable across Chrome/Safari).
   const [printPreviewData, setPrintPreviewData] = useState(null);
+  const [printPageSize, setPrintPageSize] = useState('A4');
   const [closeOnPreviewDismiss, setCloseOnPreviewDismiss] = useState(false);
   const printIframeRef = useRef(null);
 
@@ -120,7 +121,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     additionalCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
 
   const [formData, setFormData] = useState({
-    invoice_date: new Date().toISOString().split('T')[0],
+    invoice_date: todayLocalDateStr(),
     nursing_fees: 0,
     doctor_fees: 0,
     lab_test_charges: 0,
@@ -461,7 +462,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       setCheckingOut(true);
       await updateDoc(doc(db, 'patients', patient.firebaseId || patient.id), {
         admission_status: 'discharged',
-        discharge_date: formData.discharge_date || new Date().toISOString().split('T')[0],
+        discharge_date: formData.discharge_date || todayLocalDateStr(),
       });
     } catch (e) {
       console.error('Error checking out patient:', e);
@@ -997,6 +998,17 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3">
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium mr-auto" title="Paper size for printing">
+              {['A4', 'A5'].map(size => (
+                <button
+                  key={size}
+                  onClick={() => setPrintPageSize(size)}
+                  className={`px-2.5 py-1.5 rounded-md transition-colors ${printPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => onClose()}
               className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -1063,7 +1075,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
           <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
             <div>
               <h2 className="text-xl font-bold">Print Preview</h2>
-              <p className="text-teal-100 text-sm">{printPreviewData.patient_name}</p>
+              <p className="text-teal-100 text-sm">{printPreviewData.patient_name} · {printPageSize} paper</p>
             </div>
             <button onClick={handleClosePreview} className="hover:bg-teal-700 p-2 rounded">
               <X className="w-6 h-6" />
@@ -1083,7 +1095,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
             <iframe
               ref={printIframeRef}
               title="Invoice print preview"
-              srcDoc={buildInvoicePrintHTML(printPreviewData, doctorInfo)}
+              srcDoc={buildInvoicePrintHTML(printPreviewData, doctorInfo, printPageSize)}
               // "Save & Print" should actually print, not just open a
               // preview the user then has to print manually — fire it
               // automatically once the invoice has finished rendering in
@@ -1092,7 +1104,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
               // before printing.
               onLoad={() => { if (closeOnPreviewDismiss) handlePrintFromPreview(); }}
               className="bg-white shadow-lg"
-              style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+              style={printPageSize === 'A5'
+                ? { width: '559px', minHeight: '794px', border: 'none' }
+                : { width: '794px', minHeight: '1123px', border: 'none' }}
             />
           </div>
         </div>

@@ -10,7 +10,11 @@ import MedicineSaleModal from './MedicineSaleModal';
 // letterhead=true skips the logo/contact header (already pre-printed on the
 // hospital's letterhead stock) and pushes page-1 content down to clear that
 // artwork — only page 1 gets the extra top margin; page 2+ print normally.
-const buildInvoicePrintHTML = (invoice, letterhead = false) => `
+// pageSize A5 is roughly half of A4 — fine for a short invoice, may spill a
+// long one onto a second page, same tradeoff as the other print options.
+const buildInvoicePrintHTML = (invoice, letterhead = false, pageSize = 'A4') => {
+  const margin = pageSize === 'A5' ? '8mm' : '10mm';
+  return `
       <!DOCTYPE html>
       <html>
       <head>
@@ -18,7 +22,7 @@ const buildInvoicePrintHTML = (invoice, letterhead = false) => `
         <style>
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; }
-          @page { size: A4; margin: 10mm; }
+          @page { size: ${pageSize}; margin: ${margin}; }
           ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
           .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
           .header img { height: 42px; }
@@ -162,6 +166,7 @@ const buildInvoicePrintHTML = (invoice, letterhead = false) => `
       </body>
       </html>
     `;
+};
 
 const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [invoices, setInvoices] = useState([]);
@@ -182,6 +187,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [patientPickerSearch, setPatientPickerSearch] = useState('');
   const [printPreviewInvoice, setPrintPreviewInvoice] = useState(null);
   const [useLetterheadPrint, setUseLetterheadPrint] = useState(false);
+  const [printPreviewPageSize, setPrintPreviewPageSize] = useState('A4');
   const printIframeRef = useRef(null);
   const [stats, setStats] = useState({
     totalRevenue: 0,
@@ -366,6 +372,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const COLORS = ['#3b82f6', '#8b5cf6']; // Blue for OP, Purple for IP
 
   const handlePrintInvoice = (invoice) => {
+    setPrintPreviewPageSize('A4');
     setPrintPreviewInvoice(invoice);
   };
 
@@ -811,15 +818,28 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
             </div>
 
             <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={useLetterheadPrint}
-                  onChange={e => setUseLetterheadPrint(e.target.checked)}
-                  className="w-4 h-4 accent-teal-600"
-                />
-                Print on letterhead <span className="text-gray-400">(skips logo/contact header, page 1 only)</span>
-              </label>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={useLetterheadPrint}
+                    onChange={e => setUseLetterheadPrint(e.target.checked)}
+                    className="w-4 h-4 accent-teal-600"
+                  />
+                  Print on letterhead <span className="text-gray-400">(skips logo/contact header, page 1 only)</span>
+                </label>
+                <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper size for printing">
+                  {['A4', 'A5'].map(size => (
+                    <button
+                      key={size}
+                      onClick={() => setPrintPreviewPageSize(size)}
+                      className={`px-2.5 py-1.5 rounded-md transition-colors ${printPreviewPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button
                 onClick={handlePrintFromPreview}
                 className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
@@ -832,9 +852,11 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
               <iframe
                 ref={printIframeRef}
                 title="Invoice print preview"
-                srcDoc={buildInvoicePrintHTML(printPreviewInvoice, useLetterheadPrint)}
+                srcDoc={buildInvoicePrintHTML(printPreviewInvoice, useLetterheadPrint, printPreviewPageSize)}
                 className="bg-white shadow-lg"
-                style={{ width: '794px', minHeight: '1123px', border: 'none' }}
+                style={printPreviewPageSize === 'A5'
+                  ? { width: '559px', minHeight: '794px', border: 'none' }
+                  : { width: '794px', minHeight: '1123px', border: 'none' }}
               />
             </div>
           </div>

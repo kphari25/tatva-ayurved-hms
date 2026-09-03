@@ -13,14 +13,24 @@ export const HOSPITAL = {
 // way, via an in-page iframe printed through its own contentWindow.print(),
 // instead of window.open()+document.write() (unreliable across Chrome/Safari;
 // see medicineSalePrint.js's print-footer comment for the history).
-export const buildInvoicePrintHTML = (data, doctorInfo = {}) => `<!DOCTYPE html>
+// A5 is roughly half of A4 (148 x 210mm vs 210 x 297mm) — a short invoice
+// (registration/consultation fee only, a couple of line items) fits on it,
+// so margins shrink to match rather than eating into the smaller page. A
+// long IP invoice with room rent/mess/many line items may still spill onto
+// a second page on A5 — that's expected, same tradeoff as any short-vs-long
+// document choosing a smaller page.
+const pageMarginFor = (pageSize) => (pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' });
+
+export const buildInvoicePrintHTML = (data, doctorInfo = {}, pageSize = 'A4') => {
+  const pageMargin = pageMarginFor(pageSize);
+  return `<!DOCTYPE html>
 <html>
 <head>
   <title>Invoice - ${data.invoice_number || data.patient_name || data.mrd_number || data.patient_number}</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; padding-bottom: 190px; }
-    @page { size: A4; margin: 15mm 12mm; }
+    @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
     .header img { height: 42px; }
     .header-text { text-align: left; }
@@ -42,7 +52,7 @@ export const buildInvoicePrintHTML = (data, doctorInfo = {}) => `<!DOCTYPE html>
        and medicine-sale printouts. */
     .print-footer { margin-top: 50px; }
     @media print {
-      .print-footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; }
+      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; }
     }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
@@ -256,3 +266,4 @@ export const buildInvoicePrintHTML = (data, doctorInfo = {}) => `<!DOCTYPE html>
   </div>
 </body>
 </html>`;
+};
