@@ -6,7 +6,7 @@ import { sendInvoiceSMS } from '../lib/sms';
 import { getRoomInfo, ROOMS } from '../lib/rooms';
 import { addDaysToDateString, todayLocalDateStr } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
-import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
+import { previewIframeStyle } from '../lib/printPreviewSize';
 
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
@@ -30,6 +30,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   // replaced window.open()+document.write(): unreliable across Chrome/Safari).
   const [printPreviewData, setPrintPreviewData] = useState(null);
   const [printPageSize, setPrintPageSize] = useState('A4');
+  const [printOrientation, setPrintOrientation] = useState('portrait');
   const [closeOnPreviewDismiss, setCloseOnPreviewDismiss] = useState(false);
   const printIframeRef = useRef(null);
 
@@ -51,30 +52,6 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   // Ad-hoc charges added directly on the invoice, on top of the price-list treatments.
   const [additionalCharges, setAdditionalCharges] = useState([]);
 
-  // Doctor signature block on the printed invoice — looked up from the
-  // patient's assigned doctor, same pattern as the prescription printout.
-  const [doctorInfo, setDoctorInfo] = useState({ name: '', designation: '', registrationNumber: '' });
-
-  useEffect(() => {
-    if (!patient?.assigned_doctor) return;
-    const loadDoctorInfo = async () => {
-      try {
-        // Tolerant of assigned_doctor carrying a shorter name than the
-        // doctor's own record (e.g. "Dr. Satheesh" vs the HR/User
-        // Management record's full "Dr. Satheesh Kumar").
-        const doctorsList = await loadDoctorsList();
-        const match = findDoctorInfo(doctorsList, patient.assigned_doctor);
-        setDoctorInfo({
-          name: patient.assigned_doctor.replace(/^Dr\.?\s*/i, ''),
-          designation: match?.designation || '',
-          registrationNumber: match?.registrationNumber || '',
-        });
-      } catch (e) {
-        console.error('Error loading doctor info:', e);
-      }
-    };
-    loadDoctorInfo();
-  }, [patient?.assigned_doctor]);
 
   useEffect(() => {
     const patientId = patient?.firebaseId || patient?.id;
@@ -998,16 +975,29 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3">
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium mr-auto" title="Paper size for printing">
-              {['A4', 'A5'].map(size => (
-                <button
-                  key={size}
-                  onClick={() => setPrintPageSize(size)}
-                  className={`px-2.5 py-1.5 rounded-md transition-colors ${printPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  {size}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 mr-auto">
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper size for printing">
+                {['A4', 'A5'].map(size => (
+                  <button
+                    key={size}
+                    onClick={() => setPrintPageSize(size)}
+                    className={`px-2.5 py-1.5 rounded-md transition-colors ${printPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper orientation for printing">
+                {['portrait', 'landscape'].map(orientation => (
+                  <button
+                    key={orientation}
+                    onClick={() => setPrintOrientation(orientation)}
+                    className={`px-2.5 py-1.5 rounded-md capitalize transition-colors ${printOrientation === orientation ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {orientation}
+                  </button>
+                ))}
+              </div>
             </div>
             <button
               onClick={() => onClose()}
@@ -1075,7 +1065,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
           <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
             <div>
               <h2 className="text-xl font-bold">Print Preview</h2>
-              <p className="text-teal-100 text-sm">{printPreviewData.patient_name} · {printPageSize} paper</p>
+              <p className="text-teal-100 text-sm">{printPreviewData.patient_name} · {printPageSize} {printOrientation}</p>
             </div>
             <button onClick={handleClosePreview} className="hover:bg-teal-700 p-2 rounded">
               <X className="w-6 h-6" />
@@ -1095,7 +1085,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
             <iframe
               ref={printIframeRef}
               title="Invoice print preview"
-              srcDoc={buildInvoicePrintHTML(printPreviewData, doctorInfo, printPageSize)}
+              srcDoc={buildInvoicePrintHTML(printPreviewData, printPageSize, printOrientation)}
               // "Save & Print" should actually print, not just open a
               // preview the user then has to print manually — fire it
               // automatically once the invoice has finished rendering in
@@ -1104,9 +1094,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
               // before printing.
               onLoad={() => { if (closeOnPreviewDismiss) handlePrintFromPreview(); }}
               className="bg-white shadow-lg"
-              style={printPageSize === 'A5'
-                ? { width: '559px', minHeight: '794px', border: 'none' }
-                : { width: '794px', minHeight: '1123px', border: 'none' }}
+              style={previewIframeStyle(printPageSize, printOrientation)}
             />
           </div>
         </div>

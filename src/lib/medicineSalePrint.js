@@ -29,13 +29,14 @@ export const basePriceFromMRP = (item) => {
 // Module-level (not a component closure) so a saved bill can be reprinted
 // from anywhere — e.g. clicking a bill number in Inventory's Sales History —
 // without reopening the full Medicine Sale form.
-export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}, pageSize = 'A4') => {
+export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientation = 'portrait') => {
   // A5 is roughly half of A4 (148 x 210mm vs 210 x 297mm) — short bills
   // (a handful of items) fit comfortably on it, so margins shrink to match
   // rather than eating into the smaller page. .print-footer's fixed
   // left/right/bottom must track the same numbers so it still lines up
   // with the page's own margins once pinned to the bottom for print.
   const pageMargin = pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' };
+  const pageSizeRule = orientation === 'landscape' ? `${pageSize} landscape` : pageSize;
   const rowsHTML = saleData.items.map((r, i) => `
       <tr>
         <td>${i + 1}</td>
@@ -53,7 +54,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}, pageSize =
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; color: #1a1a1a; }
-    @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
+    @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
     /* Reserves room at the bottom of the printed page so normal-flow
        content (the items table, totals) doesn't run under the now-fixed
        print-footer below. */
@@ -154,10 +155,7 @@ export const buildMedicineSalePrintHTML = (saleData, doctorInfo = {}, pageSize =
   <div class="print-footer">
     <div class="sig-block">
       <div class="sig-line"></div>
-      ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
-      ${doctorInfo.designation ? `<p class="reg">${doctorInfo.designation}</p>` : ''}
-      ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
-      <p class="reg">Signature</p>
+      <p class="reg">Cashier</p>
     </div>
     <div class="thank-you">
       <p>Thank you for choosing ${HOSPITAL.name}!</p>

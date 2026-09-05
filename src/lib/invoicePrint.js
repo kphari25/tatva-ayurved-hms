@@ -21,8 +21,9 @@ export const HOSPITAL = {
 // document choosing a smaller page.
 const pageMarginFor = (pageSize) => (pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' });
 
-export const buildInvoicePrintHTML = (data, doctorInfo = {}, pageSize = 'A4') => {
+export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'portrait') => {
   const pageMargin = pageMarginFor(pageSize);
+  const pageSizeRule = orientation === 'landscape' ? `${pageSize} landscape` : pageSize;
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -30,7 +31,7 @@ export const buildInvoicePrintHTML = (data, doctorInfo = {}, pageSize = 'A4') =>
   <style>
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; padding-bottom: 190px; }
-    @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
+    @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
     .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
     .header img { height: 42px; }
     .header-text { text-align: left; }
@@ -250,10 +251,7 @@ export const buildInvoicePrintHTML = (data, doctorInfo = {}, pageSize = 'A4') =>
   <div class="print-footer">
     <div class="sig-block">
       <div class="sig-line"></div>
-      ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
-      ${doctorInfo.designation ? `<p class="reg">${doctorInfo.designation}</p>` : ''}
-      ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
-      <p class="reg">Signature</p>
+      <p class="reg">Cashier</p>
     </div>
     <div class="thank-you">
       <p>Thank you for choosing ${HOSPITAL.name} Hospital</p>

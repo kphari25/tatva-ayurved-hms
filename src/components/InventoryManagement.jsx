@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, CheckCircle, EyeOff, ChevronDown, Printer, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
-  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, writeBatch,
+  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch,
   query, orderBy, limit, startAfter, startAt, endAt, getCountFromServer,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
 import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
-import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
+import { previewIframeStyle } from '../lib/printPreviewSize';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
 
 // Matches an Excel "GST Category" cell against a known category by key
@@ -80,8 +80,9 @@ const InventoryManagement = () => {
   const [viewingInvoice, setViewingInvoice] = useState(false);
   // In-page iframe print preview (see MedicineSaleModal's printPreviewData
   // comment) rather than a popup — reliable across Chrome/Safari.
-  const [invoicePreview, setInvoicePreview] = useState(null); // { sale, doctorInfo }
+  const [invoicePreview, setInvoicePreview] = useState(null); // { sale }
   const [invoicePreviewPageSize, setInvoicePreviewPageSize] = useState('A4');
+  const [invoicePreviewOrientation, setInvoicePreviewOrientation] = useState('portrait');
   const invoicePreviewIframeRef = useRef(null);
 
   // Bulk GST Category assignment — selection is scoped to whatever's on
@@ -547,28 +548,9 @@ const InventoryManagement = () => {
       const sale = (salesHistory || []).find(s => s.id === saleId);
       if (!sale) { setMessage({ type: 'error', text: 'Could not find that invoice.' }); return; }
 
-      let doctorInfo = {};
-      if (sale.patient_id) {
-        const patientSnap = await getDoc(doc(db, 'patients', sale.patient_id));
-        const assignedDoctor = patientSnap.exists() ? patientSnap.data().assigned_doctor : '';
-        if (assignedDoctor) {
-          // Tolerant of assigned_doctor carrying a shorter name than the
-          // doctor's own record (e.g. "Dr. Satheesh" vs the HR/User
-          // Management record's full "Dr. Satheesh Kumar").
-          const doctorsList = await loadDoctorsList();
-          const match = findDoctorInfo(doctorsList, assignedDoctor);
-          if (match) {
-            doctorInfo = {
-              name: assignedDoctor.replace(/^Dr\.?\s*/i, ''),
-              designation: match.designation || '',
-              registrationNumber: match.registrationNumber || '',
-            };
-          }
-        }
-      }
-
       setInvoicePreviewPageSize('A4');
-      setInvoicePreview({ sale, doctorInfo });
+      setInvoicePreviewOrientation('portrait');
+      setInvoicePreview({ sale });
     } catch (error) {
       console.error('Error opening invoice:', error);
       setMessage({ type: 'error', text: 'Failed to open invoice: ' + error.message });
@@ -1208,16 +1190,29 @@ const InventoryManagement = () => {
             </div>
 
             <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper size for printing">
-                {['A4', 'A5'].map(size => (
-                  <button
-                    key={size}
-                    onClick={() => setInvoicePreviewPageSize(size)}
-                    className={`px-2.5 py-1.5 rounded-md transition-colors ${invoicePreviewPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                  >
-                    {size}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper size for printing">
+                  {['A4', 'A5'].map(size => (
+                    <button
+                      key={size}
+                      onClick={() => setInvoicePreviewPageSize(size)}
+                      className={`px-2.5 py-1.5 rounded-md transition-colors ${invoicePreviewPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper orientation for printing">
+                  {['portrait', 'landscape'].map(orientation => (
+                    <button
+                      key={orientation}
+                      onClick={() => setInvoicePreviewOrientation(orientation)}
+                      className={`px-2.5 py-1.5 rounded-md capitalize transition-colors ${invoicePreviewOrientation === orientation ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      {orientation}
+                    </button>
+                  ))}
+                </div>
               </div>
               <button
                 onClick={handlePrintInvoicePreview}
@@ -1231,11 +1226,9 @@ const InventoryManagement = () => {
               <iframe
                 ref={invoicePreviewIframeRef}
                 title="Medicine sale bill print preview"
-                srcDoc={buildMedicineSalePrintHTML(invoicePreview.sale, invoicePreview.doctorInfo, invoicePreviewPageSize)}
+                srcDoc={buildMedicineSalePrintHTML(invoicePreview.sale, invoicePreviewPageSize, invoicePreviewOrientation)}
                 className="bg-white shadow-lg"
-                style={invoicePreviewPageSize === 'A5'
-                  ? { width: '559px', minHeight: '794px', border: 'none' }
-                  : { width: '794px', minHeight: '1123px', border: 'none' }}
+                style={previewIframeStyle(invoicePreviewPageSize, invoicePreviewOrientation)}
               />
             </div>
           </div>

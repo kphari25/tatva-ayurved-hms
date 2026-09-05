@@ -4,11 +4,11 @@ import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, 
 import { db } from '../lib/firebase';
 import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 import { todayLocalDateStr } from '../lib/formatDate';
-import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
+import { previewIframeStyle } from '../lib/printPreviewSize';
 
 const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
-// initialCustomer: optional { customer_name, mrd_number, phone, patientId, assignedDoctor } —
+// initialCustomer: optional { customer_name, mrd_number, phone, patientId } —
 // pre-fills the bill for a patient handed off from elsewhere (e.g. discharge advice).
 // initialMedicineNames: optional string[] of raw advice-line text to pre-populate as rows,
 // matched against inventory by name once it loads (each line may carry trailing dose/
@@ -44,10 +44,6 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   const [selectedPatientId, setSelectedPatientId] = useState(initialCustomer?.patientId || null);
   const [prescriptionSynced, setPrescriptionSynced] = useState(null); // null | number of items found
 
-  // Doctor signature block — only populated when a registered patient (with
-  // an assigned doctor) is selected; stays blank for a true walk-in sale.
-  const [doctorInfo, setDoctorInfo] = useState({ name: '', designation: '', registrationNumber: '' });
-
   // Print preview — an in-page iframe modal (same pattern InvoicesManagement
   // uses for patient invoices) instead of window.open + document.write.
   // A popup window opened that way renders fine on screen in every browser,
@@ -58,13 +54,13 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   // there's nothing for a browser to fail to load or a pop-up blocker to block.
   const [printPreviewData, setPrintPreviewData] = useState(null);
   const [printPageSize, setPrintPageSize] = useState('A4');
+  const [printOrientation, setPrintOrientation] = useState('portrait');
   const [closeOnPreviewDismiss, setCloseOnPreviewDismiss] = useState(false);
   const printIframeRef = useRef(null);
 
   useEffect(() => {
     loadInventory();
     loadPatients();
-    if (initialCustomer?.assignedDoctor) loadDoctorInfo(initialCustomer.assignedDoctor);
 
     const handler = (e) => {
       if (patientRef.current && !patientRef.current.contains(e.target)) setShowPatientDrop(false);
@@ -72,7 +68,6 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Pre-populate rows from advice-line text handed off from elsewhere (e.g.
@@ -173,25 +168,6 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
       setPrescriptionSynced(null);
     }
 
-    loadDoctorInfo(p.assigned_doctor);
-  };
-
-  const loadDoctorInfo = async (assignedDoctorName) => {
-    if (!assignedDoctorName) { setDoctorInfo({ name: '', designation: '', registrationNumber: '' }); return; }
-    try {
-      // Tolerant of assigned_doctor carrying a shorter name than the
-      // doctor's own record (e.g. "Dr. Satheesh" vs the HR/User
-      // Management record's full "Dr. Satheesh Kumar").
-      const doctorsList = await loadDoctorsList();
-      const match = findDoctorInfo(doctorsList, assignedDoctorName);
-      setDoctorInfo({
-        name: assignedDoctorName.replace(/^Dr\.?\s*/i, ''),
-        designation: match?.designation || '',
-        registrationNumber: match?.registrationNumber || '',
-      });
-    } catch (e) {
-      console.error('Error loading doctor info:', e);
-    }
   };
 
   // ── Prescription sync ────────────────────────────────────────
@@ -800,16 +776,29 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
 
           {/* ── Actions ── */}
           <div className="flex justify-end items-center gap-3">
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium mr-auto" title="Paper size for printing">
-              {['A4', 'A5'].map(size => (
-                <button
-                  key={size}
-                  onClick={() => setPrintPageSize(size)}
-                  className={`px-2.5 py-1.5 rounded-md transition-colors ${printPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  {size}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 mr-auto">
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper size for printing">
+                {['A4', 'A5'].map(size => (
+                  <button
+                    key={size}
+                    onClick={() => setPrintPageSize(size)}
+                    className={`px-2.5 py-1.5 rounded-md transition-colors ${printPageSize === size ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper orientation for printing">
+                {['portrait', 'landscape'].map(orientation => (
+                  <button
+                    key={orientation}
+                    onClick={() => setPrintOrientation(orientation)}
+                    className={`px-2.5 py-1.5 rounded-md capitalize transition-colors ${printOrientation === orientation ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {orientation}
+                  </button>
+                ))}
+              </div>
             </div>
             <button onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
               Cancel
@@ -844,7 +833,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
           <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
             <div>
               <h2 className="text-xl font-bold">Print Preview</h2>
-              <p className="text-teal-100 text-sm">{printPreviewData.customer_name || 'Walk-in Customer'} · {printPageSize} paper</p>
+              <p className="text-teal-100 text-sm">{printPreviewData.customer_name || 'Walk-in Customer'} · {printPageSize} {printOrientation}</p>
             </div>
             <button onClick={handleClosePreview} className="hover:bg-teal-700 p-2 rounded">
               <X className="w-6 h-6" />
@@ -864,7 +853,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
             <iframe
               ref={printIframeRef}
               title="Medicine sale bill print preview"
-              srcDoc={buildMedicineSalePrintHTML(printPreviewData, doctorInfo, printPageSize)}
+              srcDoc={buildMedicineSalePrintHTML(printPreviewData, printPageSize, printOrientation)}
               // "Save & Print" should actually print, not just open a preview
               // the user then has to print manually — fire it automatically
               // once the bill has finished rendering in the iframe. "Preview
@@ -872,9 +861,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               // whole point there is to look before printing.
               onLoad={() => { if (closeOnPreviewDismiss) handlePrintFromPreview(); }}
               className="bg-white shadow-lg"
-              style={printPageSize === 'A5'
-                ? { width: '559px', minHeight: '794px', border: 'none' }
-                : { width: '794px', minHeight: '1123px', border: 'none' }}
+              style={previewIframeStyle(printPageSize, printOrientation)}
             />
           </div>
         </div>

@@ -6,14 +6,16 @@ import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import InvoiceModal from './InvoiceModal';
 import MedicineSaleModal from './MedicineSaleModal';
+import { previewIframeStyle } from '../lib/printPreviewSize';
 
 // letterhead=true skips the logo/contact header (already pre-printed on the
 // hospital's letterhead stock) and pushes page-1 content down to clear that
 // artwork — only page 1 gets the extra top margin; page 2+ print normally.
 // pageSize A5 is roughly half of A4 — fine for a short invoice, may spill a
 // long one onto a second page, same tradeoff as the other print options.
-const buildInvoicePrintHTML = (invoice, letterhead = false, pageSize = 'A4') => {
+const buildInvoicePrintHTML = (invoice, letterhead = false, pageSize = 'A4', orientation = 'portrait') => {
   const margin = pageSize === 'A5' ? '8mm' : '10mm';
+  const pageSizeRule = orientation === 'landscape' ? `${pageSize} landscape` : pageSize;
   return `
       <!DOCTYPE html>
       <html>
@@ -22,8 +24,11 @@ const buildInvoicePrintHTML = (invoice, letterhead = false, pageSize = 'A4') => 
         <style>
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; }
-          @page { size: ${pageSize}; margin: ${margin}; }
+          @page { size: ${pageSizeRule}; margin: ${margin}; }
           ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
+          .sig-block { text-align: right; margin: 24px 0 10px; }
+          .sig-line { border-top: 1px solid #000; width: 180px; margin-left: auto; margin-bottom: 4px; }
+          .sig-block p { font-size: 10px; color: #555; }
           .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
           .header img { height: 42px; }
           .header-text { text-align: left; }
@@ -159,6 +164,11 @@ const buildInvoicePrintHTML = (invoice, letterhead = false, pageSize = 'A4') => 
           </div>
         ` : ''}
 
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <p>Cashier</p>
+        </div>
+
         <div class="footer">
           <p>Thank you for choosing Tatva Ayurved Hospital</p>
           <p>This is a computer-generated invoice</p>
@@ -188,6 +198,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [printPreviewInvoice, setPrintPreviewInvoice] = useState(null);
   const [useLetterheadPrint, setUseLetterheadPrint] = useState(false);
   const [printPreviewPageSize, setPrintPreviewPageSize] = useState('A4');
+  const [printPreviewOrientation, setPrintPreviewOrientation] = useState('portrait');
   const printIframeRef = useRef(null);
   const [stats, setStats] = useState({
     totalRevenue: 0,
@@ -373,6 +384,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
 
   const handlePrintInvoice = (invoice) => {
     setPrintPreviewPageSize('A4');
+    setPrintPreviewOrientation('portrait');
     setPrintPreviewInvoice(invoice);
   };
 
@@ -839,6 +851,17 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                     </button>
                   ))}
                 </div>
+                <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="Paper orientation for printing">
+                  {['portrait', 'landscape'].map(orientation => (
+                    <button
+                      key={orientation}
+                      onClick={() => setPrintPreviewOrientation(orientation)}
+                      className={`px-2.5 py-1.5 rounded-md capitalize transition-colors ${printPreviewOrientation === orientation ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      {orientation}
+                    </button>
+                  ))}
+                </div>
               </div>
               <button
                 onClick={handlePrintFromPreview}
@@ -852,11 +875,9 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
               <iframe
                 ref={printIframeRef}
                 title="Invoice print preview"
-                srcDoc={buildInvoicePrintHTML(printPreviewInvoice, useLetterheadPrint, printPreviewPageSize)}
+                srcDoc={buildInvoicePrintHTML(printPreviewInvoice, useLetterheadPrint, printPreviewPageSize, printPreviewOrientation)}
                 className="bg-white shadow-lg"
-                style={printPreviewPageSize === 'A5'
-                  ? { width: '559px', minHeight: '794px', border: 'none' }
-                  : { width: '794px', minHeight: '1123px', border: 'none' }}
+                style={previewIframeStyle(printPreviewPageSize, printPreviewOrientation)}
               />
             </div>
           </div>
