@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import { withDrPrefix } from '../lib/formatDoctorName';
+import { loadDoctorsList } from '../lib/doctors';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
 const STATUS_OPTIONS = ['scheduled', 'in-progress', 'completed', 'cancelled'];
@@ -629,17 +630,9 @@ const AppointmentScheduling = () => {
 
   const loadDoctors = async () => {
     try {
-      const snap = await getDocs(collection(db, 'hr_employees'));
-      const DOCTOR_KEYWORDS = ['doctor', 'physician', 'consultant', 'vaidya', 'surgeon', 'rmo', 'medical'];
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => {
-        const haystack = `${e.department || ''} ${e.designation || ''} ${e.role || ''}`.toLowerCase();
-        return DOCTOR_KEYWORDS.some(k => haystack.includes(k));
-      }).map(e => ({
-        id: e.id,
-        name: `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.name || '',
-        designation: e.designation || e.department || '',
-      }));
-      setDoctors(docs);
+      // HR employees + any doctor login added via User Management (see
+      // lib/doctors.js — the two don't otherwise sync).
+      setDoctors(await loadDoctorsList());
     } catch (error) {
       console.error('Error loading doctors:', error);
     }

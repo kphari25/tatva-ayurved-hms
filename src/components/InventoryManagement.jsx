@@ -3,11 +3,12 @@ import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, Che
 import * as XLSX from 'xlsx';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, writeBatch,
-  query, where, orderBy, limit, startAfter, startAt, endAt, getCountFromServer,
+  query, orderBy, limit, startAfter, startAt, endAt, getCountFromServer,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
 import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
 
 // Matches an Excel "GST Category" cell against a known category by key
@@ -551,13 +552,16 @@ const InventoryManagement = () => {
         const patientSnap = await getDoc(doc(db, 'patients', sale.patient_id));
         const assignedDoctor = patientSnap.exists() ? patientSnap.data().assigned_doctor : '';
         if (assignedDoctor) {
-          const drSnap = await getDocs(query(collection(db, 'hr_employees'), where('name', '==', assignedDoctor)));
-          if (!drSnap.empty) {
-            const d = drSnap.docs[0].data();
+          // Tolerant of assigned_doctor carrying a shorter name than the
+          // doctor's own record (e.g. "Dr. Satheesh" vs the HR/User
+          // Management record's full "Dr. Satheesh Kumar").
+          const doctorsList = await loadDoctorsList();
+          const match = findDoctorInfo(doctorsList, assignedDoctor);
+          if (match) {
             doctorInfo = {
               name: assignedDoctor.replace(/^Dr\.?\s*/i, ''),
-              qualification: d.qualification || '',
-              registrationNumber: d.isDoctor ? (d.registrationNumber || '') : '',
+              designation: match.designation || '',
+              registrationNumber: match.registrationNumber || '',
             };
           }
         }

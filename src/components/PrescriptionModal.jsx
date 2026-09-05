@@ -5,6 +5,7 @@ import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firesto
 import PrintSectionModal from './PrintSectionModal';
 import { formatDateOnly } from '../lib/formatDate';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
+import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -89,23 +90,14 @@ const PrescriptionModal = ({ patient, onClose }) => {
       }
 
       if (patient?.assigned_doctor) {
-        // An exact match on `name` is fragile — patients often carry a
-        // shorter form of the doctor's name (e.g. "Dr. Satheesh") than the
-        // full name on their HR record ("Dr. Satheesh Kumar"), so a strict
-        // where('name', '==', ...) silently finds nothing for names like
-        // that. Compare normalized (no "Dr." prefix, case-insensitive) and
-        // accept a prefix match either direction instead.
-        const normalizeDocName = (s) => (s || '').replace(/^dr\.?\s*/i, '').trim().toLowerCase();
-        const target = normalizeDocName(patient.assigned_doctor);
-        const doctorSnap = await getDocs(query(collection(db, 'hr_employees'), where('isDoctor', '==', true)));
-        const match = doctorSnap.docs.find(d => {
-          const n = normalizeDocName(d.data().name);
-          return n && target && (n === target || n.startsWith(target) || target.startsWith(n));
-        });
+        // Tolerant of assigned_doctor carrying a shorter name than the
+        // doctor's own record (e.g. "Dr. Satheesh" vs the HR/User
+        // Management record's full "Dr. Satheesh Kumar").
+        const doctorsList = await loadDoctorsList();
+        const match = findDoctorInfo(doctorsList, patient.assigned_doctor);
         if (match) {
-          const doctorData = match.data();
-          setDoctorDesignation(doctorData.designation || '');
-          setDoctorRegistrationNumber(doctorData.registrationNumber || '');
+          setDoctorDesignation(match.designation || '');
+          setDoctorRegistrationNumber(match.registrationNumber || '');
         }
       }
     } catch (e) {

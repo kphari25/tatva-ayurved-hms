@@ -7,6 +7,7 @@ import { sendAppointmentSMSToPatient } from '../lib/sms';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import { withDrPrefix } from '../lib/formatDoctorName';
+import { loadDoctorsList } from '../lib/doctors';
 import PatientRegistrationNew from './PatientRegistrationNew';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
@@ -469,21 +470,9 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardData();
-    // Load doctors from HR employees
-    const DOCTOR_KEYWORDS = ['doctor', 'physician', 'consultant', 'vaidya', 'surgeon', 'rmo', 'medical'];
-    getDocs(collection(db, 'hr_employees')).then(snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(e => {
-          const h = `${e.department || ''} ${e.designation || ''} ${e.role || ''}`.toLowerCase();
-          return DOCTOR_KEYWORDS.some(k => h.includes(k));
-        })
-        .map(e => ({
-          id: e.id,
-          name: `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.name || '',
-          designation: e.designation || e.department || '',
-        }));
-      setDoctors(docs);
-    }).catch(() => {});
+    // Load doctors from HR employees + any doctor login added via User
+    // Management (see lib/doctors.js — the two don't otherwise sync).
+    loadDoctorsList().then(setDoctors).catch(() => {});
 
     // Load the full therapist roster (so idle therapists show up as
     // "available" too, not just ones with an appointment today).

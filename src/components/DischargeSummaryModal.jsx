@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { addDoc, updateDoc, deleteDoc, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import MedicineSaleModal from './MedicineSaleModal';
 import { withDrPrefix } from '../lib/formatDoctorName';
+import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
 import { todayLocalDateStr, addDaysToDateString } from '../lib/formatDate';
 import MedicineTable from './MedicineTable';
 import { buildMedicineItemsTableHTML } from '../lib/medicineSummary';
@@ -643,17 +644,9 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
   useEffect(() => {
     loadInventory();
 
-    // Load doctors from HR employees
-    const DOCTOR_KW = ['doctor', 'physician', 'consultant', 'vaidya', 'surgeon', 'rmo', 'medical'];
-    getDocs(collection(db, 'hr_employees')).then(snap => {
-      const docs = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(e => {
-          const h = `${e.department || ''} ${e.designation || ''} ${e.role || ''}`.toLowerCase();
-          return DOCTOR_KW.some(k => h.includes(k));
-        });
-      setDoctors(docs);
-    }).catch(() => {});
+    // Load doctors from HR employees + any doctor login added via User
+    // Management (see lib/doctors.js — the two don't otherwise sync).
+    loadDoctorsList().then(setDoctors).catch(() => {});
 
     // Load daily progress for IP patients to auto-populate summary
     const patientId = patient?.id || patient?.firebaseId;
@@ -944,21 +937,14 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     ).slice(0, 6);
 
   const handlePrint = () => {
-    // Exact-match against the dropdown's own derived name misses whenever
-    // doctor_in_charge came from elsewhere with a shorter name (e.g.
-    // auto-populated from the patient's assigned_doctor, "Dr. Satheesh",
-    // vs the HR record's full "Dr. Satheesh Kumar") — normalize and accept
-    // a prefix match either direction, same fix as the prescription print.
-    const normalizeDocName = (s) => (s || '').replace(/^dr\.?\s*/i, '').trim().toLowerCase();
-    const target = normalizeDocName(form.doctor_in_charge);
-    const selectedDoctor = doctors.find(d => {
-      const n = normalizeDocName(`${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name);
-      return n && target && (n === target || n.startsWith(target) || target.startsWith(n));
-    });
+    // Tolerant of doctor_in_charge carrying a shorter name than the
+    // doctor's own record (e.g. auto-populated from the patient's
+    // assigned_doctor, "Dr. Satheesh", vs the full "Dr. Satheesh Kumar").
+    const selectedDoctor = findDoctorInfo(doctors, form.doctor_in_charge);
     const doctorInfo = selectedDoctor ? {
       name: form.doctor_in_charge.replace(/^Dr\.?\s*/i, ''),
       designation: selectedDoctor.designation || '',
-      registrationNumber: selectedDoctor.isDoctor ? (selectedDoctor.registrationNumber || '') : '',
+      registrationNumber: selectedDoctor.registrationNumber || '',
     } : {};
     setPrintPreviewHtml(buildPrintHTML(patient, form, useLetterhead, doctorInfo, printPageSize));
   };
@@ -1219,10 +1205,9 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
                     onChange={e => set('doctor_in_charge', e.target.value)}
                   >
                     <option value="">— Select Doctor —</option>
-                    {doctors.map(d => {
-                      const name = `${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name || '';
-                      return <option key={d.id} value={name}>{name}{d.designation ? ` (${d.designation})` : ''}</option>;
-                    })}
+                    {doctors.map(d => (
+                      <option key={d.id} value={d.name}>{d.name}{d.designation ? ` (${d.designation})` : ''}</option>
+                    ))}
                     <option value="__manual__">Other / Type manually…</option>
                   </select>
                   {form.doctor_in_charge === '__manual__' && (

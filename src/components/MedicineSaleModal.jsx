@@ -4,6 +4,7 @@ import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, 
 import { db } from '../lib/firebase';
 import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 import { todayLocalDateStr } from '../lib/formatDate';
+import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
 
 const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
@@ -45,7 +46,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
 
   // Doctor signature block — only populated when a registered patient (with
   // an assigned doctor) is selected; stays blank for a true walk-in sale.
-  const [doctorInfo, setDoctorInfo] = useState({ name: '', qualification: '', registrationNumber: '' });
+  const [doctorInfo, setDoctorInfo] = useState({ name: '', designation: '', registrationNumber: '' });
 
   // Print preview — an in-page iframe modal (same pattern InvoicesManagement
   // uses for patient invoices) instead of window.open + document.write.
@@ -176,19 +177,18 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   };
 
   const loadDoctorInfo = async (assignedDoctorName) => {
-    if (!assignedDoctorName) { setDoctorInfo({ name: '', qualification: '', registrationNumber: '' }); return; }
+    if (!assignedDoctorName) { setDoctorInfo({ name: '', designation: '', registrationNumber: '' }); return; }
     try {
-      const snap = await getDocs(query(collection(db, 'hr_employees'), where('name', '==', assignedDoctorName)));
-      if (!snap.empty) {
-        const d = snap.docs[0].data();
-        setDoctorInfo({
-          name: assignedDoctorName.replace(/^Dr\.?\s*/i, ''),
-          qualification: d.qualification || '',
-          registrationNumber: d.isDoctor ? (d.registrationNumber || '') : '',
-        });
-      } else {
-        setDoctorInfo({ name: assignedDoctorName.replace(/^Dr\.?\s*/i, ''), qualification: '', registrationNumber: '' });
-      }
+      // Tolerant of assigned_doctor carrying a shorter name than the
+      // doctor's own record (e.g. "Dr. Satheesh" vs the HR/User
+      // Management record's full "Dr. Satheesh Kumar").
+      const doctorsList = await loadDoctorsList();
+      const match = findDoctorInfo(doctorsList, assignedDoctorName);
+      setDoctorInfo({
+        name: assignedDoctorName.replace(/^Dr\.?\s*/i, ''),
+        designation: match?.designation || '',
+        registrationNumber: match?.registrationNumber || '',
+      });
     } catch (e) {
       console.error('Error loading doctor info:', e);
     }

@@ -6,6 +6,7 @@ import { sendInvoiceSMS } from '../lib/sms';
 import { getRoomInfo, ROOMS } from '../lib/rooms';
 import { addDaysToDateString, todayLocalDateStr } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
+import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
 
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
@@ -52,23 +53,22 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
 
   // Doctor signature block on the printed invoice — looked up from the
   // patient's assigned doctor, same pattern as the prescription printout.
-  const [doctorInfo, setDoctorInfo] = useState({ name: '', qualification: '', registrationNumber: '' });
+  const [doctorInfo, setDoctorInfo] = useState({ name: '', designation: '', registrationNumber: '' });
 
   useEffect(() => {
     if (!patient?.assigned_doctor) return;
     const loadDoctorInfo = async () => {
       try {
-        const snap = await getDocs(query(collection(db, 'hr_employees'), where('name', '==', patient.assigned_doctor)));
-        if (!snap.empty) {
-          const d = snap.docs[0].data();
-          setDoctorInfo({
-            name: patient.assigned_doctor.replace(/^Dr\.?\s*/i, ''),
-            qualification: d.qualification || '',
-            registrationNumber: d.isDoctor ? (d.registrationNumber || '') : '',
-          });
-        } else {
-          setDoctorInfo({ name: patient.assigned_doctor.replace(/^Dr\.?\s*/i, ''), qualification: '', registrationNumber: '' });
-        }
+        // Tolerant of assigned_doctor carrying a shorter name than the
+        // doctor's own record (e.g. "Dr. Satheesh" vs the HR/User
+        // Management record's full "Dr. Satheesh Kumar").
+        const doctorsList = await loadDoctorsList();
+        const match = findDoctorInfo(doctorsList, patient.assigned_doctor);
+        setDoctorInfo({
+          name: patient.assigned_doctor.replace(/^Dr\.?\s*/i, ''),
+          designation: match?.designation || '',
+          registrationNumber: match?.registrationNumber || '',
+        });
       } catch (e) {
         console.error('Error loading doctor info:', e);
       }

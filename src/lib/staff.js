@@ -1,16 +1,12 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from './firebase';
+import { loadDoctorsList } from './doctors';
 
-// Doctors for dropdowns (Case Sheets, etc). Sourced from the HR staff
-// directory rather than login accounts, since it's the authoritative list
-// of clinical staff and their designation/department.
+// Doctors for dropdowns (Case Sheets, etc). This used to read only the HR
+// staff directory (hr_employees) — but a doctor added via User Management
+// (a users login, role 'doctor') never gets an hr_employees record too, so
+// they'd silently never show up here. loadDoctorsList merges both sources.
 export const loadDoctors = async () => {
   try {
-    const snap = await getDocs(query(collection(db, 'hr_employees'), where('role', '==', 'Doctor')));
-    return snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(e => e.isActive !== false)
-      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return await loadDoctorsList();
   } catch (e) {
     console.error('Error loading doctors:', e);
     return [];

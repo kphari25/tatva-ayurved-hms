@@ -251,7 +251,7 @@ export const buildInvoicePrintHTML = (data, doctorInfo = {}, pageSize = 'A4') =>
     <div class="sig-block">
       <div class="sig-line"></div>
       ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
-      ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
+      ${doctorInfo.designation ? `<p class="reg">${doctorInfo.designation}</p>` : ''}
       ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
       <p class="reg">Signature</p>
     </div>

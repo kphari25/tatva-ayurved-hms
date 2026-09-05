@@ -10,6 +10,7 @@ import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, where, addDoc, updateDoc } from 'firebase/firestore';
 import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
 import { withDrPrefix } from '../lib/formatDoctorName';
+import { loadDoctorsList } from '../lib/doctors';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { addDaysToDateString, formatDateOnly } from '../lib/formatDate';
 import DischargeSummaryModal from './DischargeSummaryModal';
@@ -102,14 +103,9 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
 
   const loadDoctors = async () => {
     try {
-      const snap = await getDocs(collection(db, 'hr_employees'));
-      const docs = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(e => ['doctor', 'physician', 'therapist', 'consultant'].some(r =>
-          (e.department || e.designation || '').toLowerCase().includes(r) ||
-          (e.role || '').toLowerCase().includes(r)
-        ));
-      setDoctors(docs);
+      // HR employees + any doctor login added via User Management (see
+      // lib/doctors.js — the two don't otherwise sync).
+      setDoctors(await loadDoctorsList());
     } catch (e) {
       // silently ignore — doctor list is optional
     }
@@ -149,8 +145,8 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       setApptForm(f => ({
         ...f,
         doctor_id: doctorId,
-        doctor_name: `${doc.first_name || ''} ${doc.last_name || ''}`.trim() || doc.name || '',
-        doctor_phone: doc.phone || doc.mobile || '',
+        doctor_name: doc.name || '',
+        doctor_phone: doc.phone || '',
       }));
     }
   };
@@ -1064,7 +1060,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                       <option value="">-- Select from staff --</option>
                       {doctors.map(d => (
                         <option key={d.id} value={d.id}>
-                          {`${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name} — {d.designation || d.department || d.role || ''}
+                          {d.name} — {d.designation || ''}
                         </option>
                       ))}
                       <option value="__manual__">+ Enter manually</option>
@@ -1230,19 +1226,16 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                   Doctor / Therapist
                 </label>
                 <select
-                  value={doctors.some(d => (`${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name) === assignDoctorName) ? assignDoctorName : ''}
+                  value={doctors.some(d => d.name === assignDoctorName) ? assignDoctorName : ''}
                   onChange={e => setAssignDoctorName(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none mb-2"
                 >
                   <option value="">-- Select from staff --</option>
-                  {doctors.map(d => {
-                    const name = `${d.first_name || ''} ${d.last_name || ''}`.trim() || d.name;
-                    return (
-                      <option key={d.id} value={name}>
-                        {name} — {d.designation || d.department || d.role || ''}
-                      </option>
-                    );
-                  })}
+                  {doctors.map(d => (
+                    <option key={d.id} value={d.name}>
+                      {d.name} — {d.designation || ''}
+                    </option>
+                  ))}
                 </select>
                 <input
                   type="text"
