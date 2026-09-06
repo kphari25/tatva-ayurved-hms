@@ -633,6 +633,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
             <h2 className="text-xl font-bold text-white">IP Case Sheet</h2>
             <p className="text-teal-200 text-sm mt-0.5">
               {patient?.first_name} {patient?.last_name}
+              {(patient?.age || patient?.gender) && <span className="ml-2">{patient?.age || '—'} / {patient?.gender || '—'}</span>}
               {patient?.mrd_number && <span className="ml-2 font-mono">MRD: {patient.mrd_number}</span>}
               {patient?.ip_number && <span className="ml-2 font-mono">IP: {patient.ip_number}</span>}
             </p>

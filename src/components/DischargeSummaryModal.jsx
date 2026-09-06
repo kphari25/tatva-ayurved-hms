@@ -1132,10 +1132,14 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
           {activeSection === 'patient' && (
             <div className="space-y-5">
               {/* Auto-filled patient banner */}
-              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 grid grid-cols-3 gap-3 text-sm">
+              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 grid grid-cols-4 gap-3 text-sm">
                 <div>
                   <p className="text-xs text-teal-600 font-semibold uppercase mb-0.5">Patient Name</p>
                   <p className="font-bold text-gray-900">{form.patient_name || `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim() || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-teal-600 font-semibold uppercase mb-0.5">Age / Sex</p>
+                  <p className="font-bold text-gray-900">{patient?.age || '—'} / {patient?.gender || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-teal-600 font-semibold uppercase mb-0.5">MRD Number</p>
