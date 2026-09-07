@@ -701,6 +701,7 @@ const Dashboard = () => {
           patient: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
           mrd_number: p.mrd_number || p.patient_number || '',
           admissionDate: linkedAppt?.date || null,
+          roomNumber: linkedAppt?.room_number || null,
           requested_at: p.created_at,
         };
       })
@@ -1791,6 +1792,7 @@ const Dashboard = () => {
                         ) : (
                           p.requested_at && <span>Requested {formatDateOnly(p.requested_at)}</span>
                         )}
+                        {p.roomNumber && <span className="text-teal-700 font-medium">🛏️ Room {p.roomNumber}</span>}
                       </p>
                     </div>
                     <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-semibold shrink-0">View</span>
