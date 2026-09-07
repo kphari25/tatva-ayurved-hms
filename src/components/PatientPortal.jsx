@@ -13,6 +13,8 @@ import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { addDaysToDateString, formatDateOnly } from '../lib/formatDate';
+import { ROOMS } from '../lib/rooms';
+import { getOccupiedRooms } from '../lib/roomAvailability';
 import DischargeSummaryModal from './DischargeSummaryModal';
 import IPDailyProgressModal from './IPDailyProgressModal';
 import IPCaseSheetModal from './IPCaseSheetModal';
@@ -85,13 +87,17 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     doctor_id: '',
     doctor_name: '',
     doctor_phone: '',
+    called_in_date: '',
+    called_in_time: '',
     date: '',
     time: '',
     duration_minutes: 30,
     notes: '',
+    room_number: '',
     send_sms_patient: true,
     send_sms_doctor: true,
   });
+  const [apptOccupiedRooms, setApptOccupiedRooms] = useState(new Set());
   const [savedAppt, setSavedAppt] = useState(null);
   const [apptReactivated, setApptReactivated] = useState(false);
 
@@ -112,16 +118,20 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   };
 
   const openAppointmentModal = (patient) => {
+    const now = new Date();
     setAppointmentPatient(patient);
     setApptForm({
       appointment_type: 'Consultation',
       doctor_id: '',
       doctor_name: '',
       doctor_phone: '',
+      called_in_date: now.toISOString().split('T')[0],
+      called_in_time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
       date: '',
       time: '',
       duration_minutes: 30,
       notes: '',
+      room_number: '',
       send_sms_patient: true,
       send_sms_doctor: true,
     });
@@ -129,6 +139,11 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     setSavedAppt(null);
     setApptReactivated(false);
     setShowAppointmentModal(true);
+    if (patient?.patient_type === 'IP') {
+      getOccupiedRooms(patient.id).then(setApptOccupiedRooms).catch(e => console.error('Error loading room occupancy:', e));
+    } else {
+      setApptOccupiedRooms(new Set());
+    }
   };
 
   const handleDoctorChange = (doctorId) => {
@@ -156,6 +171,10 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       alert('Please fill in Date, Time, and Doctor Name.');
       return;
     }
+    if (!apptForm.called_in_date || !apptForm.called_in_time) {
+      alert('Please fill in the Called-in Date and Time.');
+      return;
+    }
     setApptSaving(true);
     try {
       const patientDisplayName = `${appointmentPatient.first_name} ${appointmentPatient.last_name}`;
@@ -177,10 +196,13 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
         doctorName: apptForm.doctor_name,
         doctor_name: apptForm.doctor_name,
         doctor_phone: apptForm.doctor_phone,
+        called_in_date: apptForm.called_in_date,
+        called_in_time: apptForm.called_in_time,
         date: apptForm.date,
         time: apptForm.time,
         duration_minutes: apptForm.duration_minutes,
         notes: apptForm.notes,
+        room_number: appointmentPatient.patient_type === 'IP' ? (apptForm.room_number || '') : '',
         status: 'scheduled',
         createdAt: new Date().toISOString(),
         created_at: new Date().toISOString(),
@@ -1089,6 +1111,32 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                     </div>
                   </div>
 
+                  {/* Called-in Date & Time */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <Phone className="w-4 h-4 inline mr-1" />Called-in Date
+                      </label>
+                      <input
+                        type="date"
+                        value={apptForm.called_in_date}
+                        onChange={e => setApptForm(f => ({ ...f, called_in_date: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <Clock className="w-4 h-4 inline mr-1" />Called-in Time
+                      </label>
+                      <input
+                        type="time"
+                        value={apptForm.called_in_time}
+                        onChange={e => setApptForm(f => ({ ...f, called_in_time: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
                   {/* Date & Time */}
                   <div className="grid grid-cols-3 gap-4">
                     <div className="col-span-1">
@@ -1130,6 +1178,28 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                       </select>
                     </div>
                   </div>
+
+                  {/* Room (IP patients only) */}
+                  {appointmentPatient.patient_type === 'IP' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <BedDouble className="w-4 h-4 inline mr-1" />Room Number
+                      </label>
+                      <select
+                        value={apptForm.room_number}
+                        onChange={e => setApptForm(f => ({ ...f, room_number: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                      >
+                        <option value="">-- Select Room --</option>
+                        {ROOMS.filter(r => !apptOccupiedRooms.has(r.number) || r.number === apptForm.room_number).map(r => (
+                          <option key={r.number} value={r.number}>Room {r.number} ({r.type} — ₹{r.rate}/day)</option>
+                        ))}
+                      </select>
+                      {ROOMS.every(r => apptOccupiedRooms.has(r.number) && r.number !== apptForm.room_number) && (
+                        <p className="text-xs text-red-600 mt-1">All rooms are currently occupied.</p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Notes */}
                   <div>

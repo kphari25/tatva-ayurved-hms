@@ -6,6 +6,8 @@ import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, APP
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
+import { ROOMS } from '../lib/rooms';
+import { getOccupiedRooms } from '../lib/roomAvailability';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
 const STATUS_OPTIONS = ['scheduled', 'in-progress', 'completed', 'cancelled'];
@@ -34,6 +36,7 @@ const OUTCOME_STYLES = {
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const toTimeStr = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 
 const outcomeQuickRanges = {
   week: () => {
@@ -66,9 +69,17 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
           therapistIds: initialData.therapistIds || (initialData.therapistId ? [initialData.therapistId] : []),
           therapistNames: initialData.therapistNames || (initialData.therapistName ? [initialData.therapistName] : []),
         }
-      : { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled', therapistIds: [], therapistNames: [], doctorId: '', doctorName: '', patientId: '' }
+      : { patient: '', time: '', type: '', date: todayISO(), called_in_date: toDateStr(new Date()), called_in_time: toTimeStr(new Date()), status: 'scheduled', therapistIds: [], therapistNames: [], doctorId: '', doctorName: '', patientId: '', room_number: '' }
   );
   const [error, setError] = useState('');
+  const [occupiedRooms, setOccupiedRooms] = useState(new Set());
+  const linkedPatient = formData.patientId ? patients.find(p => p.id === formData.patientId) : null;
+  const isIP = formData.type === 'IP' || linkedPatient?.patient_type === 'IP';
+
+  useEffect(() => {
+    if (!isIP) return;
+    getOccupiedRooms(linkedPatient?.id).then(setOccupiedRooms).catch(e => console.error('Error loading room occupancy:', e));
+  }, [isIP, linkedPatient?.id]);
 
   // Existing-patient search on the Patient Name field — new appointments
   // only. Picking a match links patientId so saveAppointment can use the
@@ -119,6 +130,10 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
     e.preventDefault();
     if (!formData.patient.trim() || !formData.time || !formData.date) {
       setError('Patient name, date, and time are required.');
+      return;
+    }
+    if (!formData.called_in_date || !formData.called_in_time) {
+      setError('Called-in date and time are required.');
       return;
     }
     onSave(formData);
@@ -177,7 +192,27 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Called-in Date</label>
+              <input
+                type="date"
+                value={formData.called_in_date}
+                onChange={(e) => setFormData({ ...formData, called_in_date: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Called-in Time</label>
+              <input
+                type="time"
+                value={formData.called_in_time}
+                onChange={(e) => setFormData({ ...formData, called_in_time: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Date</label>
               <input
                 type="date"
                 value={formData.date}
@@ -186,7 +221,7 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Time</label>
               <input
                 type="time"
                 value={formData.time}
@@ -206,6 +241,25 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
               {APPOINTMENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+
+          {isIP && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">🛏️ Room Number</label>
+              <select
+                value={formData.room_number || ''}
+                onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Select Room —</option>
+                {ROOMS.filter(r => !occupiedRooms.has(r.number) || r.number === formData.room_number).map(r => (
+                  <option key={r.number} value={r.number}>Room {r.number} ({r.type} — ₹{r.rate}/day)</option>
+                ))}
+              </select>
+              {ROOMS.every(r => occupiedRooms.has(r.number) && r.number !== formData.room_number) && (
+                <p className="text-xs text-red-600 mt-1">All rooms are currently occupied.</p>
+              )}
+            </div>
+          )}
 
           {/* Doctor */}
           <div>
@@ -747,8 +801,12 @@ const AppointmentScheduling = () => {
   const saveAppointment = async (formData) => {
     try {
       setSaving(true);
+      const linkedPatient = formData.patientId ? patients.find(p => p.id === formData.patientId) : null;
+      const isIPBooking = formData.type === 'IP' || linkedPatient?.patient_type === 'IP';
       const payload = {
         patient: formData.patient,
+        called_in_date: formData.called_in_date || '',
+        called_in_time: formData.called_in_time || '',
         time: formData.time,
         type: formData.type,
         date: formData.date,
@@ -757,6 +815,7 @@ const AppointmentScheduling = () => {
         therapistNames: formData.therapistNames || [],
         doctorId: formData.doctorId || '',
         doctorName: formData.doctorName || '',
+        room_number: isIPBooking ? (formData.room_number || '') : '',
       };
       if (editingAppointment) {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), payload);

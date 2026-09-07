@@ -13,6 +13,7 @@ import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { ROOMS } from '../lib/rooms';
+import { getOccupiedRooms } from '../lib/roomAvailability';
 
 const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
 
@@ -412,23 +413,9 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     loadOccupiedRooms();
   }, []);
 
-  // Rooms held by every OTHER currently-admitted IP patient — so the
-  // dropdown only ever offers rooms that are actually free right now.
   const loadOccupiedRooms = async () => {
     try {
-      const patientsSnap = await getDocs(query(collection(db, 'patients'), where('patient_type', '==', 'IP')));
-      const activeOtherIds = patientsSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(p => p.id !== patientId && p.admission_status !== 'pending_admission' && p.admission_status !== 'discharged')
-        .map(p => p.id);
-      if (activeOtherIds.length === 0) { setOccupiedRooms(new Set()); return; }
-
-      const caseSheetsSnap = await getDocs(collection(db, 'ip_case_sheets'));
-      const occupied = new Set();
-      caseSheetsSnap.docs.forEach(d => {
-        if (activeOtherIds.includes(d.id) && d.data().room_number) occupied.add(d.data().room_number);
-      });
-      setOccupiedRooms(occupied);
+      setOccupiedRooms(await getOccupiedRooms(patientId));
     } catch (e) {
       console.error('Error loading room occupancy:', e);
     }

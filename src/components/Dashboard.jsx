@@ -8,11 +8,36 @@ import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, col
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
+import { ROOMS } from '../lib/rooms';
+import { getOccupiedRooms } from '../lib/roomAvailability';
 import PatientRegistrationNew from './PatientRegistrationNew';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const toTimeStr = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+// Available-rooms dropdown shared by both booking modals — a select of
+// currently-free rooms (plus whatever room is already picked, so editing
+// doesn't drop it), with pricing shown per option like the IP Case Sheet's.
+const RoomSelect = ({ value, onChange, occupiedRooms }) => (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">🛏️ Room Number</label>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+    >
+      <option value="">— Select Room —</option>
+      {ROOMS.filter(r => !occupiedRooms.has(r.number) || r.number === value).map(r => (
+        <option key={r.number} value={r.number}>Room {r.number} ({r.type} — ₹{r.rate}/day)</option>
+      ))}
+    </select>
+    {ROOMS.every(r => occupiedRooms.has(r.number) && r.number !== value) && (
+      <p className="text-xs text-red-600 mt-1">All rooms are currently occupied.</p>
+    )}
+  </div>
+);
 
 const getIndiaHour = () =>
   parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }).format(new Date()), 10);
@@ -54,6 +79,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
   const [formData, setFormData] = useState({
     patient: appointment?.patient || '',
     phone: appointment?.phone || '',
+    calledInDate: appointment?.called_in_date || toDateStr(new Date()),
+    calledInTime: appointment?.called_in_time || toTimeStr(new Date()),
     date: appointment?.date || toDateStr(new Date()),
     time: appointment?.time || '',
     type: appointment?.type || '',
@@ -61,9 +88,16 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     doctorName: appointment?.doctorName || '',
     therapistIds: appointment?.therapistIds || (appointment?.therapistId ? [appointment.therapistId] : []),
     therapistNames: appointment?.therapistNames || (appointment?.therapistName ? [appointment.therapistName] : []),
+    roomNumber: appointment?.room_number || '',
     sendSms: false,
   });
   const [error, setError] = useState('');
+  const [occupiedRooms, setOccupiedRooms] = useState(new Set());
+
+  useEffect(() => {
+    if (formData.type !== 'IP') return;
+    getOccupiedRooms().then(setOccupiedRooms).catch(e => console.error('Error loading room occupancy:', e));
+  }, [formData.type]);
 
   // Existing-patient search on the Patient Name field — new appointments
   // only; editing an already-booked appointment keeps the plain text field,
@@ -102,6 +136,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     setPatientSuggestions([]);
     if (onPickExistingPatient) {
       onPickExistingPatient(p, {
+        calledInDate: formData.calledInDate,
+        calledInTime: formData.calledInTime,
         date: formData.date,
         time: formData.time,
         type: formData.type,
@@ -109,6 +145,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
         doctorName: formData.doctorName,
         therapistIds: formData.therapistIds,
         therapistNames: formData.therapistNames,
+        roomNumber: formData.roomNumber,
         sendSms: formData.sendSms,
       });
     }
@@ -129,6 +166,10 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     e.preventDefault();
     if (!formData.patient.trim() || !formData.date || !formData.time) {
       setError('Patient name, date and time are required.');
+      return;
+    }
+    if (!formData.calledInDate || !formData.calledInTime) {
+      setError('Called-in date and time are required.');
       return;
     }
     if (formData.sendSms && !formData.phone.trim()) {
@@ -196,7 +237,27 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Called-in Date</label>
+              <input
+                type="date"
+                value={formData.calledInDate}
+                onChange={(e) => setFormData({ ...formData, calledInDate: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Called-in Time</label>
+              <input
+                type="time"
+                value={formData.calledInTime}
+                onChange={(e) => setFormData({ ...formData, calledInTime: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Date</label>
               <input
                 type="date"
                 value={formData.date}
@@ -205,7 +266,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Time</label>
               <input
                 type="time"
                 value={formData.time}
@@ -225,6 +286,13 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
               {APPOINTMENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+          {formData.type === 'IP' && (
+            <RoomSelect
+              value={formData.roomNumber}
+              onChange={(v) => setFormData({ ...formData, roomNumber: v })}
+              occupiedRooms={occupiedRooms}
+            />
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">🩺 Doctor</label>
             <select
@@ -287,6 +355,8 @@ const normName = (s) => (s || '').trim().toLowerCase();
 // appointment with no chance to fill them in.
 const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], therapists = [], onCancel, onConfirm, saving }) => {
   const [fields, setFields] = useState({
+    calledInDate: initialFields?.calledInDate || toDateStr(new Date()),
+    calledInTime: initialFields?.calledInTime || toTimeStr(new Date()),
     date: initialFields?.date || toDateStr(new Date()),
     time: initialFields?.time || '',
     type: initialFields?.type || '',
@@ -294,9 +364,17 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
     doctorName: initialFields?.doctorName || '',
     therapistIds: initialFields?.therapistIds || [],
     therapistNames: initialFields?.therapistNames || [],
+    roomNumber: initialFields?.roomNumber || '',
     sendSms: initialFields?.sendSms || false,
   });
   const [error, setError] = useState('');
+  const [occupiedRooms, setOccupiedRooms] = useState(new Set());
+  const isIP = fields.type === 'IP' || patient?.patient_type === 'IP';
+
+  useEffect(() => {
+    if (!isIP) return;
+    getOccupiedRooms(patient?.firebaseId || patient?.id).then(setOccupiedRooms).catch(e => console.error('Error loading room occupancy:', e));
+  }, [isIP]);
 
   const handleDoctorChange = (e) => {
     const selected = doctors.find(d => d.id === e.target.value);
@@ -309,6 +387,10 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
     e.preventDefault();
     if (!fields.date || !fields.time) {
       setError('Date and time are required.');
+      return;
+    }
+    if (!fields.calledInDate || !fields.calledInTime) {
+      setError('Called-in date and time are required.');
       return;
     }
     onConfirm(fields);
@@ -334,7 +416,27 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
           )}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Called-in Date</label>
+              <input
+                type="date"
+                value={fields.calledInDate}
+                onChange={(e) => setFields({ ...fields, calledInDate: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Called-in Time</label>
+              <input
+                type="time"
+                value={fields.calledInTime}
+                onChange={(e) => setFields({ ...fields, calledInTime: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Date</label>
               <input
                 type="date"
                 value={fields.date}
@@ -343,7 +445,7 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Time</label>
               <input
                 type="time"
                 value={fields.time}
@@ -363,6 +465,13 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
               {APPOINTMENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+          {isIP && (
+            <RoomSelect
+              value={fields.roomNumber}
+              onChange={(v) => setFields({ ...fields, roomNumber: v })}
+              occupiedRooms={occupiedRooms}
+            />
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">🩺 Doctor</label>
             <select
@@ -793,6 +902,8 @@ const Dashboard = () => {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), {
           patient: formData.patient,
           phone: formData.phone || '',
+          called_in_date: formData.calledInDate || '',
+          called_in_time: formData.calledInTime || '',
           date: formData.date,
           time: formData.time,
           type: formData.type,
@@ -800,6 +911,7 @@ const Dashboard = () => {
           doctorName: formData.doctorName || '',
           therapistIds: formData.therapistIds || [],
           therapistNames: formData.therapistNames || [],
+          room_number: formData.type === 'IP' ? (formData.roomNumber || '') : '',
         });
 
         if (editingAppointment.lead_id) {
@@ -817,6 +929,8 @@ const Dashboard = () => {
         const apptRef = await addDoc(collection(db, 'appointments'), {
           patient: formData.patient,
           phone: formData.phone || '',
+          called_in_date: formData.calledInDate || '',
+          called_in_time: formData.calledInTime || '',
           time: formData.time,
           type: formData.type,
           status: 'scheduled',
@@ -826,6 +940,7 @@ const Dashboard = () => {
           doctorName: formData.doctorName || '',
           therapistIds: formData.therapistIds || [],
           therapistNames: formData.therapistNames || [],
+          room_number: formData.type === 'IP' ? (formData.roomNumber || '') : '',
           createdAt: new Date().toISOString()
         });
 
@@ -922,10 +1037,14 @@ const Dashboard = () => {
       setBookingForExistingPatient(true);
       const patientName = `${p.first_name || ''} ${p.last_name || ''}`.trim();
 
+      const isIPBooking = fields.type === 'IP' || p.patient_type === 'IP';
+
       await addDoc(collection(db, 'appointments'), {
         patient: patientName,
         patient_id: patientId,
         phone: p.phone || '',
+        called_in_date: fields.calledInDate || '',
+        called_in_time: fields.calledInTime || '',
         time: fields.time,
         type: fields.type || '',
         status: 'scheduled',
@@ -935,6 +1054,7 @@ const Dashboard = () => {
         doctorName: fields.doctorName || '',
         therapistIds: fields.therapistIds || [],
         therapistNames: fields.therapistNames || [],
+        room_number: isIPBooking ? (fields.roomNumber || '') : '',
         createdAt: new Date().toISOString(),
       });
 
