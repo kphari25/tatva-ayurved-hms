@@ -131,7 +131,9 @@ const InventoryAnalytics = () => {
 
     items.forEach(item => {
       const stock = parseFloat(item.stock_quantity) || 0;
-      const purchaseRate = parseFloat(item.purchase_rate) || 0;
+      // purchase_price is the canonical field set via Add/Edit Medicine;
+      // purchase_rate is what bulk Excel imports use (see ProfitLoss.jsx).
+      const purchaseRate = parseFloat(item.purchase_price ?? item.purchase_rate) || 0;
       const mrp = parseFloat(item.MRP ?? item.mrp) || 0;
       const stockValue = parseFloat(item.stock_value) || (stock * purchaseRate);
 
