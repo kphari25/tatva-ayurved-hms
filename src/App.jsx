@@ -3,7 +3,7 @@ import {
   Home, Users, Package, FileText, Receipt, TrendingUp,
   Calendar, IndianRupee, UserCog, Database, LogOut,
   ShoppingCart, Utensils, BarChart3, Wallet, History, FileBarChart,
-  Menu, X
+  Menu, X, BedDouble
 } from 'lucide-react';
 import { db } from './lib/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
@@ -34,6 +34,7 @@ import Financials from './components/Financials';
 import AIAssist from './components/AIAssist';
 import PurchaseManagement from './components/PurchaseManagement';
 import AppointmentScheduling from './components/AppointmentScheduling';
+import RoomManagement from './components/RoomManagement';
 import UserManagement, { getUserPermissions, hasModuleAccess } from './components/UserManagement';
 import HRPayrollModule from './components/HRPayrollModule';
 import UserActivityReport from './components/UserActivityReport';
@@ -242,6 +243,7 @@ function App() {
     { id: 'analytics', label: 'Analytics', icon: TrendingUp, moduleId: 'analytics' },
     { id: 'reports', label: 'Reports', icon: FileBarChart, moduleId: 'reports' },
     { id: 'scheduling', label: 'Scheduling', icon: Calendar, moduleId: 'scheduling' },
+    { id: 'room-management', label: 'Room Management', icon: BedDouble, moduleId: 'room-management' },
     
     // Kitchen Module Section
     { id: 'kitchen-section', label: 'Kitchen', icon: null, isSectionHeader: true },
@@ -441,7 +443,9 @@ function App() {
         )}
 
         {currentView === 'scheduling' && <AppointmentScheduling />}
-        
+
+        {currentView === 'room-management' && <RoomManagement />}
+
         {currentView === 'profit-loss' && <ProfitLoss />}
 
         {currentView === 'financials' && <Financials />}

@@ -4,7 +4,7 @@ import {
   UserCheck, UserCog, Search, Phone, Mail, Lock,
   CheckCircle, AlertCircle, Stethoscope, Calendar,
   Package, ShoppingCart, ClipboardList, BarChart3,
-  Receipt, Utensils, FileText, Home, TrendingUp, Wallet, History
+  Receipt, Utensils, FileText, Home, TrendingUp, Wallet, History, BedDouble
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -69,6 +69,7 @@ const MODULES = {
   dashboard: { label: 'Dashboard', icon: Home, description: 'Main dashboard overview' },
   patients: { label: 'Patient Portal', icon: Users, description: 'Patient registration, records, view/edit' },
   scheduling: { label: 'Scheduling', icon: Calendar, description: 'Appointment booking and therapist schedules' },
+  'room-management': { label: 'Room Management', icon: BedDouble, description: 'Floor plan view of IP rooms and current occupancy' },
   leads: { label: 'Lead Management', icon: ClipboardList, description: 'Track and manage patient leads' },
   inventory: { label: 'Inventory', icon: Package, description: 'Medicine inventory and stock management' },
   packages: { label: 'Treatment Packages', icon: FileText, description: 'Create and manage treatment packages' },
@@ -93,9 +94,9 @@ const MODULES = {
 // Default permissions per role
 const DEFAULT_PERMISSIONS = {
   system_admin: Object.keys(MODULES), // All modules
-  doctor: ['dashboard', 'patients', 'scheduling', 'prescriptions', 'packages', 'treatment-charges', 'discharge', 'analytics', 'reports', 'ai-assist'],
-  therapist: ['dashboard', 'patients', 'scheduling', 'treatment-charges'],
-  front_office: ['dashboard', 'patients', 'scheduling', 'leads', 'invoices', 'packages', 'treatment-charges', 'discharge', 'mess-management', 'reports'],
+  doctor: ['dashboard', 'patients', 'scheduling', 'room-management', 'prescriptions', 'packages', 'treatment-charges', 'discharge', 'analytics', 'reports', 'ai-assist'],
+  therapist: ['dashboard', 'patients', 'scheduling', 'room-management', 'treatment-charges'],
+  front_office: ['dashboard', 'patients', 'scheduling', 'room-management', 'leads', 'invoices', 'packages', 'treatment-charges', 'discharge', 'mess-management', 'reports'],
   store_admin: ['dashboard', 'inventory', 'purchase', 'reports'],
   kitchen_staff: ['dashboard', 'mess-management', 'mess-expense', 'diet-module'],
   accountant: ['dashboard', 'invoices', 'profit-loss', 'financials', 'analytics', 'purchase', 'treatment-charges', 'reports']
