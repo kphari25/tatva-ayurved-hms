@@ -8,6 +8,25 @@ import {
 } from 'recharts';
 import InventoryCategoryModal from './InventoryCategoryModal';
 
+const monthLabel = (year, month) => new Date(year, month, 1).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
+// Last 6 calendar months, oldest first, for the Sales vs Purchase trend.
+const lastSixMonths = () => {
+  const now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth(), label: monthLabel(d.getFullYear(), d.getMonth()) });
+  }
+  return months;
+};
+
+const inRange = (dateVal, start, end) => {
+  if (!dateVal) return false;
+  const d = new Date(dateVal);
+  return !isNaN(d) && d >= start && d <= end;
+};
+
 const getLastMovementDate = (item) => item.last_updated || item.imported_at || item.purchase_date || item.created_at;
 
 const daysSinceMovement = (item) => {
@@ -72,20 +91,25 @@ const InventoryAnalytics = () => {
   const loadInventoryData = async () => {
     try {
       setLoading(true);
-      
-      const inventoryRef = collection(db, 'inventory');
-      const snapshot = await getDocs(inventoryRef);
-      
+
+      const [inventorySnap, salesSnap, expensesSnap] = await Promise.all([
+        getDocs(collection(db, 'inventory')),
+        getDocs(collection(db, 'medicine_sales')),
+        getDocs(collection(db, 'expenses')),
+      ]);
+
       // Spread first, id last: some inventory docs carry their own legacy
       // numeric `id` field, which would otherwise clobber the real doc id.
-      const items = snapshot.docs.map(doc => ({
+      const items = inventorySnap.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
       }));
+      const sales = salesSnap.docs.map(d => d.data());
+      const expenses = expensesSnap.docs.map(d => d.data());
 
       setInventory(items);
       calculateAnalytics(items);
-      generateChartData(items);
+      generateChartData(items, sales, expenses);
 
     } catch (error) {
       console.error('Error loading inventory:', error);
@@ -108,7 +132,7 @@ const InventoryAnalytics = () => {
     items.forEach(item => {
       const stock = parseFloat(item.stock_quantity) || 0;
       const purchaseRate = parseFloat(item.purchase_rate) || 0;
-      const mrp = parseFloat(item.mrp) || 0;
+      const mrp = parseFloat(item.MRP ?? item.mrp) || 0;
       const stockValue = parseFloat(item.stock_value) || (stock * purchaseRate);
 
       totalValue += stockValue;
@@ -135,7 +159,7 @@ const InventoryAnalytics = () => {
     });
   };
 
-  const generateChartData = (items) => {
+  const generateChartData = (items, sales = [], expenses = []) => {
     // Top 10 items by value
     const topItems = items
       .map(item => ({
@@ -191,15 +215,20 @@ const InventoryAnalytics = () => {
       value
     }));
 
-    // Monthly trend (mock data - would need actual sales data)
-    const monthlyTrend = [
-      { month: 'Jan', sales: 45000, purchases: 38000 },
-      { month: 'Feb', sales: 52000, purchases: 42000 },
-      { month: 'Mar', sales: 48000, purchases: 40000 },
-      { month: 'Apr', sales: 61000, purchases: 45000 },
-      { month: 'May', sales: 55000, purchases: 43000 },
-      { month: 'Jun', sales: 58000, purchases: 46000 }
-    ];
+    // Monthly trend — real medicine sales vs. medicine-purchase expenses for
+    // the last 6 calendar months (same source/field semantics as Reports.jsx's
+    // Inventory Report, the vetted place this data is aggregated elsewhere).
+    const monthlyTrend = lastSixMonths().map(({ year, month, label }) => {
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+      const salesAmount = sales
+        .filter(s => inRange(s.sale_date || s.created_at, monthStart, monthEnd))
+        .reduce((sum, s) => sum + (parseFloat(s.total_amount) || 0), 0);
+      const purchaseAmount = expenses
+        .filter(e => (e.category || '').toLowerCase() === 'medicine_purchase' && inRange(e.date || e.created_at, monthStart, monthEnd))
+        .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+      return { month: label, sales: salesAmount, purchases: purchaseAmount };
+    });
 
     setChartData({
       topItems,
@@ -269,7 +298,6 @@ const InventoryAnalytics = () => {
               value={`₹${analytics.totalValue.toLocaleString()}`}
               icon={IndianRupee}
               color="#10b981"
-              trend={8.5}
             />
             <StatCard
               title="Total Purchase Price"
