@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User, LayoutGrid, List, BarChart3 } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User, LayoutGrid, List, BarChart3, Search } from 'lucide-react';
 import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
@@ -57,7 +57,8 @@ const outcomeQuickRanges = {
 };
 
 // ─── Appointment Modal ────────────────────────────────────────────────────────
-const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, doctors }) => {
+const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, doctors, patients = [] }) => {
+  const isEditMode = !!initialData;
   const [formData, setFormData] = useState(
     initialData
       ? {
@@ -65,9 +66,43 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
           therapistIds: initialData.therapistIds || (initialData.therapistId ? [initialData.therapistId] : []),
           therapistNames: initialData.therapistNames || (initialData.therapistName ? [initialData.therapistName] : []),
         }
-      : { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled', therapistIds: [], therapistNames: [], doctorId: '', doctorName: '' }
+      : { patient: '', time: '', type: '', date: todayISO(), status: 'scheduled', therapistIds: [], therapistNames: [], doctorId: '', doctorName: '', patientId: '' }
   );
   const [error, setError] = useState('');
+
+  // Existing-patient search on the Patient Name field — new appointments
+  // only. Picking a match links patientId so saveAppointment can use the
+  // real patient record instead of creating a duplicate (see loadPatients).
+  const [patientSuggestions, setPatientSuggestions] = useState([]);
+  const [showPatientDrop, setShowPatientDrop] = useState(false);
+  const patientFieldRef = useRef(null);
+
+  useEffect(() => {
+    if (isEditMode) return;
+    const handler = (e) => {
+      if (patientFieldRef.current && !patientFieldRef.current.contains(e.target)) setShowPatientDrop(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isEditMode]);
+
+  const handlePatientNameChange = (value) => {
+    setFormData(f => ({ ...f, patient: value, patientId: '' }));
+    if (isEditMode || value.trim().length < 2) { setPatientSuggestions([]); setShowPatientDrop(false); return; }
+    const q = value.trim().toLowerCase();
+    const matches = patients.filter(p => {
+      const fullName = `${p.first_name || ''} ${p.last_name || ''}`.toLowerCase();
+      return fullName.includes(q) || (p.mrd_number || '').toLowerCase().includes(q) || (p.phone || '').includes(q);
+    }).slice(0, 8);
+    setPatientSuggestions(matches);
+    setShowPatientDrop(true);
+  };
+
+  const handleSelectExistingPatient = (p) => {
+    setShowPatientDrop(false);
+    setPatientSuggestions([]);
+    setFormData(f => ({ ...f, patient: `${p.first_name || ''} ${p.last_name || ''}`.trim(), patientId: p.id }));
+  };
 
   const handleToggleTherapist = (t) => setFormData(f => toggleTherapistInFields(f, t));
 
@@ -106,15 +141,39 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
               {error}
             </div>
           )}
-          <div>
+          <div className="relative" ref={patientFieldRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name</label>
-            <input
-              type="text"
-              value={formData.patient}
-              onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. Anjali Menon"
-            />
+            <div className="relative">
+              {!isEditMode && <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />}
+              <input
+                type="text"
+                value={formData.patient}
+                onChange={(e) => handlePatientNameChange(e.target.value)}
+                onFocus={() => !isEditMode && patientSuggestions.length > 0 && setShowPatientDrop(true)}
+                className={`w-full border border-gray-300 rounded-lg py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${!isEditMode ? 'pl-9 pr-3' : 'px-3'}`}
+                placeholder={isEditMode ? 'e.g. Anjali Menon' : 'Search existing patients or type a new name…'}
+              />
+            </div>
+            {!isEditMode && formData.patientId && (
+              <p className="text-xs text-teal-600 mt-1">✓ Linked to existing patient record</p>
+            )}
+            {!isEditMode && showPatientDrop && patientSuggestions.length > 0 && (
+              <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                {patientSuggestions.map(p => (
+                  <div
+                    key={p.id}
+                    onMouseDown={() => handleSelectExistingPatient(p)}
+                    className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
+                  >
+                    <div className="font-medium text-sm text-gray-900">{p.first_name} {p.last_name}</div>
+                    <div className="text-xs text-gray-500 flex gap-3">
+                      {p.mrd_number && <span>{p.mrd_number}</span>}
+                      {p.phone && <span>📞 {p.phone}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -608,6 +667,7 @@ const AppointmentScheduling = () => {
   const [allAppointments, setAllAppointments] = useState([]);
   const [therapists, setTherapists] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -616,7 +676,7 @@ const AppointmentScheduling = () => {
   const [outcomeCustomStart, setOutcomeCustomStart] = useState('');
   const [outcomeCustomEnd, setOutcomeCustomEnd] = useState('');
 
-  useEffect(() => { loadTherapists(); loadDoctors(); loadAllAppointments(); }, []);
+  useEffect(() => { loadTherapists(); loadDoctors(); loadPatients(); loadAllAppointments(); }, []);
   useEffect(() => { loadAppointments(); }, [selectedDate]);
 
   const loadTherapists = async () => {
@@ -625,6 +685,21 @@ const AppointmentScheduling = () => {
       setTherapists(snap.docs.map(d => ({ id: d.id, name: d.data().name || d.data().email, ...d.data() })));
     } catch (error) {
       console.error('Error loading therapists:', error);
+    }
+  };
+
+  // Existing-patient search on the Add Appointment form — without this, an
+  // IP-type booking for an already-registered patient (typed by name, no
+  // autocomplete) always fell through to createPendingIPPatient below and
+  // created a second, disconnected patient record instead of linking to the
+  // real one (same class of duplicate-patient bug fixed on Dashboard's Add
+  // Appointment earlier).
+  const loadPatients = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'patients'));
+      setPatients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error('Error loading patients:', error);
     }
   };
 
@@ -686,14 +761,32 @@ const AppointmentScheduling = () => {
       if (editingAppointment) {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), payload);
       } else {
+        if (formData.patientId) payload.patient_id = formData.patientId;
         const newApptRef = await addDoc(collection(db, 'appointments'), { ...payload, createdAt: new Date().toISOString() });
 
         if (formData.type === 'IP') {
-          try {
-            const newPatientId = await createPendingIPPatient(formData.patient, '');
-            await updateDoc(doc(db, 'appointments', newApptRef.id), { patient_id: newPatientId });
-          } catch (patientError) {
-            console.error('⚠️ Failed to create pending-admission patient record:', patientError);
+          if (formData.patientId) {
+            // Matched an existing patient in the search above — flag their
+            // record instead of creating a duplicate, same condition
+            // Dashboard's existing-patient booking uses.
+            try {
+              const existing = patients.find(p => p.id === formData.patientId);
+              if (existing?.admission_status !== 'admitted' && existing?.admission_status !== 'pending_admission') {
+                await updateDoc(doc(db, 'patients', formData.patientId), {
+                  patient_type: 'IP',
+                  admission_status: 'pending_admission',
+                });
+              }
+            } catch (statusError) {
+              console.error('⚠️ Failed to flag patient as pending admission:', statusError);
+            }
+          } else {
+            try {
+              const newPatientId = await createPendingIPPatient(formData.patient, '');
+              await updateDoc(doc(db, 'appointments', newApptRef.id), { patient_id: newPatientId });
+            } catch (patientError) {
+              console.error('⚠️ Failed to create pending-admission patient record:', patientError);
+            }
           }
         }
       }
@@ -1128,6 +1221,7 @@ const AppointmentScheduling = () => {
           saving={saving}
           therapists={therapists}
           doctors={doctors}
+          patients={patients}
         />
       )}
     </div>
