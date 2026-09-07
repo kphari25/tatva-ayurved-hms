@@ -1382,7 +1382,12 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                   </div>
                   <div>
                     <p className="text-gray-600">Age</p>
-                    <p className="font-semibold text-gray-900">{calculateAge(selectedPatient.date_of_birth)} years</p>
+                    <p className="font-semibold text-gray-900">
+                      {(() => {
+                        const age = selectedPatient.age || calculateAge(selectedPatient.date_of_birth);
+                        return age === 'N/A' ? 'N/A' : `${age} years`;
+                      })()}
+                    </p>
                   </div>
                   <div>
                     <p className="text-gray-600">Blood Group</p>
