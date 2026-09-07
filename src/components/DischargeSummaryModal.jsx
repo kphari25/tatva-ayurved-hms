@@ -656,7 +656,9 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
     // with the patient's case sheet (IP or OP, whichever applies) every time
     // this opens — new draft or resuming an already-saved summary — since
     // those are the values staff shouldn't have to re-type or manually
-    // reconcile between the two documents.
+    // reconcile between the two documents. Ward No is the same idea, synced
+    // from the IP Case Sheet's Room Number — OP case sheets have no room, so
+    // this is a no-op for OP-only patients.
     const syncAdmissionDischarge = (cs) => {
       setForm(prev => ({
         ...prev,
@@ -664,6 +666,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
         admission_time: cs.admission_time ? formatTime12h(cs.admission_time) : prev.admission_time,
         discharge_date: cs.discharge_date || prev.discharge_date,
         discharge_time: cs.discharge_time ? formatTime12h(cs.discharge_time) : prev.discharge_time,
+        ward_no: cs.room_number || prev.ward_no,
       }));
     };
 
@@ -1153,7 +1156,7 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ward No</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ward No {isIPPatient && <span className="text-teal-600 text-xs">(synced from IP Case Sheet)</span>}</label>
                   <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     value={form.ward_no} onChange={e => set('ward_no', e.target.value)} />
                 </div>
