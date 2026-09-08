@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, getDoc, setDoc, doc, query, where } from 'firebase/firestore';
 
 // Rooms held by every currently-admitted IP patient (optionally excluding one
 // patient, e.g. the patient whose own case sheet is being edited) — so room
@@ -18,4 +18,40 @@ export const getOccupiedRooms = async (excludePatientId) => {
     if (activeIds.includes(d.id) && d.data().room_number) occupied.add(d.data().room_number);
   });
   return occupied;
+};
+
+// The room this patient's most recent IP appointment was booked into, if
+// that room is still actually free — the appointment's own availability
+// check only looks at admitted patients, so a different pending admission
+// could have claimed it since. Returns '' when there's no booked room or it
+// was taken in the meantime.
+export const getReservedRoomForPatient = async (patientId) => {
+  const apptSnap = await getDocs(query(collection(db, 'appointments'), where('patient_id', '==', patientId), where('type', '==', 'IP')));
+  const withRoom = apptSnap.docs.map(d => d.data()).filter(a => a.room_number);
+  withRoom.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const bookedRoom = withRoom[0]?.room_number || '';
+  if (!bookedRoom) return '';
+  const occupied = await getOccupiedRooms(patientId);
+  return occupied.has(bookedRoom) ? '' : bookedRoom;
+};
+
+// Called the moment a pending IP patient is actually admitted (Patient
+// Portal's Admit button), so the room they were booked into shows up on
+// Room Management right away — without this, occupancy only ever comes
+// from the IP Case Sheet, which stays blank until staff separately open and
+// save it, so a patient could be marked "admitted" with nowhere shown as
+// occupied. Never overwrites a room already recorded on an existing case
+// sheet (e.g. staff picked a different one there before admitting).
+export const applyReservedRoomOnAdmission = async (patientId, patient) => {
+  const roomNumber = await getReservedRoomForPatient(patientId);
+  if (!roomNumber) return;
+  const existing = await getDoc(doc(db, 'ip_case_sheets', patientId));
+  if (existing.exists() && existing.data().room_number) return;
+  await setDoc(doc(db, 'ip_case_sheets', patientId), {
+    room_number: roomNumber,
+    ...(existing.exists() ? {} : {
+      admission_date: patient?.admission_date || '',
+      physician_name: patient?.assigned_doctor || '',
+    }),
+  }, { merge: true });
 };

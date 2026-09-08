@@ -13,7 +13,7 @@ import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { ROOMS } from '../lib/rooms';
-import { getOccupiedRooms } from '../lib/roomAvailability';
+import { getOccupiedRooms, getReservedRoomForPatient } from '../lib/roomAvailability';
 
 const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
 
@@ -445,20 +445,9 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
         // First time this patient's case sheet is opened — pre-fill the room
         // from whichever IP appointment they were booked under, so front
         // desk isn't picking the same room twice (once at booking, again here).
-        // Only applied if that room is still actually free — the appointment
-        // booking's own availability check only looks at admitted patients,
-        // so two different pending admissions could have picked the same
-        // room before either one was actually admitted.
         let roomNumber = '';
         try {
-          const apptSnap = await getDocs(query(collection(db, 'appointments'), where('patient_id', '==', patientId), where('type', '==', 'IP')));
-          const withRoom = apptSnap.docs.map(d => d.data()).filter(a => a.room_number);
-          withRoom.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-          const bookedRoom = withRoom[0]?.room_number || '';
-          if (bookedRoom) {
-            const currentlyOccupied = await getOccupiedRooms(patientId);
-            if (!currentlyOccupied.has(bookedRoom)) roomNumber = bookedRoom;
-          }
+          roomNumber = await getReservedRoomForPatient(patientId);
         } catch (e) {
           console.error('Error loading room from linked appointment:', e);
         }

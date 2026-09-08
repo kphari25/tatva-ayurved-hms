@@ -14,7 +14,7 @@ import { loadDoctorsList } from '../lib/doctors';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { addDaysToDateString, formatDateOnly } from '../lib/formatDate';
 import { ROOMS } from '../lib/rooms';
-import { getOccupiedRooms } from '../lib/roomAvailability';
+import { getOccupiedRooms, applyReservedRoomOnAdmission } from '../lib/roomAvailability';
 import DischargeSummaryModal from './DischargeSummaryModal';
 import IPDailyProgressModal from './IPDailyProgressModal';
 import IPCaseSheetModal from './IPCaseSheetModal';
@@ -326,6 +326,19 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
         ...(days != null ? { expected_stay_days: days } : {}),
       };
       await updateDoc(doc(db, 'patients', patientId), update);
+
+      // First-time admission — carry the room picked at booking into the IP
+      // Case Sheet right away, so Room Management shows this patient as
+      // occupying it immediately instead of staying blank until staff
+      // separately open and save the case sheet.
+      if (admitPatientTarget.admission_status === 'pending_admission') {
+        try {
+          await applyReservedRoomOnAdmission(patientId, { ...admitPatientTarget, ...update });
+        } catch (roomError) {
+          console.error('⚠️ Failed to carry reserved room into IP Case Sheet:', roomError);
+        }
+      }
+
       setPatients(prev => prev.map(p => (p.id || p.firebaseId) === patientId ? { ...p, ...update } : p));
       setShowAdmitModal(false);
       setAdmitPatientTarget(null);
