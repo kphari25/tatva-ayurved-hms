@@ -530,6 +530,12 @@ const Dashboard = () => {
   const [existingPatientForAppt, setExistingPatientForAppt] = useState(null);
   const [pendingApptFields, setPendingApptFields] = useState(null);
   const [scheduleForPatient, setScheduleForPatient] = useState(null);
+  // Checking in a first-time IP booking (see handleCheckInAppointment) whose
+  // patient record is still just the bare placeholder createPendingIPPatient
+  // made at booking time — front desk needs to fill in the rest of the file
+  // right away rather than discovering later that Patient Portal has a
+  // "Pending Admission" entry with nothing but a name and phone number.
+  const [completeRegistrationPatient, setCompleteRegistrationPatient] = useState(null);
   const [bookingForExistingPatient, setBookingForExistingPatient] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [doctors, setDoctors] = useState([]);
@@ -1145,6 +1151,19 @@ const Dashboard = () => {
         status: 'checked_in',
         checked_in_at: new Date().toISOString(),
       });
+      // A brand-new IP booking's patient_id points at the bare placeholder
+      // createPendingIPPatient created the moment the appointment was
+      // booked (name + phone only, so Pending Admissions has something to
+      // show right away) — it was never run through the real registration
+      // form. Age is a required field there, so its absence here reliably
+      // means "this chart still needs to be filled in," regardless of how
+      // the patient record came to exist. Catch that on arrival and open
+      // the full form immediately instead of leaving a half-empty chart
+      // that only gets noticed later in Patient Portal.
+      const linkedPatient = allPatients.find(p => p.id === apt.patient_id);
+      if (linkedPatient && !linkedPatient.age) {
+        setCompleteRegistrationPatient(linkedPatient);
+      }
     } catch (error) {
       console.error('Error checking in appointment:', error);
       alert('Failed to check in. Please try again.');
@@ -1748,6 +1767,20 @@ const Dashboard = () => {
             patient={existingPatientForAppt}
             onClose={cancelExistingPatientAppt}
             onSuccess={handlePatientConfirmedForAppt}
+          />
+        </div>
+      )}
+
+      {/* Checked in a first-time IP booking whose patient record is still
+          just the bare placeholder from createPendingIPPatient — complete
+          the chart right now, in the same edit dialog Patient Portal uses,
+          instead of leaving it to be discovered later. */}
+      {completeRegistrationPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
+          <PatientRegistrationNew
+            patient={completeRegistrationPatient}
+            onClose={() => setCompleteRegistrationPatient(null)}
+            onSuccess={() => setCompleteRegistrationPatient(null)}
           />
         </div>
       )}
