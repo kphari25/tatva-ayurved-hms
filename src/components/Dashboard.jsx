@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Search } from 'lucide-react';
 import { collection, getDocs, getDoc, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
+import { formatDateOnly, addDaysToDateString, daysSince } from '../lib/formatDate';
 import { sendAppointmentSMSToPatient } from '../lib/sms';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
@@ -680,7 +680,7 @@ const Dashboard = () => {
           room: cs.room_number ? `Room ${cs.room_number}` : [cs.ward, cs.bed_no ? `Bed ${cs.bed_no}` : null].filter(Boolean).join(' · ') || '—',
           admission: admissionDate,
           diagnosis: cs.admin_diagnosis || '—',
-          daysAdmitted: admissionDate ? Math.max(0, Math.floor((Date.now() - new Date(admissionDate)) / (1000 * 60 * 60 * 24))) : null,
+          daysAdmitted: admissionDate ? daysSince(admissionDate) : null,
           expectedStayDays,
           checkoutDate,
         };
@@ -1584,9 +1584,19 @@ const Dashboard = () => {
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700">{patient.diagnosis}</td>
                         <td className="px-6 py-4 text-center">
-                          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                            {patient.daysAdmitted !== null ? `Day ${patient.daysAdmitted + 1}` : '—'}
-                          </span>
+                          {patient.daysAdmitted !== null ? (
+                            patient.daysAdmitted < 0 ? (
+                              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
+                                Admits in {-patient.daysAdmitted} day{patient.daysAdmitted === -1 ? '' : 's'}
+                              </span>
+                            ) : (
+                              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                                Day {patient.daysAdmitted + 1}
+                              </span>
+                            )
+                          ) : (
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">—</span>
+                          )}
                         </td>
                       </tr>
                     );
