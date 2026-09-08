@@ -25,6 +25,9 @@ Identical to `ip-lifecycle-test`'s gotchas section — re-read it there if you h
 - `window.confirm`/`window.alert` need overriding via JS-exec before any delete/checkout click, since the automated browser silently auto-dismisses them.
 - Invoice/Medicine Sale "Save & Print" freezes the tab (native `window.print()`) — expected, recover by closing and reopening the tab at `http://localhost:5173`, verify the save already succeeded via console log or by re-checking the list.
 - The Prescription modal's print preview auto-triggers print on load — don't open it if avoiding the freeze matters; the on-screen medicine table is enough to verify.
+- **MRD numbers are reused after a patient is deleted** — confirmed across separate test runs landing on the exact same MRD number. Match this run's patient by its full `ZZ Test <name>` name, not by MRD number, if a previous run's data might not be fully cleaned up yet.
+- **Leave "Send Welcome SMS" unchecked** on the registration form (it's unchecked by default) — no reason to enable it for a disposable test patient with a fake phone number.
+- If **Registration Fee is 0**, skip "Generate Registration Invoice" on the post-registration screen entirely — click **"Done — Back to Patient Portal"** instead. A ₹0 registration invoice adds nothing worth verifying, and step 7 already covers generating and checking an invoice.
 
 ## The procedure
 
