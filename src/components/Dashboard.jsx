@@ -1237,6 +1237,7 @@ const Dashboard = () => {
           icon={Calendar}
           color="#3b82f6"
           subtitle="Scheduled patients"
+          onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'scheduling' }))}
         />
         <StatCard
           title="In-Patients"
@@ -1244,6 +1245,7 @@ const Dashboard = () => {
           icon={Bed}
           color="#8b5cf6"
           subtitle="Currently admitted"
+          onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'room-management' }))}
         />
         <StatCard
           title="Pending Admissions"
