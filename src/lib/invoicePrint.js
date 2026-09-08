@@ -1,3 +1,5 @@
+import { formatDateOnly } from './formatDate';
+
 export const HOSPITAL = {
   name: 'Tatva Ayurved',
   tagline: 'Ayurveda for Health & Happiness',
@@ -88,10 +90,10 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     <div class="info-box" style="text-align: right;">
       <h3>Invoice Details:</h3>
       ${data.invoice_number ? `<p><strong>Invoice No:</strong> ${data.invoice_number}</p>` : ''}
-      <p><strong>Date:</strong> ${new Date(data.invoice_date).toLocaleDateString()}</p>
+      <p><strong>Date:</strong> ${formatDateOnly(data.invoice_date)}</p>
       <p><strong>Invoice Type:</strong> ${data.invoice_type}</p>
-      ${data.invoice_type === 'IP' && data.admission_date ? `<p><strong>Admission Date:</strong> ${new Date(data.admission_date).toLocaleDateString()}</p>` : ''}
-      ${data.invoice_type === 'IP' && data.discharge_date ? `<p><strong>Discharge Date:</strong> ${new Date(data.discharge_date).toLocaleDateString()}</p>` : ''}
+      ${data.invoice_type === 'IP' && data.admission_date ? `<p><strong>Admission Date:</strong> ${formatDateOnly(data.admission_date)}</p>` : ''}
+      ${data.invoice_type === 'IP' && data.discharge_date ? `<p><strong>Discharge Date:</strong> ${formatDateOnly(data.discharge_date)}</p>` : ''}
       <p><strong>Payment Mode:</strong> ${data.payment_mode}</p>
     </div>
   </div>

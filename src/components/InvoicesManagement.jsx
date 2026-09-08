@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import InvoiceModal from './InvoiceModal';
 import MedicineSaleModal from './MedicineSaleModal';
 import { previewIframeStyle } from '../lib/printPreviewSize';
+import { formatDateOnly } from '../lib/formatDate';
 
 // letterhead=true skips the logo/contact header (already pre-printed on the
 // hospital's letterhead stock) and pushes page-1 content down to clear that
@@ -75,10 +76,10 @@ const buildInvoicePrintHTML = (invoice, letterhead = false, pageSize = 'A4', ori
           <div class="info-box" style="text-align: right;">
             <h3>Invoice Details:</h3>
             ${invoice.invoice_number ? `<p><strong>Invoice No:</strong> ${invoice.invoice_number}</p>` : ''}
-            <p><strong>Date:</strong> ${new Date(invoice.invoice_date).toLocaleDateString()}</p>
+            <p><strong>Date:</strong> ${formatDateOnly(invoice.invoice_date)}</p>
             <p><strong>Invoice Type:</strong> ${invoice.invoice_type}</p>
-            ${invoice.invoice_type === 'IP' && invoice.admission_date ? `<p><strong>Admission Date:</strong> ${new Date(invoice.admission_date).toLocaleDateString()}</p>` : ''}
-            ${invoice.invoice_type === 'IP' && invoice.discharge_date ? `<p><strong>Discharge Date:</strong> ${new Date(invoice.discharge_date).toLocaleDateString()}</p>` : ''}
+            ${invoice.invoice_type === 'IP' && invoice.admission_date ? `<p><strong>Admission Date:</strong> ${formatDateOnly(invoice.admission_date)}</p>` : ''}
+            ${invoice.invoice_type === 'IP' && invoice.discharge_date ? `<p><strong>Discharge Date:</strong> ${formatDateOnly(invoice.discharge_date)}</p>` : ''}
             <p><strong>Payment Mode:</strong> ${invoice.payment_mode}</p>
           </div>
         </div>
@@ -397,7 +398,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
 
   const handleExport = () => {
     const exportData = filteredInvoices.map(inv => ({
-      'Invoice Date': new Date(inv.invoice_date).toLocaleDateString(),
+      'Invoice Date': formatDateOnly(inv.invoice_date),
       'Type': inv.invoice_type,
       'Patient Number': inv.patient_number,
       'Patient Name': inv.patient_name,
@@ -651,7 +652,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                 {filteredInvoices.map((invoice) => (
                   <tr key={invoice.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm text-gray-900">
-                      {new Date(invoice.invoice_date).toLocaleDateString()}
+                      {formatDateOnly(invoice.invoice_date)}
                     </td>
                     <td className="px-6 py-4">
                       <span
