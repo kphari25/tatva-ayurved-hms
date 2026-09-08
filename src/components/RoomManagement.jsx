@@ -209,9 +209,15 @@ const RoomManagement = () => {
                               </span>
                             </p>
                             {occ.daysAdmitted !== null && (
-                              <span className="inline-block mt-1 text-[10px] font-semibold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
-                                Day {occ.daysAdmitted + 1}
-                              </span>
+                              occ.daysAdmitted < 0 ? (
+                                <span className="inline-block mt-1 text-[10px] font-semibold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">
+                                  Admits in {-occ.daysAdmitted} day{occ.daysAdmitted === -1 ? '' : 's'}
+                                </span>
+                              ) : (
+                                <span className="inline-block mt-1 text-[10px] font-semibold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                                  Day {occ.daysAdmitted + 1}
+                                </span>
+                              )
                             )}
                           </div>
                         ) : isReserved ? (
