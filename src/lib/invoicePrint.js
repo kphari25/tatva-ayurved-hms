@@ -23,7 +23,69 @@ export const HOSPITAL = {
 // document choosing a smaller page.
 const pageMarginFor = (pageSize) => (pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' });
 
-export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'portrait') => {
+// Treatment line items carry a per-visit `price` and, where they came from a
+// dated Visit Log / Daily Progress entry rather than the case sheet itself, a
+// `date` — see InvoiceModal's loadTreatmentItems. Three ways to print them,
+// picked via data.treatment_display, because a single lump total hides which
+// actual treatments (a "Consultation" price-list pick included) made up the
+// charge, and a multi-day IP stay is easier to read grouped by day than as
+// one flat list:
+//   'summary' — one row, the old behavior, for when the total is all that matters.
+//   'by_day'  — one row per date, treatment names joined together with a day subtotal.
+//   'itemized' (default) — one row per treatment, its own date and price.
+const buildTreatmentRows = (data) => {
+  const items = data.treatment_items || [];
+  if (items.length === 0) return '';
+  const style = data.treatment_display || 'itemized';
+
+  if (style === 'summary') {
+    const total = items.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+    return `
+      <tr>
+        <td>Treatment Charges</td>
+        <td>-</td>
+        <td>-</td>
+        <td>₹${total.toFixed(2)}</td>
+      </tr>
+    `;
+  }
+
+  if (style === 'by_day') {
+    const byDate = {};
+    items.forEach(it => { (byDate[it.date || 'Undated'] = byDate[it.date || 'Undated'] || []).push(it); });
+    return Object.keys(byDate).sort().map(dateKey => {
+      const dayItems = byDate[dateKey];
+      const total = dayItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+      // A single treatment that day has one clean per-item rate to show;
+      // several treatments grouped into one line have no single rate that
+      // means anything, so only the combined amount is shown for those.
+      const rate = dayItems.length === 1 ? `₹${Number(dayItems[0].price || 0).toFixed(2)}` : '-';
+      return `
+        <tr>
+          <td>Treatment: ${dayItems.map(it => it.name).join(', ')}</td>
+          <td>${dateKey === 'Undated' ? '-' : formatDateOnly(dateKey)}</td>
+          <td>${rate}</td>
+          <td>₹${total.toFixed(2)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // itemized — one treatment per row, so its rate and amount are the same figure.
+  return items.map(it => `
+    <tr>
+      <td>${it.name}</td>
+      <td>${it.date ? formatDateOnly(it.date) : '-'}</td>
+      <td>₹${Number(it.price || 0).toFixed(2)}</td>
+      <td>₹${Number(it.price || 0).toFixed(2)}</td>
+    </tr>
+  `).join('');
+};
+
+// letterhead=true skips the logo/contact header (already pre-printed on the
+// hospital's letterhead stock) and pushes page-1 content down to clear that
+// artwork — used when reprinting a saved invoice from Invoices Management.
+export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'portrait', letterhead = false) => {
   const pageMargin = pageMarginFor(pageSize);
   const pageSizeRule = orientation === 'landscape' ? `${pageSize} landscape` : pageSize;
   return `<!DOCTYPE html>
@@ -34,6 +96,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; padding-bottom: 190px; }
     @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
+    ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
     .header img { height: 42px; }
     .header-text { text-align: left; }
@@ -67,6 +130,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
   </style>
 </head>
 <body>
+  ${letterhead ? '' : `
   <div class="header">
     <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
     <div class="header-text">
@@ -74,6 +138,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
       <p class="tagline">${HOSPITAL.tagline}</p>
     </div>
   </div>
+  `}
 
   <div style="text-align: center; margin-bottom: 20px;">
     <span class="badge">${data.invoice_type === 'OP' ? 'OUT PATIENT (O/P)' : 'IN PATIENT (I/P)'}</span>
@@ -125,14 +190,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
           <td>₹${data.consultation_fees.toFixed(2)}</td>
         </tr>
       ` : ''}
-      ${(data.treatment_items && data.treatment_items.length > 0) ? `
-        <tr>
-          <td>Treatments</td>
-          <td>-</td>
-          <td>-</td>
-          <td>₹${data.treatment_items.reduce((sum, item) => sum + (Number(item.price) || 0), 0).toFixed(2)}</td>
-        </tr>
-      ` : ''}
+      ${buildTreatmentRows(data)}
       ${(data.medicines_total || 0) > 0 ? `
         <tr>
           <td>Medicines Administered</td>

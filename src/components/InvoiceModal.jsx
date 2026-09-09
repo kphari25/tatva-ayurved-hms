@@ -51,6 +51,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const [priceListItems, setPriceListItems] = useState([]);
   // Ad-hoc charges added directly on the invoice, on top of the price-list treatments.
   const [additionalCharges, setAdditionalCharges] = useState([]);
+  // How the printed invoice lists treatments — see buildTreatmentRows in
+  // invoicePrint.js. Itemized by default so the actual treatments billed
+  // (a "Consultation" price-list pick included) are visible on the invoice
+  // instead of hidden inside one lump "Treatments" total.
+  const [treatmentDisplay, setTreatmentDisplay] = useState('itemized');
 
 
   useEffect(() => {
@@ -63,7 +68,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         const caseSheetSnap = await getDoc(doc(db, caseSheetCollection, patientId));
         if (caseSheetSnap.exists()) {
           const cs = caseSheetSnap.data();
-          (cs.treatment_items || []).forEach(it => items.push({ ...it, source: 'Case Sheet' }));
+          // No visit-specific date on a case sheet pick — falls back to the
+          // admission date for IP, or is left undated for OP (prints as '-').
+          (cs.treatment_items || []).forEach(it => items.push({ ...it, source: 'Case Sheet', date: cs.admission_date || null }));
         }
 
         // IP treatments are mostly logged day-to-day; OP follow-ups are logged per visit — both should bill too.
@@ -73,7 +80,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         logSnap.docs.forEach(d => {
           const data = d.data();
           const rowSource = data.date ? `${sourceLabel} · ${data.date}` : sourceLabel;
-          (data.treatment_items || []).forEach(it => items.push({ ...it, source: rowSource }));
+          (data.treatment_items || []).forEach(it => items.push({ ...it, source: rowSource, date: data.date || null }));
         });
 
         setPriceListItems(items);
@@ -283,6 +290,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         invoice_date: formData.invoice_date,
         treatment_charges: calculateTreatmentCharges(),
         treatment_items: priceListItems,
+        treatment_display: treatmentDisplay,
         additional_charges: additionalCharges,
         nursing_fees: parseFloat(formData.nursing_fees) || 0,
         doctor_fees: parseFloat(formData.doctor_fees) || 0,
@@ -379,6 +387,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       invoice_date: formData.invoice_date,
       treatment_charges: calculateTreatmentCharges(),
       treatment_items: priceListItems,
+      treatment_display: treatmentDisplay,
       additional_charges: additionalCharges,
       nursing_fees: parseFloat(formData.nursing_fees) || 0,
       doctor_fees: parseFloat(formData.doctor_fees) || 0,
@@ -667,6 +676,33 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                   <span>Total Treatment Charges</span>
                   <span>₹{calculateTreatmentCharges().toLocaleString('en-IN')}</span>
                 </div>
+
+                {priceListItems.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 pt-2 mt-2 border-t border-gray-200">
+                    <span className="text-xs font-medium text-gray-500">On the printed invoice, list these as:</span>
+                    <div className="flex items-center bg-white rounded-lg p-0.5 text-xs font-medium border border-gray-200">
+                      {[
+                        { value: 'itemized', label: 'Itemized' },
+                        { value: 'by_day', label: 'By Day' },
+                        { value: 'summary', label: 'Summary' },
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setTreatmentDisplay(opt.value)}
+                          title={
+                            opt.value === 'itemized' ? 'Every treatment on its own line, with date and price'
+                              : opt.value === 'by_day' ? 'One line per day, treatment names grouped together'
+                                : 'One lump total line — no per-treatment breakdown'
+                          }
+                          className={`px-2.5 py-1 rounded-md transition-colors ${treatmentDisplay === opt.value ? 'bg-teal-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Other charges grid */}
