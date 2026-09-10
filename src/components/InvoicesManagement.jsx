@@ -32,6 +32,11 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [printPreviewPageSize, setPrintPreviewPageSize] = useState('A4');
   const [printPreviewOrientation, setPrintPreviewOrientation] = useState('portrait');
   const printIframeRef = useRef(null);
+  // A plain read-only look at an invoice — separate from printPreviewInvoice
+  // above, which is really a "prepare to print" flow (page size, orientation,
+  // letterhead all matter there). Viewing needs none of that, just the
+  // rendered invoice and a way to jump into printing afterward if wanted.
+  const [viewInvoice, setViewInvoice] = useState(null);
   const [stats, setStats] = useState({
     totalRevenue: 0,
     opRevenue: 0,
@@ -508,14 +513,24 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => handlePrintInvoice(invoice)}
-                        className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700"
-                        title="Print Invoice"
-                      >
-                        <Printer className="w-4 h-4" />
-                        Print
-                      </button>
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          onClick={() => setViewInvoice(invoice)}
+                          className="inline-flex items-center gap-1 px-3 py-1 border border-teal-600 text-teal-700 text-sm rounded hover:bg-teal-50"
+                          title="View Invoice"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View
+                        </button>
+                        <button
+                          onClick={() => handlePrintInvoice(invoice)}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700"
+                          title="Print Invoice"
+                        >
+                          <Printer className="w-4 h-4" />
+                          Print
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -710,6 +725,43 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                 srcDoc={buildInvoicePrintHTML(printPreviewInvoice, printPreviewPageSize, printPreviewOrientation, useLetterheadPrint)}
                 className="bg-white shadow-lg"
                 style={previewIframeStyle(printPreviewPageSize, printPreviewOrientation)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Invoice Modal — a plain read-only look, no print-config
+          controls (page size/orientation/letterhead don't matter for just
+          reading an invoice). "Print" here hands off to the real print
+          flow above instead of duplicating it. */}
+      {viewInvoice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col">
+            <div className="sticky top-0 bg-teal-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <div>
+                <h2 className="text-xl font-bold">Invoice {viewInvoice.invoice_number || ''}</h2>
+                <p className="text-teal-100 text-sm">{viewInvoice.patient_name}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { const inv = viewInvoice; setViewInvoice(null); handlePrintInvoice(inv); }}
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-teal-700 rounded-lg hover:bg-teal-50 text-sm font-medium"
+                >
+                  <Printer className="w-4 h-4" /> Print
+                </button>
+                <button onClick={() => setViewInvoice(null)} className="hover:bg-teal-700 p-2 rounded">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-gray-200 p-6 flex justify-center">
+              <iframe
+                title="Invoice view"
+                srcDoc={buildInvoicePrintHTML(viewInvoice, 'A4', 'portrait')}
+                className="bg-white shadow-lg"
+                style={previewIframeStyle('A4', 'portrait')}
               />
             </div>
           </div>
