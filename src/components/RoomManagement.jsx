@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Building2, User, BedDouble, Snowflake, Fan, CheckCircle2, CalendarClock } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { ROOMS } from '../lib/rooms';
+import { ROOMS, ROOM_RATES, getRoomRate } from '../lib/rooms';
 import { formatDateOnly, addDaysToDateString, daysSince } from '../lib/formatDate';
 
 // Top-to-bottom, matching the real building — First Floor sits above Ground
@@ -57,6 +57,7 @@ const RoomManagement = () => {
         map[cs.room_number] = {
           patientId: p.id,
           name: `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unnamed patient',
+          roomType: cs.room_type || '',
           admissionDate,
           checkoutDate,
           daysAdmitted: admissionDate ? daysSince(admissionDate) : null,
@@ -89,6 +90,7 @@ const RoomManagement = () => {
         map[appt.room_number] = {
           patientId: p.id,
           name: `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unnamed patient',
+          roomType: appt.room_type || '',
           appointmentDate: appt.date || null,
         };
       });
@@ -165,8 +167,7 @@ const RoomManagement = () => {
                 <div className="px-6 pt-4 pb-1 flex items-center justify-between">
                   <h3 className="font-bold text-gray-800">{floor}</h3>
                   <span className="text-xs text-gray-500 flex items-center gap-1">
-                    {floorRooms[0]?.type === 'A/C' ? <Snowflake className="w-3.5 h-3.5" /> : <Fan className="w-3.5 h-3.5" />}
-                    {floorRooms[0]?.type}
+                    <Snowflake className="w-3.5 h-3.5" /> / <Fan className="w-3.5 h-3.5" />
                   </span>
                 </div>
                 <div className="px-6 pb-6 grid gap-4" style={{ gridTemplateColumns: `repeat(${floorRooms.length}, minmax(0, 1fr))` }}>
@@ -199,6 +200,12 @@ const RoomManagement = () => {
                         {isOccupied ? (
                           <div className="space-y-1">
                             <p className="text-sm font-semibold text-gray-900 truncate" title={occ.name}>{occ.name}</p>
+                            {occ.roomType && (
+                              <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                {occ.roomType === 'A/C' ? <Snowflake className="w-3 h-3" /> : <Fan className="w-3 h-3" />}
+                                {occ.roomType} · ₹{getRoomRate(occ.roomType)}/day
+                              </p>
+                            )}
                             <p className="text-xs text-gray-600">
                               From <span className="font-medium">{occ.admissionDate ? formatDateOnly(occ.admissionDate) : '—'}</span>
                             </p>
@@ -223,6 +230,12 @@ const RoomManagement = () => {
                         ) : isReserved ? (
                           <div className="space-y-1">
                             <p className="text-sm font-semibold text-gray-900 truncate" title={reserved.name}>{reserved.name}</p>
+                            {reserved.roomType && (
+                              <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                {reserved.roomType === 'A/C' ? <Snowflake className="w-3 h-3" /> : <Fan className="w-3 h-3" />}
+                                {reserved.roomType} · ₹{getRoomRate(reserved.roomType)}/day
+                              </p>
+                            )}
                             <p className="text-xs text-gray-600">
                               Expected{' '}
                               <span className="font-medium">{reserved.appointmentDate ? formatDateOnly(reserved.appointmentDate) : '—'}</span>
@@ -230,7 +243,15 @@ const RoomManagement = () => {
                             <p className="text-[10px] text-amber-700 font-medium">Awaiting admission</p>
                           </div>
                         ) : (
-                          <p className="text-xs text-gray-500">Available now · ₹{room.rate}/day</p>
+                          <div className="text-xs text-gray-500">
+                            <p>Available now</p>
+                            {room.types.map(type => (
+                              <p key={type} className="flex items-center gap-1">
+                                {type === 'A/C' ? <Snowflake className="w-3 h-3" /> : <Fan className="w-3 h-3" />}
+                                {type} · ₹{ROOM_RATES[type]}/day
+                              </p>
+                            ))}
+                          </div>
                         )}
                       </button>
                     );

@@ -12,7 +12,7 @@ import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medi
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
-import { ROOMS } from '../lib/rooms';
+import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms, getReservedRoomForPatient } from '../lib/roomAvailability';
 
 const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
@@ -75,6 +75,7 @@ const emptyForm = () => ({
   caste: '',
 
   room_number: '',
+  room_type: '',
   admission_date: '',
   admission_time: '',
   discharge_date: '',
@@ -443,11 +444,12 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
         setForm(prev => ({ ...prev, ...data }));
       } else {
         // First time this patient's case sheet is opened — pre-fill the room
-        // from whichever IP appointment they were booked under, so front
-        // desk isn't picking the same room twice (once at booking, again here).
-        let roomNumber = '';
+        // (and its A/C/Non-A/C type) from whichever IP appointment they were
+        // booked under, so front desk isn't picking the same room twice
+        // (once at booking, again here).
+        let reservedRoom = { number: '', type: '' };
         try {
-          roomNumber = await getReservedRoomForPatient(patientId);
+          reservedRoom = await getReservedRoomForPatient(patientId);
         } catch (e) {
           console.error('Error loading room from linked appointment:', e);
         }
@@ -455,7 +457,8 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
           ...prev,
           admission_date: patient?.admission_date || '',
           physician_name: patient?.assigned_doctor || '',
-          room_number: roomNumber,
+          room_number: reservedRoom.number,
+          room_type: reservedRoom.type,
         }));
       }
     } catch (e) {
@@ -724,14 +727,17 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Room Number</label>
                       <select
-                        value={form.room_number}
-                        onChange={e => set('room_number', e.target.value)}
+                        value={form.room_number && form.room_type ? `${form.room_number}|${form.room_type}` : ''}
+                        onChange={e => {
+                          const { number, type } = parseRoomBookingKey(e.target.value);
+                          setForm(prev => ({ ...prev, room_number: number, room_type: type }));
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                       >
                         <option value="">Select Room</option>
-                        {ROOMS.filter(r => !occupiedRooms.has(r.number) || r.number === form.room_number).map(r => (
-                          <option key={r.number} value={r.number}>
-                            Room {r.number} ({r.type} — ₹{r.rate}/day)
+                        {ROOM_BOOKING_OPTIONS.filter(o => !occupiedRooms.has(o.number) || o.number === form.room_number).map(o => (
+                          <option key={o.key} value={o.key}>
+                            Room {o.number} ({o.type} — ₹{o.rate}/day)
                           </option>
                         ))}
                       </select>

@@ -3,7 +3,7 @@ import { X, Printer, Save, FileText, MessageSquare, Plus } from 'lucide-react';
 import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
-import { getRoomInfo, ROOMS } from '../lib/rooms';
+import { ROOMS, ROOM_TYPES, ROOM_RATES, getRoomRate } from '../lib/rooms';
 import { addDaysToDateString, todayLocalDateStr } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
 import { previewIframeStyle } from '../lib/printPreviewSize';
@@ -174,7 +174,6 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     getDoc(doc(db, 'ip_case_sheets', patientId)).then(snap => {
       if (!snap.exists()) return;
       const cs = snap.data();
-      const room = getRoomInfo(cs.room_number);
       const dischargeDate = cs.discharge_date
         || (patient?.admission_date && patient?.expected_stay_days != null
           ? addDaysToDateString(patient.admission_date, Number(patient.expected_stay_days))
@@ -186,7 +185,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
           // Sheet's admission_date (entered separately by the ward) is only
           // used to fill the gap when the patient record never got one.
           ...(!prev.admission_date && cs.admission_date ? { admission_date: cs.admission_date } : {}),
-          ...(room ? { room_number: room.number, room_type: room.type, room_rent: room.rate } : {}),
+          // Rate is a pure function of A/C vs Non-A/C (see rooms.js) — most
+          // rooms support either, so the type actually chosen at admission
+          // (stored on the case sheet) is what determines it, not the room
+          // number alone.
+          ...(cs.room_number ? { room_number: cs.room_number, room_type: cs.room_type || '', room_rent: getRoomRate(cs.room_type) || prev.room_rent } : {}),
           ...(dischargeDate ? { discharge_date: dischargeDate } : {}),
         };
         const stayDays = calcStayDays(updated.admission_date, updated.discharge_date);
@@ -791,17 +794,15 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                       value={formData.room_type}
                       onChange={(e) => {
                         const type = e.target.value;
-                        // A default rate for browsing by type before a specific
-                        // room is picked below — that Room Number selection is
-                        // what actually finalizes type + rate together, from
-                        // the same ROOMS list, so the two can never disagree.
-                        const match = ROOMS.find(r => r.type === type);
-                        setFormData({ ...formData, room_type: type, room_rent: match ? match.rate : formData.room_rent });
+                        // Rate is a pure function of type now — every room
+                        // except 23 offers both, so the room number alone
+                        // can't tell you the rate; the type picked here does.
+                        setFormData({ ...formData, room_type: type, room_rent: ROOM_RATES[type] || formData.room_rent });
                       }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                     >
                       <option value="">Select Type</option>
-                      {[...new Set(ROOMS.map(r => r.type))].map(type => (
+                      {ROOM_TYPES.map(type => (
                         <option key={type} value={type}>{type}</option>
                       ))}
                     </select>
@@ -810,14 +811,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                     <label className="block text-sm font-medium text-gray-700 mb-2">Room Number</label>
                     <select
                       value={formData.room_number || ''}
-                      onChange={(e) => {
-                        const room = getRoomInfo(e.target.value);
-                        setFormData({
-                          ...formData,
-                          room_number: e.target.value,
-                          ...(room ? { room_type: room.type, room_rent: room.rate } : {}),
-                        });
-                      }}
+                      onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                     >
                       <option value="">Select</option>

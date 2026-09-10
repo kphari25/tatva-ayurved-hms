@@ -8,7 +8,7 @@ import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, col
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
-import { ROOMS } from '../lib/rooms';
+import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms } from '../lib/roomAvailability';
 import PatientRegistrationNew from './PatientRegistrationNew';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
@@ -18,19 +18,23 @@ const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 const toTimeStr = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 // Available-rooms dropdown shared by both booking modals — a select of
-// currently-free rooms (plus whatever room is already picked, so editing
-// doesn't drop it), with pricing shown per option like the IP Case Sheet's.
-const RoomSelect = ({ value, onChange, occupiedRooms }) => (
+// currently-free (room, A/C-or-Non-A/C) combinations (plus whatever one is
+// already picked, so editing doesn't drop it), with pricing shown per option
+// like the IP Case Sheet's. `value` is the room number; `onChange` gets back
+// both the room number and its chosen type together, since one physical room
+// can be booked under either type it supports (except Room 23 — Non-A/C
+// only) and the type is what actually determines the rate.
+const RoomSelect = ({ value, type, onChange, occupiedRooms }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">🛏️ Room Number</label>
     <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
+      value={value && type ? `${value}|${type}` : ''}
+      onChange={(e) => onChange(parseRoomBookingKey(e.target.value))}
       className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
     >
       <option value="">— Select Room —</option>
-      {ROOMS.filter(r => !occupiedRooms.has(r.number) || r.number === value).map(r => (
-        <option key={r.number} value={r.number}>Room {r.number} ({r.type} — ₹{r.rate}/day)</option>
+      {ROOM_BOOKING_OPTIONS.filter(o => !occupiedRooms.has(o.number) || o.number === value).map(o => (
+        <option key={o.key} value={o.key}>Room {o.number} ({o.type} — ₹{o.rate}/day)</option>
       ))}
     </select>
     {ROOMS.every(r => occupiedRooms.has(r.number) && r.number !== value) && (
@@ -89,6 +93,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     therapistIds: appointment?.therapistIds || (appointment?.therapistId ? [appointment.therapistId] : []),
     therapistNames: appointment?.therapistNames || (appointment?.therapistName ? [appointment.therapistName] : []),
     roomNumber: appointment?.room_number || '',
+    roomType: appointment?.room_type || '',
     sendSms: false,
   });
   const [error, setError] = useState('');
@@ -146,6 +151,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
         therapistIds: formData.therapistIds,
         therapistNames: formData.therapistNames,
         roomNumber: formData.roomNumber,
+        roomType: formData.roomType,
         sendSms: formData.sendSms,
       });
     }
@@ -289,7 +295,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
           {formData.type === 'IP' && (
             <RoomSelect
               value={formData.roomNumber}
-              onChange={(v) => setFormData({ ...formData, roomNumber: v })}
+              type={formData.roomType}
+              onChange={({ number, type }) => setFormData({ ...formData, roomNumber: number, roomType: type })}
               occupiedRooms={occupiedRooms}
             />
           )}
@@ -365,6 +372,7 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
     therapistIds: initialFields?.therapistIds || [],
     therapistNames: initialFields?.therapistNames || [],
     roomNumber: initialFields?.roomNumber || '',
+    roomType: initialFields?.roomType || '',
     sendSms: initialFields?.sendSms || false,
   });
   const [error, setError] = useState('');
@@ -468,7 +476,8 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
           {isIP && (
             <RoomSelect
               value={fields.roomNumber}
-              onChange={(v) => setFields({ ...fields, roomNumber: v })}
+              type={fields.roomType}
+              onChange={({ number, type }) => setFields({ ...fields, roomNumber: number, roomType: type })}
               occupiedRooms={occupiedRooms}
             />
           )}
@@ -919,6 +928,7 @@ const Dashboard = () => {
           therapistIds: formData.therapistIds || [],
           therapistNames: formData.therapistNames || [],
           room_number: formData.type === 'IP' ? (formData.roomNumber || '') : '',
+          room_type: formData.type === 'IP' ? (formData.roomType || '') : '',
         });
 
         if (editingAppointment.lead_id) {
@@ -948,6 +958,7 @@ const Dashboard = () => {
           therapistIds: formData.therapistIds || [],
           therapistNames: formData.therapistNames || [],
           room_number: formData.type === 'IP' ? (formData.roomNumber || '') : '',
+          room_type: formData.type === 'IP' ? (formData.roomType || '') : '',
           createdAt: new Date().toISOString()
         });
 
@@ -1062,6 +1073,7 @@ const Dashboard = () => {
         therapistIds: fields.therapistIds || [],
         therapistNames: fields.therapistNames || [],
         room_number: isIPBooking ? (fields.roomNumber || '') : '',
+        room_type: isIPBooking ? (fields.roomType || '') : '',
         createdAt: new Date().toISOString(),
       });
 

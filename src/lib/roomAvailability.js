@@ -20,19 +20,20 @@ export const getOccupiedRooms = async (excludePatientId) => {
   return occupied;
 };
 
-// The room this patient's most recent IP appointment was booked into, if
-// that room is still actually free — the appointment's own availability
-// check only looks at admitted patients, so a different pending admission
-// could have claimed it since. Returns '' when there's no booked room or it
-// was taken in the meantime.
+// The room (and A/C vs Non-A/C type) this patient's most recent IP
+// appointment was booked into, if that room is still actually free — the
+// appointment's own availability check only looks at admitted patients, so a
+// different pending admission could have claimed it since. Returns
+// { number: '', type: '' } when there's no booked room or it was taken in
+// the meantime.
 export const getReservedRoomForPatient = async (patientId) => {
   const apptSnap = await getDocs(query(collection(db, 'appointments'), where('patient_id', '==', patientId), where('type', '==', 'IP')));
   const withRoom = apptSnap.docs.map(d => d.data()).filter(a => a.room_number);
   withRoom.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  const bookedRoom = withRoom[0]?.room_number || '';
-  if (!bookedRoom) return '';
+  const booked = withRoom[0];
+  if (!booked?.room_number) return { number: '', type: '' };
   const occupied = await getOccupiedRooms(patientId);
-  return occupied.has(bookedRoom) ? '' : bookedRoom;
+  return occupied.has(booked.room_number) ? { number: '', type: '' } : { number: booked.room_number, type: booked.room_type || '' };
 };
 
 // Called the moment a pending IP patient is actually admitted (Patient
@@ -43,12 +44,13 @@ export const getReservedRoomForPatient = async (patientId) => {
 // occupied. Never overwrites a room already recorded on an existing case
 // sheet (e.g. staff picked a different one there before admitting).
 export const applyReservedRoomOnAdmission = async (patientId, patient) => {
-  const roomNumber = await getReservedRoomForPatient(patientId);
+  const { number: roomNumber, type: roomType } = await getReservedRoomForPatient(patientId);
   if (!roomNumber) return;
   const existing = await getDoc(doc(db, 'ip_case_sheets', patientId));
   if (existing.exists() && existing.data().room_number) return;
   await setDoc(doc(db, 'ip_case_sheets', patientId), {
     room_number: roomNumber,
+    room_type: roomType,
     ...(existing.exists() ? {} : {
       admission_date: patient?.admission_date || '',
       physician_name: patient?.assigned_doctor || '',

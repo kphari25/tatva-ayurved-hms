@@ -6,7 +6,7 @@ import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, APP
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
-import { ROOMS } from '../lib/rooms';
+import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms } from '../lib/roomAvailability';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
 
@@ -69,7 +69,7 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
           therapistIds: initialData.therapistIds || (initialData.therapistId ? [initialData.therapistId] : []),
           therapistNames: initialData.therapistNames || (initialData.therapistName ? [initialData.therapistName] : []),
         }
-      : { patient: '', time: '', type: '', date: todayISO(), called_in_date: toDateStr(new Date()), called_in_time: toTimeStr(new Date()), status: 'scheduled', therapistIds: [], therapistNames: [], doctorId: '', doctorName: '', patientId: '', room_number: '' }
+      : { patient: '', time: '', type: '', date: todayISO(), called_in_date: toDateStr(new Date()), called_in_time: toTimeStr(new Date()), status: 'scheduled', therapistIds: [], therapistNames: [], doctorId: '', doctorName: '', patientId: '', room_number: '', room_type: '' }
   );
   const [error, setError] = useState('');
   const [occupiedRooms, setOccupiedRooms] = useState(new Set());
@@ -246,13 +246,16 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">🛏️ Room Number</label>
               <select
-                value={formData.room_number || ''}
-                onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
+                value={formData.room_number && formData.room_type ? `${formData.room_number}|${formData.room_type}` : ''}
+                onChange={(e) => {
+                  const { number, type } = parseRoomBookingKey(e.target.value);
+                  setFormData({ ...formData, room_number: number, room_type: type });
+                }}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">— Select Room —</option>
-                {ROOMS.filter(r => !occupiedRooms.has(r.number) || r.number === formData.room_number).map(r => (
-                  <option key={r.number} value={r.number}>Room {r.number} ({r.type} — ₹{r.rate}/day)</option>
+                {ROOM_BOOKING_OPTIONS.filter(o => !occupiedRooms.has(o.number) || o.number === formData.room_number).map(o => (
+                  <option key={o.key} value={o.key}>Room {o.number} ({o.type} — ₹{o.rate}/day)</option>
                 ))}
               </select>
               {ROOMS.every(r => occupiedRooms.has(r.number) && r.number !== formData.room_number) && (
@@ -816,6 +819,7 @@ const AppointmentScheduling = () => {
         doctorId: formData.doctorId || '',
         doctorName: formData.doctorName || '',
         room_number: isIPBooking ? (formData.room_number || '') : '',
+        room_type: isIPBooking ? (formData.room_type || '') : '',
       };
       if (editingAppointment) {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), payload);

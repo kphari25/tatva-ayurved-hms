@@ -13,7 +13,7 @@ import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { addDaysToDateString, formatDateOnly } from '../lib/formatDate';
-import { ROOMS } from '../lib/rooms';
+import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms, applyReservedRoomOnAdmission } from '../lib/roomAvailability';
 import DischargeSummaryModal from './DischargeSummaryModal';
 import IPDailyProgressModal from './IPDailyProgressModal';
@@ -94,6 +94,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     duration_minutes: 30,
     notes: '',
     room_number: '',
+    room_type: '',
     send_sms_patient: true,
     send_sms_doctor: true,
   });
@@ -203,6 +204,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
         duration_minutes: apptForm.duration_minutes,
         notes: apptForm.notes,
         room_number: appointmentPatient.patient_type === 'IP' ? (apptForm.room_number || '') : '',
+        room_type: appointmentPatient.patient_type === 'IP' ? (apptForm.room_type || '') : '',
         status: 'scheduled',
         createdAt: new Date().toISOString(),
         created_at: new Date().toISOString(),
@@ -1199,13 +1201,16 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         <BedDouble className="w-4 h-4 inline mr-1" />Room Number
                       </label>
                       <select
-                        value={apptForm.room_number}
-                        onChange={e => setApptForm(f => ({ ...f, room_number: e.target.value }))}
+                        value={apptForm.room_number && apptForm.room_type ? `${apptForm.room_number}|${apptForm.room_type}` : ''}
+                        onChange={e => {
+                          const { number, type } = parseRoomBookingKey(e.target.value);
+                          setApptForm(f => ({ ...f, room_number: number, room_type: type }));
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
                       >
                         <option value="">-- Select Room --</option>
-                        {ROOMS.filter(r => !apptOccupiedRooms.has(r.number) || r.number === apptForm.room_number).map(r => (
-                          <option key={r.number} value={r.number}>Room {r.number} ({r.type} — ₹{r.rate}/day)</option>
+                        {ROOM_BOOKING_OPTIONS.filter(o => !apptOccupiedRooms.has(o.number) || o.number === apptForm.room_number).map(o => (
+                          <option key={o.key} value={o.key}>Room {o.number} ({o.type} — ₹{o.rate}/day)</option>
                         ))}
                       </select>
                       {ROOMS.every(r => apptOccupiedRooms.has(r.number) && r.number !== apptForm.room_number) && (
