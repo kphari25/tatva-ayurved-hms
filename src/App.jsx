@@ -58,7 +58,10 @@ function App() {
   const [initialInvoicePatientId, setInitialInvoicePatientId] = useState(null);
   const [registrationPrefillData, setRegistrationPrefillData] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [hideAdminSection, setHideAdminSection] = useState(false);
+  // Defaults to hidden (not false) so there's no flash of the Administration
+  // menu before the Firestore listener resolves — see appSettings.js for why
+  // hidden is the fallback everywhere else too.
+  const [hideAdminSection, setHideAdminSection] = useState(true);
   const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
   const [unlockCodeInput, setUnlockCodeInput] = useState('');
   const [unlockError, setUnlockError] = useState('');
