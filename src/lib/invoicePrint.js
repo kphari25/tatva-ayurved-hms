@@ -94,25 +94,25 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
   <title>Invoice - ${data.invoice_number || data.patient_name || data.mrd_number || data.patient_number}</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 12px; padding-bottom: 190px; }
+    body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 14px; padding-bottom: 200px; }
     @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
     .header img { height: 42px; }
     .header-text { text-align: left; }
-    .header h1 { color: #14b8a6; margin: 0; font-size: 18px; }
-    .header .tagline { color: #666; font-size: 10px; margin: 1px 0; }
+    .header h1 { color: #14b8a6; margin: 0; font-size: 21px; }
+    .header .tagline { color: #666; font-size: 12px; margin: 1px 0; }
     .info { display: flex; justify-content: space-between; margin-bottom: 12px; }
     .info-box { flex: 1; }
-    .info-box h3 { margin: 0 0 6px 0; color: #14b8a6; font-size: 13px; }
+    .info-box h3 { margin: 0 0 6px 0; color: #14b8a6; font-size: 15px; }
     .info-box p { margin: 2px 0; }
-    .badge { display: inline-block; padding: 4px 14px; background: #14b8a6; color: white; border-radius: 5px; font-weight: bold; font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
-    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+    .badge { display: inline-block; padding: 4px 14px; background: #14b8a6; color: white; border-radius: 5px; font-weight: bold; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    th, td { border: 1px solid #ddd; padding: 7px 8px; text-align: left; }
     th { background: #14b8a6; color: white; }
-    .totals { float: right; width: 280px; margin-top: 12px; }
+    .totals { float: right; width: 300px; margin-top: 12px; }
     .totals table { margin: 0; }
-    .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 15px; }
+    .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 17px; }
     /* Doctor signature + thank-you note + hospital address stay pinned to
        the bottom of the printed page, same treatment as the prescription
        and medicine-sale printouts. */
@@ -122,10 +122,10 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
-    .sig-block .doctor-name { font-weight: bold; font-size: 12px; }
-    .sig-block .reg { font-size: 10px; color: #555; }
-    .thank-you { text-align: center; font-size: 11px; color: #888; margin-bottom: 10px; }
-    .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
+    .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
+    .sig-block .reg { font-size: 12px; color: #555; }
+    .thank-you { text-align: center; font-size: 13px; color: #888; margin-bottom: 10px; }
+    .page-footer { text-align: center; font-size: 12px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
     .footer-bar { height: 6px; background: #14b8a6; margin-top: 10px; }
   </style>
 </head>
@@ -176,7 +176,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     <tbody>
       ${data.registration_fee > 0 ? `
         <tr style="background:#f0fdfa;">
-          <td><strong>Registration Fee</strong>${data.reg_fee_already_paid ? ' <span style="font-size:10px;color:#0d9488;font-style:italic;">(already paid at registration)</span>' : ''}</td>
+          <td><strong>Registration Fee</strong>${data.reg_fee_already_paid ? ' <span style="font-size:12px;color:#0d9488;font-style:italic;">(already paid at registration)</span>' : ''}</td>
           <td>-</td>
           <td>-</td>
           <td>₹${data.registration_fee.toFixed(2)}</td>
