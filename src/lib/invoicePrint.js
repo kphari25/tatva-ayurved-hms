@@ -111,10 +111,10 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
-    .header img { height: 42px; }
+    .header img { height: 60px; }
     .header-text { text-align: left; }
-    .header h1 { color: #14b8a6; margin: 0; font-size: 21px; }
-    .header .tagline { color: #666; font-size: 12px; margin: 1px 0; }
+    .header h1 { color: #14b8a6; margin: 0; font-size: 26px; }
+    .header .tagline { color: #666; font-size: 14px; margin: 1px 0; }
     .info { display: flex; justify-content: space-between; margin-bottom: 12px; }
     .info-box { flex: 1; }
     .info-box h3 { margin: 0 0 6px 0; color: #14b8a6; font-size: 15px; }
@@ -138,7 +138,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
     .sig-block .reg { font-size: 12px; color: #555; }
     .thank-you { text-align: center; font-size: 13px; color: #888; margin-bottom: 10px; }
-    .page-footer { text-align: center; font-size: 12px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
+    .page-footer { text-align: center; font-size: 15px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
     .footer-bar { height: 6px; background: #14b8a6; margin-top: 10px; }
   </style>
 </head>
