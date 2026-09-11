@@ -694,7 +694,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                           type="button"
                           onClick={() => setTreatmentDisplay(opt.value)}
                           title={
-                            opt.value === 'itemized' ? 'Every treatment on its own line, with date and price'
+                            opt.value === 'itemized' ? 'Every distinct treatment on its own line, with quantity, rate, and amount = quantity × rate'
                               : opt.value === 'by_day' ? 'One line per day, treatment names grouped together'
                                 : 'One lump total line — no per-treatment breakdown'
                           }

@@ -32,7 +32,10 @@ const pageMarginFor = (pageSize) => (pageSize === 'A5' ? { v: '10mm', h: '8mm' }
 // one flat list:
 //   'summary' — one row, the old behavior, for when the total is all that matters.
 //   'by_day'  — one row per date, treatment names joined together with a day subtotal.
-//   'itemized' (default) — one row per treatment, its own date and price.
+//   'itemized' (default) — one row per distinct treatment, its Quantity/Days
+//     column holding an actual count (e.g. Abhyangam given on 3 different
+//     days prints as one "Abhyangam · 3 · rate · rate×3" line) rather than a
+//     date, so Amount is always a real Quantity × Rate multiplication.
 const buildTreatmentRows = (data) => {
   const items = data.treatment_items || [];
   if (items.length === 0) return '';
@@ -71,13 +74,23 @@ const buildTreatmentRows = (data) => {
     }).join('');
   }
 
-  // itemized — one treatment per row, so its rate and amount are the same figure.
-  return items.map(it => `
+  // itemized — group same-name-and-rate occurrences into one row with a
+  // real quantity (grouping on rate too, not just name, so a price change
+  // between visits still lands on its own correctly-priced line rather
+  // than being averaged away).
+  const groups = {};
+  items.forEach(it => {
+    const rate = Number(it.price) || 0;
+    const key = `${it.name}__${rate}`;
+    if (!groups[key]) groups[key] = { name: it.name, rate, qty: 0 };
+    groups[key].qty += 1;
+  });
+  return Object.values(groups).map(g => `
     <tr>
-      <td>${it.name}</td>
-      <td>${it.date ? formatDateOnly(it.date) : '-'}</td>
-      <td>₹${Number(it.price || 0).toFixed(2)}</td>
-      <td>₹${Number(it.price || 0).toFixed(2)}</td>
+      <td>${g.name}</td>
+      <td>${g.qty}</td>
+      <td>₹${g.rate.toFixed(2)}</td>
+      <td>₹${(g.qty * g.rate).toFixed(2)}</td>
     </tr>
   `).join('');
 };
