@@ -100,7 +100,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
 </head>
 <body>
   <div class="header">
-    <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'" style="height:70px;margin-bottom:6px">
+    <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'" style="height:95px;margin-bottom:6px">
     <h1>${HOSPITAL.name}</h1>
     <div class="tagline">${HOSPITAL.tagline}</div>
   </div>
