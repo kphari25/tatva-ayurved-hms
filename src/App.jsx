@@ -40,6 +40,14 @@ import HRPayrollModule from './components/HRPayrollModule';
 import UserActivityReport from './components/UserActivityReport';
 import Reports from './components/Reports';
 import DatabaseBackupRestore from './components/DatabaseBackupRestore';
+import { subscribeAdminSectionHidden, setAdminSectionHidden } from './lib/appSettings';
+
+// Gates only *showing* the Administration menu again — hiding it needs no
+// gate, since that only narrows what a shared login can reach. This is a
+// speed bump against casual staff un-hiding it themselves while everyone
+// shares one admin login, not a real access control (anyone with that
+// login already has full data access regardless of this menu).
+const ADMIN_SECTION_UNLOCK_CODE = '2304';
 
 function App() {
   // DEBUG VERSION - Updated 2026-05-22 - New Patient Button Fix
@@ -50,7 +58,16 @@ function App() {
   const [initialInvoicePatientId, setInitialInvoicePatientId] = useState(null);
   const [registrationPrefillData, setRegistrationPrefillData] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hideAdminSection, setHideAdminSection] = useState(false);
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
+  const [unlockCodeInput, setUnlockCodeInput] = useState('');
+  const [unlockError, setUnlockError] = useState('');
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeAdminSectionHidden(setHideAdminSection);
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     // Check for existing session
@@ -202,6 +219,32 @@ function App() {
     }
   };
 
+  // Hiding needs no gate — it only narrows access. Showing the section
+  // again is what needs the passcode, so a passcode prompt opens instead
+  // of toggling immediately whenever the section is currently hidden.
+  const handleAdminSectionToggleClick = () => {
+    if (hideAdminSection) {
+      setUnlockCodeInput('');
+      setUnlockError('');
+      setShowUnlockPrompt(true);
+    } else {
+      setAdminSectionHidden(true);
+    }
+  };
+
+  const handleUnlockSubmit = (e) => {
+    e.preventDefault();
+    if (unlockCodeInput === ADMIN_SECTION_UNLOCK_CODE) {
+      setAdminSectionHidden(false);
+      setShowUnlockPrompt(false);
+      setUnlockCodeInput('');
+      setUnlockError('');
+    } else {
+      setUnlockError('Incorrect passcode.');
+      setUnlockCodeInput('');
+    }
+  };
+
   const hasPermission = (permission) => {
     if (!currentUser) return false;
     // System admin / admin role has full access
@@ -228,6 +271,8 @@ function App() {
     return <Login onLogin={handleLogin} />;
   }
 
+  const isAdminRole = currentUser.role === 'system_admin' || currentUser.role === 'admin' || currentUser.role === 'Admin';
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, moduleId: 'dashboard' },
     { id: 'patients', label: 'Patient Portal', icon: Users, moduleId: 'patients' },
@@ -251,14 +296,17 @@ function App() {
     { id: 'mess-expense', label: 'Mess Expense', icon: ShoppingCart, moduleId: 'mess-expense' },
     { id: 'diet-module', label: 'Diet Plans', icon: Utensils, moduleId: 'diet-module' },
     
-    // Admin Only Section
-    { id: 'admin-section', label: 'Administration', icon: null, isSectionHeader: true, adminOnly: true },
-    { id: 'profit-loss', label: 'P&L Statement', icon: IndianRupee, moduleId: 'profit-loss' },
-    { id: 'financials', label: 'Financials', icon: Wallet, moduleId: 'financials' },
-    { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, moduleId: 'hr-payroll', badge: 'Admin' },
-    { id: 'user-activity', label: 'User Activity', icon: History, moduleId: 'user-activity', badge: 'Admin' },
-    { id: 'user-management', label: 'User Management', icon: UserCog, moduleId: 'user-management', badge: 'Admin' },
-    { id: 'database-backup', label: 'Database Backup', icon: Database, moduleId: 'user-management', badge: 'Admin' },
+    // Admin Only Section — every item here also carries section:
+    // 'administration' so the whole group can be hidden at once via the
+    // shared hide_admin_section toggle (see the User Info block below),
+    // independent of the per-item canAccess() permission check.
+    { id: 'admin-section', label: 'Administration', icon: null, isSectionHeader: true, adminOnly: true, section: 'administration' },
+    { id: 'profit-loss', label: 'P&L Statement', icon: IndianRupee, moduleId: 'profit-loss', section: 'administration' },
+    { id: 'financials', label: 'Financials', icon: Wallet, moduleId: 'financials', section: 'administration' },
+    { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, moduleId: 'hr-payroll', badge: 'Admin', section: 'administration' },
+    { id: 'user-activity', label: 'User Activity', icon: History, moduleId: 'user-activity', badge: 'Admin', section: 'administration' },
+    { id: 'user-management', label: 'User Management', icon: UserCog, moduleId: 'user-management', badge: 'Admin', section: 'administration' },
+    { id: 'database-backup', label: 'Database Backup', icon: Database, moduleId: 'user-management', badge: 'Admin', section: 'administration' },
   ];
 
   return (
@@ -315,6 +363,20 @@ function App() {
               <p className="text-xs text-teal-200 truncate">{currentUser.role || 'Staff'}</p>
             </div>
           </div>
+          {/* Lives outside the Administration section on purpose — it has to
+              stay reachable even while that section is hidden, since this is
+              the only way to bring it back. */}
+          {isAdminRole && (
+            <button
+              onClick={handleAdminSectionToggleClick}
+              className="mt-3 w-full text-left text-[11px] text-teal-200 hover:text-white underline decoration-dotted underline-offset-2"
+              title={hideAdminSection
+                ? 'Administration menu is hidden while staff share this login — click to show it again (passcode required)'
+                : 'Hide the Administration menu (P&L, Financials, HR & Payroll, User Activity, User Management, Database Backup) while staff share this login'}
+            >
+              {hideAdminSection ? '👁 Show Administration menu' : '🙈 Hide Administration menu'}
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
@@ -323,6 +385,7 @@ function App() {
             // Section headers
             if (item.isSectionHeader) {
               if (item.adminOnly && !canAccess('user-management')) return null;
+              if (item.section === 'administration' && hideAdminSection && isAdminRole) return null;
               return (
                 <div key={item.id} className="px-4 py-2 mt-4">
                   <p className="text-xs font-semibold text-teal-300 uppercase tracking-wider">
@@ -334,6 +397,7 @@ function App() {
 
             // Check permissions - use role-based access
             if (item.moduleId && !canAccess(item.moduleId)) return null;
+            if (item.section === 'administration' && hideAdminSection && isAdminRole) return null;
 
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -458,6 +522,44 @@ function App() {
         
         {currentView === 'database-backup' && <DatabaseBackupRestore />}
       </div>
+
+      {showUnlockPrompt && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Show Administration menu</h3>
+            <p className="text-sm text-gray-500 mb-4">Enter the passcode to bring it back.</p>
+            <form onSubmit={handleUnlockSubmit}>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoFocus
+                value={unlockCodeInput}
+                onChange={(e) => { setUnlockCodeInput(e.target.value); setUnlockError(''); }}
+                className={`w-full px-4 py-2 border rounded-lg mb-1 focus:outline-none focus:ring-2 ${
+                  unlockError ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-teal-500'
+                }`}
+                placeholder="Passcode"
+              />
+              {unlockError && <p className="text-xs text-red-600 mb-3">{unlockError}</p>}
+              <div className="flex justify-end gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => { setShowUnlockPrompt(false); setUnlockCodeInput(''); setUnlockError(''); }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                >
+                  Unlock
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
