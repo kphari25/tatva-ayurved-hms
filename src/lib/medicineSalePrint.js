@@ -1,3 +1,5 @@
+import { formatDateOnly } from './formatDate';
+
 export const HOSPITAL = {
   name: 'Tatva Ayurved',
   tagline: 'Ayurveda for Health & Happiness',
@@ -115,7 +117,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
     </div>
     <div class="info-block" style="text-align:right">
       <div><b>Bill No:</b> ${saleData.bill_number}</div>
-      <div><b>Date:</b> ${new Date(saleData.sale_date).toLocaleDateString('en-IN')}</div>
+      <div><b>Date:</b> ${formatDateOnly(saleData.sale_date, { day: 'numeric', month: 'numeric', year: 'numeric' })}</div>
       <div><b>Payment:</b> ${saleData.payment_mode}</div>
     </div>
   </div>

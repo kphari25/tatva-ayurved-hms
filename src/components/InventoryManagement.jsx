@@ -10,6 +10,7 @@ import AddMedicine from './AddMedicine';
 import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 import { previewIframeStyle } from '../lib/printPreviewSize';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
+import { formatDateOnly } from '../lib/formatDate';
 
 // Matches an Excel "GST Category" cell against a known category by key
 // ("standard"), full label ("Standard (Ayurvedic Medicine)"), or the short
@@ -824,7 +825,7 @@ const InventoryManagement = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {getPurchaseDate(item) ? new Date(getPurchaseDate(item)).toLocaleDateString() : '-'}
+                        {getPurchaseDate(item) ? formatDateOnly(getPurchaseDate(item), { day: 'numeric', month: 'numeric', year: 'numeric' }) : '-'}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
                         {getDaysInInventory(item) !== null ? `${getDaysInInventory(item)} day${getDaysInInventory(item) === 1 ? '' : 's'}` : '-'}
@@ -955,7 +956,7 @@ const InventoryManagement = () => {
                                 </span>
 
                                 <span className="text-gray-600">Date of Purchase:</span>
-                                <span className="font-medium">{getPurchaseDate(item) ? new Date(getPurchaseDate(item)).toLocaleDateString() : '-'}</span>
+                                <span className="font-medium">{getPurchaseDate(item) ? formatDateOnly(getPurchaseDate(item), { day: 'numeric', month: 'numeric', year: 'numeric' }) : '-'}</span>
 
                                 <span className="text-gray-600">Days in Inventory:</span>
                                 <span className="font-medium">{getDaysInInventory(item) !== null ? `${getDaysInInventory(item)} day${getDaysInInventory(item) === 1 ? '' : 's'}` : '-'}</span>
@@ -1014,7 +1015,7 @@ const InventoryManagement = () => {
                                   <tbody className="divide-y divide-gray-100">
                                     {[...item.batches].sort((a, b) => (b.purchase_date || '').localeCompare(a.purchase_date || '')).map((b, i) => (
                                       <tr key={i}>
-                                        <td className="px-3 py-2">{b.purchase_date ? new Date(b.purchase_date).toLocaleDateString() : '-'}</td>
+                                        <td className="px-3 py-2">{b.purchase_date ? formatDateOnly(b.purchase_date, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '-'}</td>
                                         <td className="px-3 py-2">{b.batch_number || '-'}</td>
                                         <td className="px-3 py-2 text-right">{b.quantity ?? '-'}</td>
                                         <td className="px-3 py-2 text-right">₹{(b.purchase_price || 0).toFixed(2)}</td>
@@ -1060,7 +1061,7 @@ const InventoryManagement = () => {
                                     <tbody className="divide-y divide-gray-100">
                                       {sales.map((s, i) => (
                                         <tr key={i}>
-                                          <td className="px-3 py-2">{s.sale_date ? new Date(s.sale_date).toLocaleDateString() : '-'}</td>
+                                          <td className="px-3 py-2">{s.sale_date ? formatDateOnly(s.sale_date, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '-'}</td>
                                           <td className="px-3 py-2 font-medium">
                                             {s.bill_number && s.sale_id ? (
                                               <button
