@@ -302,36 +302,36 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
   <title>Discharge Summary – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; padding-bottom: 140px; }
+    body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #000; background: #fff; padding-bottom: 170px; }
     @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     @media print { body { -webkit-print-color-adjust: exact; } }
 
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 10px; }
-    .logo-block { min-width: 160px; }
-    .logo-block img { height: 48px; margin-bottom: 4px; }
-    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
-    .logo-block .tagline { font-size: 9px; color: #666; }
-    .contact-block { text-align: right; font-size: 10px; line-height: 1.6; }
-    .contact-block .reg { font-size: 9px; color: #555; }
+    .logo-block { min-width: 190px; }
+    .logo-block img { height: 60px; margin-bottom: 4px; }
+    .logo-block .brand { font-size: 22px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
+    .logo-block .tagline { font-size: 12px; color: #666; }
+    .contact-block { text-align: right; font-size: 13px; line-height: 1.6; }
+    .contact-block .reg { font-size: 11px; color: #555; }
 
-    .title { text-align: center; font-size: 15px; font-weight: bold; text-decoration: underline; margin: 8px 0 12px; letter-spacing: 1px; }
+    .title { text-align: center; font-size: 19px; font-weight: bold; text-decoration: underline; margin: 8px 0 12px; letter-spacing: 1px; }
 
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 10px; }
     .info-left, .info-right { padding: 0 6px; }
-    .info-row { display: flex; gap: 4px; margin-bottom: 4px; font-size: 11px; }
-    .info-label { font-weight: bold; min-width: 120px; }
+    .info-row { display: flex; gap: 4px; margin-bottom: 5px; font-size: 14px; }
+    .info-label { font-weight: bold; min-width: 145px; }
 
-    .section-title { font-size: 12px; font-weight: bold; margin: 10px 0 5px; text-transform: uppercase; }
-    ul { margin-left: 18px; }
-    ul li { margin-bottom: 2px; }
+    .section-title { font-size: 15px; font-weight: bold; margin: 12px 0 6px; text-transform: uppercase; }
+    ul { margin-left: 20px; }
+    ul li { margin-bottom: 3px; }
 
-    table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
-    table.grid th, table.grid td { border: 1px solid #aaa; padding: 4px 8px; }
+    table.grid { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 14px; }
+    table.grid th, table.grid td { border: 1px solid #aaa; padding: 6px 8px; }
     table.grid th { background: #f0f0f0; font-weight: bold; }
 
-    table.med-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 8px; }
-    table.med-table th, table.med-table td { border: 1px solid #ccc; padding: 2px 4px; text-align: left; }
+    table.med-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
+    table.med-table th, table.med-table td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
     table.med-table th { background: #f5f5f5; font-weight: 600; }
 
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -344,10 +344,10 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
       .footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; background: #fff; }
     }
     .sig-block { text-align: right; }
-    .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
-    .sig-block .doctor-name { font-weight: bold; font-size: 11px; }
-    .sig-block .reg { font-size: 9px; color: #555; }
-    .prepared-by { font-size: 10px; line-height: 1.6; }
+    .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
+    .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
+    .sig-block .reg { font-size: 12px; color: #555; }
+    .prepared-by { font-size: 13px; line-height: 1.6; }
   </style>
 </head>
 <body>
@@ -473,7 +473,7 @@ ${form.internal_medicines.filter(Boolean).length ? `
 
 ${(form.daily_treatments || []).filter(t => t.treatment || t.medicines).length ? `
 <p style="font-style:italic;font-weight:bold;margin:8px 0 4px;">Daily Treatment Log:</p>
-<table class="grid" style="font-size:11px;">
+<table class="grid">
   <thead>
     <tr>
       <th style="width:90px;">Date</th>
@@ -565,7 +565,7 @@ ${form.remarks ? `<div class="section-title">Remarks</div><p>${form.remarks}</p>
     ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
     ${doctorInfo.designation ? `<p class="reg">${doctorInfo.designation}</p>` : ''}
     ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
-    <p style="font-size:10px;margin-top:2px;">Signature of Medical Superintendent</p>
+    <p style="font-size:12px;margin-top:2px;">Signature of Medical Superintendent</p>
   </div>
 </div>
 
