@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { db, auth } from './lib/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
 
 // Session dates are bucketed by IST calendar day (not UTC), so a login just after
 // midnight IST doesn't get mis-filed under the previous day in the User Activity report.
@@ -66,6 +66,10 @@ function App() {
   const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
   const [unlockCodeInput, setUnlockCodeInput] = useState('');
   const [unlockError, setUnlockError] = useState('');
+  // True until Firebase Auth's own session-restore check resolves — Firestore
+  // rules now require request.auth, so a saved localStorage session is only
+  // trusted once we know there's a real Firebase Auth session behind it too.
+  const [checkingSession, setCheckingSession] = useState(true);
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
   useEffect(() => {
@@ -73,24 +77,39 @@ function App() {
     return unsubscribe;
   }, []);
 
+  // Restores a saved session only once Firebase Auth confirms it has a real
+  // signed-in user behind it — a session saved before this app started
+  // signing into Firebase Auth (or one whose Firebase session has otherwise
+  // expired/been revoked) has no way to read or write Firestore anymore, so
+  // it's cleared here and the user is sent back to Login for a fresh one.
   useEffect(() => {
-    // Check for existing session
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        // Resume tracking the existing login session rather than starting a new one on refresh
-        if (!sessionIdRef.current) {
-          startSession(user);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      const savedUser = localStorage.getItem('currentUser');
+      if (savedUser) {
+        if (firebaseUser) {
+          try {
+            const user = JSON.parse(savedUser);
+            setCurrentUser(user);
+            // Resume tracking the existing login session rather than starting a new one on refresh
+            if (!sessionIdRef.current) {
+              startSession(user);
+            }
+          } catch (error) {
+            console.error('Error parsing saved user:', error);
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('sessionToken');
+          }
+        } else {
+          localStorage.removeItem('currentUser');
+          localStorage.removeItem('sessionToken');
         }
-      } catch (error) {
-        console.error('Error parsing saved user:', error);
-        localStorage.removeItem('currentUser');
-        localStorage.removeItem('sessionToken');
       }
-    }
+      setCheckingSession(false);
+    });
+    return unsubscribe;
+  }, []);
 
+  useEffect(() => {
     // Listen for navigation events from Dashboard
     const handleNavigate = (event) => {
       setCurrentView(event.detail);
@@ -272,6 +291,16 @@ function App() {
     const userPerms = getUserPermissions(currentUser);
     return userPerms.includes(moduleId);
   };
+
+  // Briefly shown while Firebase Auth's own session-restore check resolves —
+  // avoids flashing the Login screen for someone who's actually still logged in.
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   // If not logged in, show login
   if (!currentUser) {
