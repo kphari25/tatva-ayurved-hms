@@ -5,8 +5,9 @@ import {
   ShoppingCart, Utensils, BarChart3, Wallet, History, FileBarChart,
   Menu, X, BedDouble
 } from 'lucide-react';
-import { db } from './lib/firebase';
+import { db, auth } from './lib/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 
 // Session dates are bucketed by IST calendar day (not UTC), so a login just after
 // midnight IST doesn't get mis-filed under the previous day in the User Activity report.
@@ -217,6 +218,9 @@ function App() {
       endSession();
       localStorage.removeItem('currentUser');
       localStorage.removeItem('sessionToken');
+      // Best-effort — ends the app's Firebase Auth session too, if one was
+      // ever established (see Login.jsx); harmless no-op otherwise.
+      signOut(auth).catch(err => console.error('Firebase sign-out failed:', err));
       setCurrentUser(null);
       setCurrentView('dashboard');
     }

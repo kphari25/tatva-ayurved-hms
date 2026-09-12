@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { signInWithCustomToken } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
 // Built-in admin fallback so local `vite dev` (no serverless functions running)
 // can still log in without needing `vercel dev` — this password is already
@@ -36,6 +38,17 @@ const Login = ({ onLogin }) => {
       if (result.success) {
         localStorage.setItem('currentUser', JSON.stringify(result.user));
         localStorage.setItem('sessionToken', result.token);
+        // Establishes a real Firebase Auth session so Firestore security
+        // rules can see request.auth — absent until FIREBASE_SERVICE_ACCOUNT
+        // is configured server-side, so this is best-effort and never blocks
+        // login (see api/_lib/firebaseAdminAuth.js).
+        if (result.firebaseToken) {
+          try {
+            await signInWithCustomToken(auth, result.firebaseToken);
+          } catch (authErr) {
+            console.error('Firebase Auth sign-in failed:', authErr);
+          }
+        }
         console.log('✅ Logged in:', result.user.name, '| Role:', result.user.role);
         if (onLogin) onLogin(result.user);
         return;

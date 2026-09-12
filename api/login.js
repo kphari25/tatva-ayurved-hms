@@ -14,6 +14,7 @@ import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { getDb } from './_lib/firebaseAdmin.js';
 import { createSessionToken } from './_lib/session.js';
 import { verifyPassword, hashPassword, isLegacyPlaintext } from './_lib/password.js';
+import { mintFirebaseToken } from './_lib/firebaseAdminAuth.js';
 
 // Matches Login.jsx's BUILT_IN_USERS — kept in sync manually since this
 // endpoint now owns the actual check (Login.jsx just calls this).
@@ -32,6 +33,10 @@ const BUILT_IN_USERS = {
   },
 };
 
+// Fixed synthetic UID for both BUILT_IN_USERS entries — they're the same
+// identity (System Administrator) under two different login strings.
+const BUILT_IN_ADMIN_UID = 'builtin-system-admin';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ success: false, error: 'Method not allowed' });
@@ -49,7 +54,8 @@ export default async function handler(req, res) {
     const builtIn = BUILT_IN_USERS[normalized];
     if (builtIn && builtIn.password === password) {
       const user = { email: normalized, name: builtIn.name, role: builtIn.role, permissions: builtIn.permissions };
-      res.status(200).json({ success: true, token: createSessionToken(user), user });
+      const firebaseToken = await mintFirebaseToken(BUILT_IN_ADMIN_UID, { role: user.role });
+      res.status(200).json({ success: true, token: createSessionToken(user), firebaseToken, user });
       return;
     }
 
@@ -92,7 +98,8 @@ export default async function handler(req, res) {
       qualification: userData.qualification || '',
       employee_id: userData.employee_id || '',
     };
-    res.status(200).json({ success: true, token: createSessionToken(user), user });
+    const firebaseToken = await mintFirebaseToken(match.id, { role: user.role });
+    res.status(200).json({ success: true, token: createSessionToken(user), firebaseToken, user });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ success: false, error: 'Login failed: ' + error.message });
