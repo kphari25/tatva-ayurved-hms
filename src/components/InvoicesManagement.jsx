@@ -31,6 +31,11 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [useLetterheadPrint, setUseLetterheadPrint] = useState(false);
   const [printPreviewPageSize, setPrintPreviewPageSize] = useState('A4');
   const [printPreviewOrientation, setPrintPreviewOrientation] = useState('portrait');
+  // Older invoices had their treatment display style (Itemized/By Day/Summary)
+  // baked in at save time via InvoiceModal's picker, with no way to change it
+  // afterward — this lets a saved invoice be reprinted in a different style
+  // without touching the stored Firestore document.
+  const [printPreviewTreatmentDisplay, setPrintPreviewTreatmentDisplay] = useState('itemized');
   const printIframeRef = useRef(null);
   // A plain read-only look at an invoice — separate from printPreviewInvoice
   // above, which is really a "prepare to print" flow (page size, orientation,
@@ -222,6 +227,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const handlePrintInvoice = (invoice) => {
     setPrintPreviewPageSize('A4');
     setPrintPreviewOrientation('portrait');
+    setPrintPreviewTreatmentDisplay(invoice.treatment_display || 'itemized');
     setPrintPreviewInvoice(invoice);
   };
 
@@ -709,6 +715,23 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                     </button>
                   ))}
                 </div>
+                {printPreviewInvoice?.treatment_items?.length > 0 && (
+                  <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-medium" title="How treatments are listed on the printed invoice">
+                    {[
+                      { value: 'itemized', label: 'Itemized' },
+                      { value: 'by_day', label: 'By Day' },
+                      { value: 'summary', label: 'Summary' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setPrintPreviewTreatmentDisplay(opt.value)}
+                        className={`px-2.5 py-1.5 rounded-md transition-colors ${printPreviewTreatmentDisplay === opt.value ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 onClick={handlePrintFromPreview}
@@ -722,7 +745,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
               <iframe
                 ref={printIframeRef}
                 title="Invoice print preview"
-                srcDoc={buildInvoicePrintHTML(printPreviewInvoice, printPreviewPageSize, printPreviewOrientation, useLetterheadPrint)}
+                srcDoc={buildInvoicePrintHTML({ ...printPreviewInvoice, treatment_display: printPreviewTreatmentDisplay }, printPreviewPageSize, printPreviewOrientation, useLetterheadPrint)}
                 className="bg-white shadow-lg"
                 style={previewIframeStyle(printPreviewPageSize, printPreviewOrientation)}
               />

@@ -95,6 +95,30 @@ const buildTreatmentRows = (data) => {
   `).join('');
 };
 
+// Medicines administered per the daily log / visit log — synced onto the
+// invoice the same way treatments are (see InvoiceModal's loadTreatmentItems),
+// one entry per occurrence, so grouping by name+rate here turns "given on 4
+// different days" into a real quantity of 4 rather than 4 repeated rows.
+const buildMedicineRows = (data) => {
+  const items = data.medicine_items || [];
+  if (items.length === 0) return '';
+  const groups = {};
+  items.forEach(it => {
+    const rate = Number(it.price) || 0;
+    const key = `${it.name}__${rate}`;
+    if (!groups[key]) groups[key] = { name: it.name, rate, qty: 0 };
+    groups[key].qty += 1;
+  });
+  return Object.values(groups).map(g => `
+    <tr>
+      <td>${g.name}</td>
+      <td>${g.qty}</td>
+      <td>₹${g.rate.toFixed(2)}</td>
+      <td>₹${(g.qty * g.rate).toFixed(2)}</td>
+    </tr>
+  `).join('');
+};
+
 // letterhead=true skips the logo/contact header (already pre-printed on the
 // hospital's letterhead stock) and pushes page-1 content down to clear that
 // artwork — used when reprinting a saved invoice from Invoices Management.
@@ -195,6 +219,30 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
           <td>₹${data.registration_fee.toFixed(2)}</td>
         </tr>
       ` : ''}
+      ${data.invoice_type === 'IP' && data.room_rent > 0 ? `
+        <tr>
+          <td>Room Rent (${data.room_type})</td>
+          <td>${data.days} days</td>
+          <td>₹${data.room_rent.toFixed(2)}</td>
+          <td>₹${(data.room_rent * data.days).toFixed(2)}</td>
+        </tr>
+      ` : ''}
+      ${(data.doctor_fees || 0) > 0 ? `
+        <tr>
+          <td>Doctor's Fees</td>
+          <td>-</td>
+          <td>-</td>
+          <td>₹${data.doctor_fees.toFixed(2)}</td>
+        </tr>
+      ` : ''}
+      ${(data.nursing_fees || 0) > 0 ? `
+        <tr>
+          <td>Nursing Fees</td>
+          <td>-</td>
+          <td>-</td>
+          <td>₹${data.nursing_fees.toFixed(2)}</td>
+        </tr>
+      ` : ''}
       ${(data.consultation_fees || 0) > 0 ? `
         <tr style="background:#f0fdfa;">
           <td><strong>Consultation Fee</strong></td>
@@ -204,6 +252,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
         </tr>
       ` : ''}
       ${buildTreatmentRows(data)}
+      ${buildMedicineRows(data)}
       ${(data.medicines_total || 0) > 0 ? `
         <tr>
           <td>Medicines Administered</td>
@@ -228,37 +277,12 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
           <td>₹${data.treatment_charges.toFixed(2)}</td>
         </tr>
       ` : ''}
-      ${(data.nursing_fees || 0) > 0 ? `
-        <tr>
-          <td>Nursing Fees</td>
-          <td>-</td>
-          <td>-</td>
-          <td>₹${data.nursing_fees.toFixed(2)}</td>
-        </tr>
-      ` : ''}
-      ${(data.doctor_fees || 0) > 0 ? `
-        <tr>
-          <td>Doctor's Fees</td>
-          <td>-</td>
-          <td>-</td>
-          <td>₹${data.doctor_fees.toFixed(2)}</td>
-        </tr>
-      ` : ''}
       ${(data.lab_test_charges || 0) > 0 ? `
         <tr>
           <td>Lab Test Charges</td>
           <td>-</td>
           <td>-</td>
           <td>₹${data.lab_test_charges.toFixed(2)}</td>
-        </tr>
-      ` : ''}
-
-      ${data.invoice_type === 'IP' && data.room_rent > 0 ? `
-        <tr>
-          <td>Room Rent (${data.room_type})</td>
-          <td>${data.days} days</td>
-          <td>₹${data.room_rent.toFixed(2)}</td>
-          <td>₹${(data.room_rent * data.days).toFixed(2)}</td>
         </tr>
       ` : ''}
 

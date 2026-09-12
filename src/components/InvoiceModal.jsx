@@ -49,6 +49,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   // Medicine Sale (which itself syncs from the case sheet/daily progress) rather
   // than appearing on this invoice at all.
   const [priceListItems, setPriceListItems] = useState([]);
+  // Medicines administered per the daily log / visit log — synced the same
+  // way as treatments (below), one entry per occurrence so the printed
+  // invoice's grouping can turn "given on 4 different days" into a real
+  // quantity of 4, same as buildTreatmentRows already does for treatments.
+  const [medicineItems, setMedicineItems] = useState([]);
   // Ad-hoc charges added directly on the invoice, on top of the price-list treatments.
   const [additionalCharges, setAdditionalCharges] = useState([]);
   // How the printed invoice lists treatments — see buildTreatmentRows in
@@ -64,6 +69,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     const loadTreatmentItems = async () => {
       try {
         const items = [];
+        const medItems = [];
         const caseSheetCollection = invoiceType === 'IP' ? 'ip_case_sheets' : 'op_case_sheets';
         const caseSheetSnap = await getDoc(doc(db, caseSheetCollection, patientId));
         if (caseSheetSnap.exists()) {
@@ -71,6 +77,10 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
           // No visit-specific date on a case sheet pick — falls back to the
           // admission date for IP, or is left undated for OP (prints as '-').
           (cs.treatment_items || []).forEach(it => items.push({ ...it, source: 'Case Sheet', date: cs.admission_date || null }));
+          // Skip blank rows — MedicineTable always keeps one trailing empty
+          // row for typing the next entry, and that empty placeholder gets
+          // saved into medicine_items verbatim along with the real ones.
+          (cs.medicine_items || []).filter(m => m.item_name).forEach(m => medItems.push({ ...m, source: 'Case Sheet', date: cs.admission_date || null }));
         }
 
         // IP treatments are mostly logged day-to-day; OP follow-ups are logged per visit — both should bill too.
@@ -81,11 +91,31 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
           const data = d.data();
           const rowSource = data.date ? `${sourceLabel} · ${data.date}` : sourceLabel;
           (data.treatment_items || []).forEach(it => items.push({ ...it, source: rowSource, date: data.date || null }));
+          (data.medicine_items || []).filter(m => m.item_name).forEach(m => medItems.push({ ...m, source: rowSource, date: data.date || null }));
         });
 
         setPriceListItems(items);
+
+        // Rate: use the MRP already captured on the medicine entry itself
+        // (what it cost when it was administered) — fall back to the
+        // current inventory price only for entries typed as free text
+        // without picking from the autocomplete, which never got an mrp.
+        let inventory = [];
+        if (medItems.some(m => !m.mrp)) {
+          const invSnap = await getDocs(collection(db, 'inventory'));
+          inventory = invSnap.docs.map(d => ({ ...d.data(), id: d.id }));
+        }
+        setMedicineItems(medItems.map(m => {
+          let rate = Number(m.mrp) || 0;
+          if (!rate) {
+            const matched = inventory.find(inv => m.item_code && inv.item_code === m.item_code)
+              || inventory.find(inv => inv.item_name === m.item_name);
+            rate = matched ? Number(matched.MRP ?? matched.mrp) || 0 : 0;
+          }
+          return { name: m.item_name, price: rate, source: m.source, date: m.date };
+        }));
       } catch (e) {
-        console.error('Error loading treatment items:', e);
+        console.error('Error loading treatment/medicine items:', e);
       }
     };
     loadTreatmentItems();
@@ -97,8 +127,10 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const removeAdditionalCharge = (idx) => setAdditionalCharges(prev => prev.filter((_, i) => i !== idx));
 
   const removeTreatmentItem = (idx) => setPriceListItems(prev => prev.filter((_, i) => i !== idx));
+  const removeMedicineItem = (idx) => setMedicineItems(prev => prev.filter((_, i) => i !== idx));
 
   const priceListTotal = priceListItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  const medicineItemsTotal = medicineItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
 
   const calculateTreatmentCharges = () =>
     priceListTotal +
@@ -236,6 +268,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const calculateGross = () => {
     let gross = 0;
     gross += calculateTreatmentCharges();
+    gross += medicineItemsTotal;
     gross += parseFloat(formData.nursing_fees) || 0;
     gross += parseFloat(formData.doctor_fees) || 0;
     gross += parseFloat(formData.lab_test_charges) || 0;
@@ -294,6 +327,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         treatment_charges: calculateTreatmentCharges(),
         treatment_items: priceListItems,
         treatment_display: treatmentDisplay,
+        medicine_items: medicineItems,
         additional_charges: additionalCharges,
         nursing_fees: parseFloat(formData.nursing_fees) || 0,
         doctor_fees: parseFloat(formData.doctor_fees) || 0,
@@ -391,6 +425,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       treatment_charges: calculateTreatmentCharges(),
       treatment_items: priceListItems,
       treatment_display: treatmentDisplay,
+      medicine_items: medicineItems,
       additional_charges: additionalCharges,
       nursing_fees: parseFloat(formData.nursing_fees) || 0,
       doctor_fees: parseFloat(formData.doctor_fees) || 0,
@@ -707,6 +742,42 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                   </div>
                 )}
               </div>
+
+              {/* Medicines — auto-synced from the daily log / visit log, same
+                  source and grouping-by-quantity treatment as Treatment Charges
+                  above, but for medicines instead of treatments. */}
+              {medicineItems.length > 0 && (
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Medicines (₹)</label>
+                    <span className="text-xs text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+                      Auto-synced from {invoiceType} case sheet & {invoiceType === 'IP' ? 'daily progress' : 'visit log'}
+                    </span>
+                  </div>
+                  <div className="space-y-1 mb-2">
+                    {medicineItems.map((it, idx) => (
+                      <div key={`mi-${idx}`} className="flex items-center justify-between text-sm">
+                        <span className="text-gray-700">{it.name} <span className="text-xs text-gray-400">({it.source})</span></span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-800">₹{Number(it.price || 0).toLocaleString('en-IN')}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeMedicineItem(idx)}
+                            className="text-red-500 hover:text-red-700"
+                            title="Remove medicine"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-200 text-sm font-bold text-gray-800">
+                    <span>Total Medicine Charges</span>
+                    <span>₹{medicineItemsTotal.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              )}
 
               {/* Other charges grid */}
               <div className="grid grid-cols-2 gap-4">
