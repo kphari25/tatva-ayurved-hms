@@ -72,18 +72,24 @@ function App() {
   const [checkingSession, setCheckingSession] = useState(true);
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
-  useEffect(() => {
-    const unsubscribe = subscribeAdminSectionHidden(setHideAdminSection);
-    return unsubscribe;
-  }, []);
-
   // Restores a saved session only once Firebase Auth confirms it has a real
   // signed-in user behind it — a session saved before this app started
   // signing into Firebase Auth (or one whose Firebase session has otherwise
   // expired/been revoked) has no way to read or write Firestore anymore, so
   // it's cleared here and the user is sent back to Login for a fresh one.
+  //
+  // The admin-section-visibility subscription is started from right here too
+  // (rather than its own independent mount-time effect) because it has to —
+  // Firestore rules require request.auth, and this app's very first render
+  // happens before Firebase Auth's session-restore check has resolved. A
+  // subscription started that early gets killed by a permission-denied error
+  // and — critically — never recovers even once sign-in completes moments
+  // later, since a Firestore listener that already failed doesn't retry on
+  // its own just because auth state changed. So it's only (re)started once a
+  // real Firebase user is confirmed present, and torn down on sign-out.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    let unsubscribeSettings = null;
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       const savedUser = localStorage.getItem('currentUser');
       if (savedUser) {
         if (firebaseUser) {
@@ -105,8 +111,21 @@ function App() {
         }
       }
       setCheckingSession(false);
+
+      if (unsubscribeSettings) {
+        unsubscribeSettings();
+        unsubscribeSettings = null;
+      }
+      if (firebaseUser) {
+        unsubscribeSettings = subscribeAdminSectionHidden(setHideAdminSection);
+      } else {
+        setHideAdminSection(true);
+      }
     });
-    return unsubscribe;
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeSettings) unsubscribeSettings();
+    };
   }, []);
 
   useEffect(() => {
