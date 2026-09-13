@@ -10,8 +10,7 @@
 // itself the next time its owner signs in rather than needing a bulk
 // migration or a forced reset.
 
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { getDb } from './_lib/firebaseAdmin.js';
+import { getAdminDb } from './_lib/firebaseAdminDb.js';
 import { createSessionToken } from './_lib/session.js';
 import { verifyPassword, hashPassword, isLegacyPlaintext } from './_lib/password.js';
 import { mintFirebaseToken } from './_lib/firebaseAdminAuth.js';
@@ -59,7 +58,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const snap = await getDocs(collection(getDb(), 'users'));
+    const snap = await getAdminDb().collection('users').get();
     const match = snap.docs.find(d => (d.data().email || '').toLowerCase() === normalized);
 
     if (!match) {
@@ -80,7 +79,7 @@ export default async function handler(req, res) {
 
     if (isLegacyPlaintext(userData.password)) {
       try {
-        await updateDoc(doc(getDb(), 'users', match.id), { password: await hashPassword(password) });
+        await getAdminDb().collection('users').doc(match.id).update({ password: await hashPassword(password) });
       } catch (upgradeErr) {
         // Non-fatal — login still succeeds even if the upgrade write fails;
         // it'll just try again on the next login.

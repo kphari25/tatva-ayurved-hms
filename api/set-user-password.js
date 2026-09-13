@@ -3,8 +3,7 @@
 // valid signed session belonging to a system_admin, since this can set any
 // user's password.
 
-import { doc, updateDoc } from 'firebase/firestore';
-import { getDb } from './_lib/firebaseAdmin.js';
+import { getAdminDb } from './_lib/firebaseAdminDb.js';
 import { verifySessionToken } from './_lib/session.js';
 import { hashPassword } from './_lib/password.js';
 
@@ -36,7 +35,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    await updateDoc(doc(getDb(), 'users', userId), { password: await hashPassword(password) });
+    await getAdminDb().collection('users').doc(userId).update({ password: await hashPassword(password) });
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Error setting user password:', error);
