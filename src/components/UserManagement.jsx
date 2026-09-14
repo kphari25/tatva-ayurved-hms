@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { peekNextEmployeeId, assignNextEmployeeId } from '../lib/employeeId';
 
 // ==========================================
 // ROLE DEFINITIONS & PERMISSIONS
@@ -201,6 +202,23 @@ const UserManagement = () => {
     const [saving, setSaving] = useState(false);
     const [showAdvancedPerms, setShowAdvancedPerms] = useState(false);
 
+    const isDoctorRole = userData.roles.includes('doctor');
+
+    // New users get an auto-generated Employee ID (EMP-100, EMP-101, … or
+    // EMPD-100, EMPD-101, … for doctors) — this just previews what it'll be
+    // as the role selection changes; the actual number is only reserved on
+    // save (see handleSave), so switching roles back and forth before saving
+    // never burns through IDs.
+    useEffect(() => {
+      if (editUser) return;
+      let cancelled = false;
+      peekNextEmployeeId(isDoctorRole).then(id => {
+        if (!cancelled) setUserData(prev => ({ ...prev, employee_id: id }));
+      });
+      return () => { cancelled = true; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editUser, isDoctorRole]);
+
     const handleRoleChange = (roleKey) => {
       setUserData(prev => {
         const already = prev.roles.includes(roleKey);
@@ -234,6 +252,14 @@ const UserManagement = () => {
 
       setSaving(true);
       try {
+        // Reserved fresh here rather than trusting the previewed value in
+        // state — the counter could have moved since the form opened (e.g.
+        // another admin added someone in the meantime), and this is what
+        // actually guarantees no two users ever get the same number.
+        const employeeId = editUser
+          ? userData.employee_id.trim()
+          : await assignNextEmployeeId(isDoctorRole);
+
         const saveData = {
           name: userData.name.trim(),
           email: userData.email.trim().toLowerCase(),
@@ -242,7 +268,7 @@ const UserManagement = () => {
           roles: userData.roles,
           qualification: userData.qualification.trim(),
           department: userData.department.trim(),
-          employee_id: userData.employee_id.trim(),
+          employee_id: employeeId,
           is_active: userData.is_active,
           permissions: userData.permissions,
           notes: userData.notes.trim(),
@@ -338,10 +364,13 @@ const UserManagement = () => {
                     placeholder="+91 98765 43210" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Employee ID {!editUser && <span className="font-normal text-gray-400">(auto-generated)</span>}
+                  </label>
                   <input type="text" value={userData.employee_id}
                     onChange={(e) => setUserData(prev => ({ ...prev, employee_id: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                    readOnly={!editUser}
+                    className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 ${!editUser ? 'bg-gray-50 text-gray-500' : ''}`}
                     placeholder="EMP-001" />
                 </div>
                 <div>
