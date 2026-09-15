@@ -194,7 +194,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
     .sig-block .doctor-name { font-weight: bold; }
     .sig-block .reg { font-size: 10px; color: #555; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; }
-    .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
+    .page-footer { text-align: center; font-size: 10px; color: #555; padding-top: 8px; }
     .footer-bar { height: 6px; background: #1a5f4e; margin-top: 10px; }
   </style>
 </head>
@@ -272,11 +272,11 @@ const PrescriptionModal = ({ patient, onClose }) => {
       ${doctorRegistrationNumber ? `<p class="reg">Reg No: ${doctorRegistrationNumber}</p>` : ''}
       <p style="font-size:10px;">Signature of Physician</p>
     </div>
+    <div class="footer-bar"></div>
     <div class="page-footer">
       ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
       Reg No: ${HOSPITAL.regNo}
     </div>
-    <div class="footer-bar"></div>
   </div>
 </body>
 </html>`;
