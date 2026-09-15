@@ -173,7 +173,11 @@ const PrescriptionModal = ({ patient, onClose }) => {
        flow happened to end, leaving a big gap below it instead of above it. */
     .print-footer { margin-top: 50px; }
     @media print {
-      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; }
+      /* A couple mm of its own padding on top of the page margin — the
+         right-aligned doctor's name otherwise sits flush against the exact
+         printable edge with zero slack, and print rendering can clip the
+         last character or two there even though it looks fine on screen. */
+      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; padding: 0 3mm; }
     }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 12px; }
     .logo-block { min-width: 160px; }

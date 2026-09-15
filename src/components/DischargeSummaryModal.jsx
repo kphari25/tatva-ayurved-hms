@@ -341,7 +341,7 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
        trailing wherever the content happens to end. */
     .footer { margin-top: 50px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
     @media print {
-      .footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; background: #fff; }
+      .footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; background: #fff; padding: 0 3mm; }
     }
     .sig-block { text-align: right; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }

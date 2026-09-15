@@ -155,7 +155,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
        and medicine-sale printouts. */
     .print-footer { margin-top: 50px; }
     @media print {
-      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; }
+      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; padding: 0 3mm; }
     }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
