@@ -568,6 +568,15 @@ const Dashboard = () => {
   const [ipCaseSheetsById, setIpCaseSheetsById] = useState({});
   const [allDischarges, setAllDischarges] = useState([]);
   const [ipAppointments, setIpAppointments] = useState([]);
+  // Full appointments collection (every date, not just today) — separate
+  // from todayAppointments/ipAppointments above, which are both scoped
+  // queries. The "Patients Today" footfall card needs to look up any
+  // previous day's checked-in appointments too, and a fresh Firestore query
+  // per dropdown change would need a composite index on checked_in_at;
+  // loading the whole collection once (same approach as allPatients above)
+  // sidesteps that.
+  const [footfallAppointments, setFootfallAppointments] = useState([]);
+  const [footfallDate, setFootfallDate] = useState(() => toDateStr(new Date()));
   const [dashboardData, setDashboardData] = useState({
     todayAppointments: [],
     ipPatients: [],
@@ -584,6 +593,62 @@ const Dashboard = () => {
       hotLeads: 0
     }
   });
+
+  // "Patients Today" footfall — every DISTINCT patient who set foot in the
+  // hospital on footfallDate, from whichever of three places actually
+  // records that: last_visit_date (set on both a brand-new registration and
+  // a Returning Patient Check-In — see PatientRegistrationNew.jsx), a
+  // checked-in appointment's checked_in_at (the everyday "call in for OP,
+  // front desk checks them in" path — see handleCheckInAppointment below,
+  // which never touches last_visit_date), and admission_date (an IP
+  // admission that day). A patient can show up in more than one of these
+  // for the same day; the Set dedupes so they're only counted once.
+  const footfallStats = useMemo(() => {
+    const ids = new Set();
+    let newRegistrations = 0, returningCheckIns = 0, opCheckIns = 0, ipAdmissions = 0;
+
+    allPatients.forEach(p => {
+      if (p.last_visit_date === footfallDate && !ids.has(p.id)) {
+        ids.add(p.id);
+        const registeredThatDay = p.created_at && toDateStr(new Date(p.created_at)) === footfallDate;
+        if (registeredThatDay) newRegistrations++; else returningCheckIns++;
+      }
+    });
+    allPatients.forEach(p => {
+      if (p.admission_date === footfallDate && !ids.has(p.id)) {
+        ids.add(p.id);
+        ipAdmissions++;
+      }
+    });
+    footfallAppointments.forEach(a => {
+      if (a.status === 'checked_in' && a.checked_in_at && a.patient_id && !ids.has(a.patient_id)) {
+        if (toDateStr(new Date(a.checked_in_at)) === footfallDate) {
+          ids.add(a.patient_id);
+          opCheckIns++;
+        }
+      }
+    });
+
+    return { total: ids.size, newRegistrations, returningCheckIns, opCheckIns, ipAdmissions };
+  }, [allPatients, footfallAppointments, footfallDate]);
+
+  // Options for the day-of-month dropdown — every day from the 1st of the
+  // current month through today, most recent first, so there's nothing to
+  // pick that hasn't happened yet.
+  const footfallDayOptions = useMemo(() => {
+    const now = new Date();
+    const options = [];
+    for (let day = now.getDate(); day >= 1; day--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), day);
+      options.push({
+        value: toDateStr(d),
+        label: day === now.getDate()
+          ? `Today · ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+          : d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }),
+      });
+    }
+    return options;
+  }, []);
 
   const currentUser = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('currentUser') || '{}'); } catch { return {}; }
@@ -663,6 +728,15 @@ const Dashboard = () => {
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, 'appointments'), where('type', '==', 'IP')), (snap) => {
       setIpAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Every appointment, every date — feeds the "Patients Today" footfall
+  // card's checked-in-appointment count for whichever day is selected.
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'appointments'), (snap) => {
+      setFootfallAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsubscribe();
   }, []);
@@ -1293,6 +1367,41 @@ const Dashboard = () => {
           color="#ef4444"
           subtitle="To be collected"
         />
+      </div>
+
+      {/* Patients Today — daily footfall (new registrations + returning
+          check-ins + OP appointment check-ins + IP admissions, deduped by
+          patient), with a day picker for any earlier day this month. */}
+      <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
+        <div className="bg-gradient-to-r from-teal-500 to-teal-600 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Activity className="w-6 h-6 text-white" />
+            <h2 className="text-xl font-bold text-white">Patients Today</h2>
+          </div>
+          <select
+            value={footfallDate}
+            onChange={(e) => setFootfallDate(e.target.value)}
+            className="bg-white/90 text-gray-800 text-sm font-medium rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white"
+          >
+            {footfallDayOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="p-6 flex items-center gap-8 flex-wrap">
+          <div>
+            <p className="text-5xl font-bold text-gray-900">{footfallStats.total}</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {footfallDate === toDateStr(new Date()) ? 'Patients who have come in today' : 'Patients who came in that day'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm text-gray-600 border-l border-gray-200 pl-8">
+            <div><span className="font-semibold text-gray-900">{footfallStats.newRegistrations}</span> new registration{footfallStats.newRegistrations === 1 ? '' : 's'}</div>
+            <div><span className="font-semibold text-gray-900">{footfallStats.returningCheckIns}</span> returning check-in{footfallStats.returningCheckIns === 1 ? '' : 's'}</div>
+            <div><span className="font-semibold text-gray-900">{footfallStats.opCheckIns}</span> appointment check-in{footfallStats.opCheckIns === 1 ? '' : 's'}</div>
+            <div><span className="font-semibold text-gray-900">{footfallStats.ipAdmissions}</span> IP admission{footfallStats.ipAdmissions === 1 ? '' : 's'}</div>
+          </div>
+        </div>
       </div>
 
       {/* Main Content Grid */}
