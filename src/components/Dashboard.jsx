@@ -577,6 +577,7 @@ const Dashboard = () => {
   // sidesteps that.
   const [footfallAppointments, setFootfallAppointments] = useState([]);
   const [footfallDate, setFootfallDate] = useState(() => toDateStr(new Date()));
+  const [showFootfallList, setShowFootfallList] = useState(false);
   const [dashboardData, setDashboardData] = useState({
     todayAppointments: [],
     ipPatients: [],
@@ -605,31 +606,60 @@ const Dashboard = () => {
   // for the same day; the Set dedupes so they're only counted once.
   const footfallStats = useMemo(() => {
     const ids = new Set();
+    const patientsList = [];
     let newRegistrations = 0, returningCheckIns = 0, opCheckIns = 0, ipAdmissions = 0;
+
+    // Which appointment bucket (Consultation / Ayurvedic Therapy / Follow
+    // Up — the same grouping the Appointments board below uses, via
+    // bucketForAppointment) each patient was checked in under today, if
+    // any — a more specific label than their own patient_type, used below
+    // whenever it's available.
+    const checkedInTypeByPatient = {};
+    footfallAppointments.forEach(a => {
+      if (a.status === 'checked_in' && a.checked_in_at && a.patient_id) {
+        if (toDateStr(new Date(a.checked_in_at)) === footfallDate) {
+          checkedInTypeByPatient[a.patient_id] = bucketForAppointment(a);
+        }
+      }
+    });
+
+    const addPatient = (p, via) => {
+      if (ids.has(p.id)) return;
+      ids.add(p.id);
+      patientsList.push({
+        id: p.id,
+        name: `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unnamed',
+        type: checkedInTypeByPatient[p.id] || p.patient_type || '—',
+        via,
+      });
+    };
 
     allPatients.forEach(p => {
       if (p.last_visit_date === footfallDate && !ids.has(p.id)) {
-        ids.add(p.id);
         const registeredThatDay = p.created_at && toDateStr(new Date(p.created_at)) === footfallDate;
+        addPatient(p, registeredThatDay ? 'New registration' : 'Returning check-in');
         if (registeredThatDay) newRegistrations++; else returningCheckIns++;
       }
     });
     allPatients.forEach(p => {
       if (p.admission_date === footfallDate && !ids.has(p.id)) {
-        ids.add(p.id);
+        addPatient(p, 'IP admission');
         ipAdmissions++;
       }
     });
-    footfallAppointments.forEach(a => {
-      if (a.status === 'checked_in' && a.checked_in_at && a.patient_id && !ids.has(a.patient_id)) {
-        if (toDateStr(new Date(a.checked_in_at)) === footfallDate) {
-          ids.add(a.patient_id);
+    Object.keys(checkedInTypeByPatient).forEach(patientId => {
+      if (!ids.has(patientId)) {
+        const p = allPatients.find(pt => pt.id === patientId);
+        if (p) {
+          addPatient(p, 'Appointment check-in');
           opCheckIns++;
         }
       }
     });
 
-    return { total: ids.size, newRegistrations, returningCheckIns, opCheckIns, ipAdmissions };
+    patientsList.sort((a, b) => a.name.localeCompare(b.name));
+
+    return { total: ids.size, newRegistrations, returningCheckIns, opCheckIns, ipAdmissions, patientsList };
   }, [allPatients, footfallAppointments, footfallDate]);
 
   // Options for the day-of-month dropdown — every day from the 1st of the
@@ -1389,12 +1419,17 @@ const Dashboard = () => {
           </select>
         </div>
         <div className="p-6 flex items-center gap-8 flex-wrap">
-          <div>
-            <p className="text-5xl font-bold text-gray-900">{footfallStats.total}</p>
+          <button
+            type="button"
+            onClick={() => setShowFootfallList(true)}
+            className="text-left rounded-lg -m-2 p-2 hover:bg-teal-50 transition-colors"
+            title="View the list of patients"
+          >
+            <p className="text-5xl font-bold text-gray-900 hover:text-teal-700">{footfallStats.total}</p>
             <p className="text-sm text-gray-500 mt-1">
-              {footfallDate === toDateStr(new Date()) ? 'Patients who have come in today' : 'Patients who came in that day'}
+              {footfallDate === toDateStr(new Date()) ? 'Patients who have come in today' : 'Patients who came in that day'} · click to view list
             </p>
-          </div>
+          </button>
           <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm text-gray-600 border-l border-gray-200 pl-8">
             <div><span className="font-semibold text-gray-900">{footfallStats.newRegistrations}</span> new registration{footfallStats.newRegistrations === 1 ? '' : 's'}</div>
             <div><span className="font-semibold text-gray-900">{footfallStats.returningCheckIns}</span> returning check-in{footfallStats.returningCheckIns === 1 ? '' : 's'}</div>
@@ -1962,6 +1997,46 @@ const Dashboard = () => {
                       </p>
                     </div>
                     <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-semibold shrink-0">View</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFootfallList && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Patients {footfallDate === toDateStr(new Date()) ? 'Today' : `on ${footfallDayOptions.find(o => o.value === footfallDate)?.label || footfallDate}`}
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">{footfallStats.total} total</p>
+              </div>
+              <button onClick={() => setShowFootfallList(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
+              {footfallStats.patientsList.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">No patients that day.</p>
+              ) : (
+                footfallStats.patientsList.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setShowFootfallList(false);
+                      window.dispatchEvent(new CustomEvent('viewPatient', { detail: p.id }));
+                    }}
+                    className="w-full text-left px-6 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900 text-sm">{p.name}</p>
+                      <p className="text-xs text-gray-500">{p.via}</p>
+                    </div>
+                    <span className="text-xs text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full font-semibold shrink-0">{p.type}</span>
                   </button>
                 ))
               )}
