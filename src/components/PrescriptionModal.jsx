@@ -164,7 +164,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
   <title>Prescription – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 12px; color: #000; background: #fff; padding-bottom: 160px; }
+    body { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.4; color: #000; background: #fff; padding-bottom: 170px; }
     @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     @media print { body { -webkit-print-color-adjust: exact; } }
     /* Doctor's signature + hospital address stay pinned to the bottom of the
@@ -180,25 +180,25 @@ const PrescriptionModal = ({ patient, onClose }) => {
       .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; padding: 0 3mm; }
     }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 12px; }
-    .logo-block { min-width: 160px; }
-    .logo-block img { height: 56px; margin-bottom: 4px; }
-    .logo-block .brand { font-size: 18px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
-    .logo-block .tagline { font-size: 9px; color: #666; }
-    .patient-block { font-size: 12px; border-collapse: collapse; margin-left: auto; }
-    .patient-block td { padding: 0 0 3px; white-space: nowrap; }
+    .logo-block { min-width: 190px; }
+    .logo-block img { height: 64px; margin-bottom: 4px; }
+    .logo-block .brand { font-size: 22px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
+    .logo-block .tagline { font-size: 12px; color: #666; }
+    .patient-block { font-size: 15px; border-collapse: collapse; margin-left: auto; }
+    .patient-block td { padding: 0 0 4px; white-space: nowrap; }
     .patient-block .info-label { font-weight: bold; text-align: left; padding-right: 6px; }
     .patient-block .info-value { text-align: left; }
-    .title { text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin: 4px 0 14px; letter-spacing: 1px; }
-    table.grid { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 12px; }
-    table.grid th, table.grid td { border: 1px solid #aaa; padding: 6px 8px; text-align: left; vertical-align: top; }
+    .title { text-align: center; font-size: 20px; font-weight: bold; text-decoration: underline; margin: 4px 0 14px; letter-spacing: 1px; }
+    table.grid { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 15px; }
+    table.grid th, table.grid td { border: 1px solid #aaa; padding: 7px 9px; text-align: left; vertical-align: top; }
     table.grid th { background: #f0f0f0; font-weight: bold; }
-    .section-title { font-weight: bold; font-size: 12px; margin-top: 14px; margin-bottom: 3px; }
-    .section-body { font-size: 12px; white-space: pre-line; }
+    .section-title { font-weight: bold; font-size: 15px; margin-top: 14px; margin-bottom: 4px; }
+    .section-body { font-size: 15px; white-space: pre-line; }
     .sig-block { text-align: right; margin-bottom: 20px; }
-    .sig-block .doctor-name { font-weight: bold; }
-    .sig-block .reg { font-size: 10px; color: #555; }
+    .sig-block .doctor-name { font-weight: bold; font-size: 15px; }
+    .sig-block .reg { font-size: 12px; color: #555; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; }
-    .page-footer { text-align: center; font-size: 10px; color: #555; padding-top: 8px; }
+    .page-footer { text-align: center; font-size: 12px; color: #555; padding-top: 8px; }
     .footer-bar { height: 6px; background: #1a5f4e; margin-top: 10px; }
   </style>
 </head>
@@ -274,7 +274,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
       ${attendingDoctor ? `<p class="doctor-name" style="margin-top:4px;">Dr. ${attendingDoctor}</p>` : ''}
       ${doctorDesignation ? `<p class="reg">${doctorDesignation}</p>` : ''}
       ${doctorRegistrationNumber ? `<p class="reg">Reg No: ${doctorRegistrationNumber}</p>` : ''}
-      <p style="font-size:10px;">Signature of Physician</p>
+      <p style="font-size:12px;">Signature of Physician</p>
     </div>
     <div class="footer-bar"></div>
     <div class="page-footer">
