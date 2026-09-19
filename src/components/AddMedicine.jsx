@@ -806,7 +806,7 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Batch Number
+                    Batch Code
                   </label>
                   <input
                     type="text"
