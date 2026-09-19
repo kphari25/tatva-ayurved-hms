@@ -269,7 +269,11 @@ const InventoryManagement = () => {
                 sgst = split.sgst;
                 cgst = split.cgst;
               }
-              const itemCode = String(row.batch_code || row['Batch Code'] || row.item_code || row['Item Code'] || row.code || '');
+              const batchCode = String(row.batch_code || row['Batch Code'] || row.batch_number || row['Batch Number'] || row.batch || '').trim();
+              // Older sheets only had a batch_code column and it doubled as the
+              // item code — so a sheet with no separate Item Code still falls
+              // back to the batch code for it.
+              const itemCode = String(row.item_code || row['Item Code'] || row.code || batchCode || '');
               const stockQuantity = parseInt(row.stock_quantity || row['Stock Quantity'] || row.quantity || 0);
               const purchaseRate = parseFloat(row.purchase_rate || row['Purchase Rate'] || row.rate || 0);
               const invoiceNumber = String(row.invoice_number || row['Invoice Number'] || row.invoice_no || row['Invoice No'] || row['Invoice #'] || '').trim();
@@ -281,6 +285,7 @@ const InventoryManagement = () => {
                 // broke every .toLowerCase() search/autocomplete over item_code
                 // elsewhere in the app.
                 item_code: itemCode,
+                batch_number: batchCode,
                 item_name: row.item_name || row['Item Name'] || row.name || 'Unknown',
                 manufacturer: row['Company Name'] || row.company_name || row.manufacturer || '',
                 stock_quantity: stockQuantity,
@@ -306,7 +311,7 @@ const InventoryManagement = () => {
                 // so Purchase History and its Invoice # column work for Excel-imported
                 // stock too, instead of only for GRN-received stock.
                 batches: [{
-                  batch_number: itemCode,
+                  batch_number: batchCode,
                   quantity: stockQuantity,
                   purchase_price: purchaseRate,
                   purchase_date: purchaseDate,
@@ -363,6 +368,7 @@ const InventoryManagement = () => {
       const all = snapshot.docs.map(toItem);
       const exportData = all.map(item => ({
         'Item Code': item.item_code,
+        'Batch Code': item.batch_number || item.batches?.[0]?.batch_number || '',
         'Item Name': item.item_name,
         'Stock Quantity': item.stock_quantity,
         'Purchase Rate': item.purchase_price || item.purchase_rate,
@@ -767,7 +773,7 @@ const InventoryManagement = () => {
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">GST</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">SGST</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">CGST</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch/Expiry</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch Code / Expiry</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date of Purchase</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days in Inventory</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -929,7 +935,7 @@ const InventoryManagement = () => {
                             <div className="space-y-3">
                               <h4 className="font-bold text-gray-800 mb-3 pb-2 border-b">📦 Batch & Storage</h4>
                               <div className="grid grid-cols-2 gap-2 text-sm">
-                                <span className="text-gray-600">Batch Number:</span>
+                                <span className="text-gray-600">Batch Code:</span>
                                 <span className="font-medium">{item.batch_number || (item.batches && item.batches[0]?.batch_number) || '-'}</span>
 
                                 <span className="text-gray-600">Mfg Date:</span>
@@ -1143,7 +1149,7 @@ const InventoryManagement = () => {
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">Firebase Cloud Storage Active</p>
-            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, batch_code (→ item code), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month), Expiry Date (optional, shows up as Batch/Expiry), Invoice Number (→ shows up in Purchase History), Vendor Name (optional, separate from Company Name/manufacturer), GST Category (optional — "Standard", "Traditional", or "Ayurvedic Cosmetics"; overrides sgst/cgst columns when present)</p>
+            <p>Your inventory is stored in Firebase and syncs across all devices. The list loads {PAGE_SIZE} items at a time, sorted alphabetically — search matches the start of an item's name or code. Upload Excel files with columns: item_name, item_code, batch_code (→ Batch Code column; older sheets with only batch_code use it as the item code too), Company Name (→ manufacturer), purchase_rate, Discount, sgst, cgst, MRP (per-unit price), stock_quantity, stock_value, MRPValue (optional line-total, kept separate from MRP), purchase_date (or month), Expiry Date (optional, shows up as Batch/Expiry), Invoice Number (→ shows up in Purchase History), Vendor Name (optional, separate from Company Name/manufacturer), GST Category (optional — "Standard", "Traditional", or "Ayurvedic Cosmetics"; overrides sgst/cgst columns when present)</p>
           </div>
         </div>
       </div>
