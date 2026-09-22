@@ -11,6 +11,7 @@ import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medi
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
+import { calculateBMI } from '../lib/bmi';
 import PrintSectionModal from './PrintSectionModal';
 
 const PRINT_SECTIONS = [
@@ -106,12 +107,13 @@ const emptyVisitEntry = () => ({
 
 const TREATMENT_DAYS_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
-const Field = ({ label, value, onChange, placeholder, type = 'text' }) => (
+const Field = ({ label, value, onChange, placeholder, type = 'text', readOnly = false }) => (
   <div>
     <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
     <input
       type={type}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+      readOnly={readOnly}
+      className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
@@ -447,6 +449,11 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     if (!loading) focusFirstField(tabContainerRef.current);
   }, [activeTab, loading]);
 
+  useEffect(() => {
+    const bmi = calculateBMI(form.height, form.weight);
+    if (bmi !== form.bmi) setForm(prev => ({ ...prev, bmi }));
+  }, [form.height, form.weight]);
+
   const advanceTab = (currentId) => {
     const idx = TAB_SEQUENCE.indexOf(currentId);
     if (idx >= 0 && idx < TAB_SEQUENCE.length - 1) setActiveTab(TAB_SEQUENCE[idx + 1]);
@@ -761,9 +768,9 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
 
                   <SectionTitle>Nutritional Screening</SectionTitle>
                   <div className="grid grid-cols-3 gap-4">
-                    <Field label="Height" value={form.height} onChange={v => set('height', v)} />
-                    <Field label="Weight" value={form.weight} onChange={v => set('weight', v)} />
-                    <Field label="BMI" value={form.bmi} onChange={v => set('bmi', v)} />
+                    <Field label="Height (cm)" value={form.height} onChange={v => set('height', v)} />
+                    <Field label="Weight (kg)" value={form.weight} onChange={v => set('weight', v)} />
+                    <Field label="BMI" value={form.bmi} onChange={v => set('bmi', v)} readOnly placeholder="Auto-calculated" />
                     <SelectField label="Nourishment Status" value={form.nourishment_status} onChange={v => set('nourishment_status', v)} options={['Malnourished', 'Moderately Nourished', 'Well Nourished']} />
                     <SelectField label="Weight Gain/Loss in Last 3 Months" value={form.weight_change_3mo} onChange={v => set('weight_change_3mo', v)} options={['Yes', 'No']} />
                     <SelectField label="Food Intake Declined (3 Months)" value={form.food_intake_declined} onChange={v => set('food_intake_declined', v)} options={['Yes', 'No']} />

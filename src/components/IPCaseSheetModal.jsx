@@ -14,6 +14,7 @@ import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms, getReservedRoomForPatient } from '../lib/roomAvailability';
+import { calculateBMI } from '../lib/bmi';
 
 const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
 
@@ -94,7 +95,7 @@ const emptyForm = () => ({
   diet: '', appetite: '', bowel: '', micturition: '', sleep: '',
   habits_addiction: '', hypersensitivity: '', hereditary: '', menstrual_history: '',
 
-  pulse: '', bp: '', heart_rate: '', temperature: '', height: '', weight: '',
+  pulse: '', bp: '', heart_rate: '', temperature: '', height: '', weight: '', bmi: '',
 
   cvs_cns_rs_ls: '', dm: '', htn: '', ihd: '', hyperlipidemia: '',
 
@@ -109,12 +110,13 @@ const emptyForm = () => ({
   investigation_attachments: [],
 });
 
-const Field = ({ label, value, onChange, placeholder, type = 'text' }) => (
+const Field = ({ label, value, onChange, placeholder, type = 'text', readOnly = false }) => (
   <div>
     <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
     <input
       type={type}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+      readOnly={readOnly}
+      className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
@@ -214,6 +216,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
   ${row2('Pulse', form.pulse, 'Heart Rate', form.heart_rate)}
   ${row2('BP', form.bp, 'Temperature', form.temperature)}
   ${row2('Height', form.height, 'Weight', form.weight)}
+  ${row2('BMI', form.bmi, '', '')}
 </table>
 
 <div class="section-title">Systemic Examination</div>
@@ -425,6 +428,11 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   useEffect(() => {
     if (!loading) focusFirstField(tabContainerRef.current);
   }, [activeTab, loading]);
+
+  useEffect(() => {
+    const bmi = calculateBMI(form.height, form.weight);
+    if (bmi !== form.bmi) setForm(prev => ({ ...prev, bmi }));
+  }, [form.height, form.weight]);
 
   const advanceTab = (currentId) => {
     const idx = TAB_SEQUENCE.indexOf(currentId);
@@ -798,10 +806,11 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                   <div className="grid grid-cols-3 gap-4">
                     <Field label="Pulse" value={form.pulse} onChange={v => set('pulse', v)} />
                     <Field label="Heart Rate" value={form.heart_rate} onChange={v => set('heart_rate', v)} />
-                    <Field label="Height" value={form.height} onChange={v => set('height', v)} />
+                    <Field label="Height (cm)" value={form.height} onChange={v => set('height', v)} />
                     <Field label="BP" value={form.bp} onChange={v => set('bp', v)} />
                     <Field label="Temperature" value={form.temperature} onChange={v => set('temperature', v)} />
-                    <Field label="Weight" value={form.weight} onChange={v => set('weight', v)} />
+                    <Field label="Weight (kg)" value={form.weight} onChange={v => set('weight', v)} />
+                    <Field label="BMI" value={form.bmi} onChange={v => set('bmi', v)} readOnly placeholder="Auto-calculated" />
                   </div>
 
                   <SectionTitle>Systemic Examination</SectionTitle>
