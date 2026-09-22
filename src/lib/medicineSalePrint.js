@@ -55,30 +55,30 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
   <title>Medicine Sale - ${saleData.bill_number}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 13px; padding: 24px; color: #1a1a1a; }
+    body { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.4; padding: 24px; color: #1a1a1a; }
     @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
     /* Reserves room at the bottom of the printed page so normal-flow
        content (the items table, totals) doesn't run under the now-fixed
        print-footer below. */
-    @media print { body { padding-bottom: 160px; } }
+    @media print { body { padding-bottom: 175px; } }
     .header { text-align: center; border-bottom: 3px solid #0d9488; padding-bottom: 14px; margin-bottom: 18px; }
-    .header h1 { color: #0d9488; font-size: 26px; margin: 8px 0 4px; }
-    .header .tagline { color: #666; font-size: 12px; }
-    .badge { display: inline-block; background: #0d9488; color: #fff; padding: 4px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 14px; }
+    .header h1 { color: #0d9488; font-size: 28px; margin: 8px 0 4px; }
+    .header .tagline { color: #666; font-size: 14px; }
+    .badge { display: inline-block; background: #0d9488; color: #fff; padding: 4px 16px; border-radius: 20px; font-size: 13px; font-weight: bold; margin-bottom: 14px; }
     .info { display: flex; justify-content: space-between; margin-bottom: 18px; }
-    .info-block { font-size: 13px; line-height: 1.8; }
+    .info-block { font-size: 15px; line-height: 1.8; }
     .info-block b { color: #0d9488; }
-    .customer-line { font-size: 16px; font-weight: bold; }
-    .customer-line b { font-size: 13px; }
-    .mrd-line { font-size: 10px; color: #666; }
+    .customer-line { font-size: 18px; font-weight: bold; }
+    .customer-line b { font-size: 15px; }
+    .mrd-line { font-size: 12px; color: #666; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
-    th { background: #0d9488; color: #fff; padding: 8px 10px; text-align: left; font-size: 12px; }
-    td { border: 1px solid #ddd; padding: 7px 10px; font-size: 12px; }
+    th { background: #0d9488; color: #fff; padding: 8px 10px; text-align: left; font-size: 14px; }
+    td { border: 1px solid #ddd; padding: 8px 10px; font-size: 14px; }
     tr:nth-child(even) td { background: #f0fdfa; }
     .totals { float: right; width: 280px; page-break-inside: avoid; }
     .totals table { margin: 0; }
-    .totals td { border: none; border-bottom: 1px solid #eee; padding: 5px 8px; }
-    .totals .grand { background: #0d9488; color: #fff; font-size: 15px; font-weight: bold; }
+    .totals td { border: none; border-bottom: 1px solid #eee; padding: 6px 8px; }
+    .totals .grand { background: #0d9488; color: #fff; font-size: 16px; font-weight: bold; }
     /* Signature/thank-you/address block, pinned to the bottom of the page
        when printed. Earlier this was suspected of causing blank printed
        pages and was switched to normal flow — the actual cause turned out
@@ -91,10 +91,10 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
     }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
-    .sig-block .doctor-name { font-weight: bold; font-size: 12px; }
-    .sig-block .reg { font-size: 10px; color: #555; }
-    .thank-you { text-align: center; font-size: 11px; color: #888; margin-bottom: 10px; }
-    .page-footer { text-align: center; font-size: 10px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
+    .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
+    .sig-block .reg { font-size: 12px; color: #555; }
+    .thank-you { text-align: center; font-size: 13px; color: #888; margin-bottom: 10px; }
+    .page-footer { text-align: center; font-size: 12px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
     .footer-bar { height: 6px; background: #0d9488; margin-top: 10px; }
   </style>
 </head>
