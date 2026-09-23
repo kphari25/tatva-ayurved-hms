@@ -514,6 +514,16 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
         created_by: form.created_by || currentUser.email || '',
       }, { merge: true });
 
+      // Keep the patient's own admission_date in sync with this case
+      // sheet's — Room Management, the Dashboard's In-Patient Status table,
+      // and the "Patients Today" footfall count all read admission_date
+      // directly off the patient doc, not the case sheet, so correcting a
+      // wrong admission date only here (e.g. front desk admitted early by
+      // mistake) would otherwise silently not show up anywhere else.
+      if (form.admission_date && form.admission_date !== patient?.admission_date) {
+        await updateDoc(doc(db, 'patients', patientId), { admission_date: form.admission_date });
+      }
+
       alert('✅ Case sheet saved!');
     } catch (e) {
       alert('Error saving: ' + e.message);
