@@ -106,12 +106,12 @@ const buildMedicineRows = (data) => {
   items.forEach(it => {
     const rate = Number(it.price) || 0;
     const key = `${it.name}__${rate}`;
-    if (!groups[key]) groups[key] = { name: it.name, rate, qty: 0 };
+    if (!groups[key]) groups[key] = { name: it.name, rate, qty: 0, gst_percentage: it.gst_percentage ?? null };
     groups[key].qty += 1;
   });
   return Object.values(groups).map(g => `
     <tr>
-      <td>${g.name}</td>
+      <td>${g.name}${g.gst_percentage != null ? ` <span style="font-size:11px;color:#888;">(GST ${g.gst_percentage}%)</span>` : ''}</td>
       <td>${g.qty}</td>
       <td>₹${g.rate.toFixed(2)}</td>
       <td>₹${(g.qty * g.rate).toFixed(2)}</td>
@@ -131,7 +131,15 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
   <title>Invoice - ${data.invoice_number || data.patient_name || data.mrd_number || data.patient_number}</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 14px; padding-bottom: 200px; }
+    html { height: 100%; }
+    /* Sticky footer: body is a full-page-tall flex column, .page-content
+       (flex:1) soaks up whatever's left so .print-footer always lands at
+       the very bottom for a short invoice, but for a long one that already
+       fills (or overflows) the page, .page-content simply can't grow any
+       further and the footer follows right after it — no fixed positioning,
+       no guessed reserved padding, so it never clips or overlaps either way. */
+    body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 14px; min-height: 100vh; margin: 0; display: flex; flex-direction: column; }
+    .page-content { flex: 1 0 auto; }
     @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     .header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #14b8a6; padding-bottom: 8px; }
@@ -150,13 +158,10 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     .totals { float: right; width: 300px; margin-top: 12px; }
     .totals table { margin: 0; }
     .totals .grand-total { background: #14b8a6; color: white; font-weight: bold; font-size: 17px; }
-    /* Doctor signature + thank-you note + hospital address stay pinned to
-       the bottom of the printed page, same treatment as the prescription
-       and medicine-sale printouts. */
-    .print-footer { margin-top: 50px; }
-    @media print {
-      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; padding: 0 3mm; }
-    }
+    /* Doctor signature + thank-you note + hospital address are the last
+       flex child, always pushed to the page's bottom edge by .page-content
+       above soaking up the leftover space (see body/.page-content above). */
+    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
@@ -167,6 +172,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
   </style>
 </head>
 <body>
+  <div class="page-content">
   ${letterhead ? '' : `
   <div class="header">
     <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
@@ -305,6 +311,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     </tbody>
   </table>
 
+  <div class="totals-wrap">
   <div class="totals">
     <table>
       <tr>
@@ -335,8 +342,8 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
       </tr>
     </table>
   </div>
-
   <div style="clear: both;"></div>
+  </div>
 
   ${data.notes ? `
     <div style="margin-top: 30px;">
@@ -344,6 +351,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
       <p>${data.notes}</p>
     </div>
   ` : ''}
+  </div>
 
   <div class="print-footer">
     <div class="sig-block">
@@ -353,11 +361,11 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     <div class="thank-you">
       <p>Thank you for choosing ${HOSPITAL.name} Hospital</p>
     </div>
+    <div class="footer-bar"></div>
     <div class="page-footer">
       ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
       Reg No: ${HOSPITAL.regNo}
     </div>
-    <div class="footer-bar"></div>
   </div>
 </body>
 </html>`;

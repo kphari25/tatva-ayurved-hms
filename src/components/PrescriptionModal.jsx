@@ -164,45 +164,49 @@ const PrescriptionModal = ({ patient, onClose }) => {
   <title>Prescription – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.4; color: #000; background: #fff; padding-bottom: 170px; }
+    html { height: 100%; }
+    /* Sticky footer: body is a full-page-tall flex column, .page-content
+       (flex:1) soaks up whatever's left so .print-footer (signature +
+       address) always lands at the very bottom for a short prescription,
+       but for a long one that already fills (or overflows) the page,
+       .page-content simply can't grow any further and the footer follows
+       right after it — no fixed positioning, no guessed reserved padding,
+       so it never clips or overlaps either way, and the signature always
+       gets a full, generous gap above it rather than a cramped one. */
+    body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #000; background: #fff; min-height: 100vh; display: flex; flex-direction: column; }
+    .page-content { flex: 1 0 auto; }
     @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     @media print { body { -webkit-print-color-adjust: exact; } }
-    /* Doctor's signature + hospital address stay pinned to the bottom of the
-       page as one unit — with only a couple of medicine rows the rest of
-       this content is short, and without this it used to land wherever the
-       flow happened to end, leaving a big gap below it instead of above it. */
-    .print-footer { margin-top: 50px; }
-    @media print {
-      /* A couple mm of its own padding on top of the page margin — the
-         right-aligned doctor's name otherwise sits flush against the exact
-         printable edge with zero slack, and print rendering can clip the
-         last character or two there even though it looks fine on screen. */
-      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; padding: 0 3mm; }
-    }
+    /* A couple mm of its own padding on top of the page margin — the
+       right-aligned doctor's name otherwise sits flush against the exact
+       printable edge with zero slack, and print rendering can clip the
+       last character or two there even though it looks fine on screen. */
+    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 12px; }
     .logo-block { min-width: 190px; }
     .logo-block img { height: 64px; margin-bottom: 4px; }
-    .logo-block .brand { font-size: 22px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
-    .logo-block .tagline { font-size: 12px; color: #666; }
-    .patient-block { font-size: 15px; border-collapse: collapse; margin-left: auto; }
+    .logo-block .brand { font-size: 21px; font-weight: bold; letter-spacing: 1px; color: #1a5f4e; }
+    .logo-block .tagline { font-size: 11px; color: #666; }
+    .patient-block { font-size: 14px; border-collapse: collapse; margin-left: auto; }
     .patient-block td { padding: 0 0 4px; white-space: nowrap; }
     .patient-block .info-label { font-weight: bold; text-align: left; padding-right: 6px; }
     .patient-block .info-value { text-align: left; }
-    .title { text-align: center; font-size: 20px; font-weight: bold; text-decoration: underline; margin: 4px 0 14px; letter-spacing: 1px; }
-    table.grid { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 15px; }
+    .title { text-align: center; font-size: 19px; font-weight: bold; text-decoration: underline; margin: 4px 0 14px; letter-spacing: 1px; }
+    table.grid { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 14px; }
     table.grid th, table.grid td { border: 1px solid #aaa; padding: 7px 9px; text-align: left; vertical-align: top; }
     table.grid th { background: #f0f0f0; font-weight: bold; }
-    .section-title { font-weight: bold; font-size: 15px; margin-top: 14px; margin-bottom: 4px; }
-    .section-body { font-size: 15px; white-space: pre-line; }
+    .section-title { font-weight: bold; font-size: 14px; margin-top: 14px; margin-bottom: 4px; }
+    .section-body { font-size: 14px; white-space: pre-line; }
     .sig-block { text-align: right; margin-bottom: 20px; }
-    .sig-block .doctor-name { font-weight: bold; font-size: 15px; }
-    .sig-block .reg { font-size: 12px; color: #555; }
-    .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; }
-    .page-footer { text-align: center; font-size: 12px; color: #555; padding-top: 8px; }
+    .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
+    .sig-block .reg { font-size: 11px; color: #555; }
+    .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 70px; margin-left: auto; }
+    .page-footer { text-align: center; font-size: 11px; color: #555; padding-top: 8px; }
     .footer-bar { height: 6px; background: #1a5f4e; margin-top: 10px; }
   </style>
 </head>
 <body>
+  <div class="page-content">
   <div class="header">
     <div class="logo-block">
       <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'">
@@ -267,6 +271,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
     <div class="section-title">Presenting Complaints</div>
     <p class="section-body">${complaints}</p>
   ` : ''}
+  </div>
 
   <div class="print-footer">
     <div class="sig-block">
@@ -274,7 +279,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
       ${attendingDoctor ? `<p class="doctor-name" style="margin-top:4px;">Dr. ${attendingDoctor}</p>` : ''}
       ${doctorDesignation ? `<p class="reg">${doctorDesignation}</p>` : ''}
       ${doctorRegistrationNumber ? `<p class="reg">Reg No: ${doctorRegistrationNumber}</p>` : ''}
-      <p style="font-size:12px;">Signature of Physician</p>
+      <p style="font-size:11px;">Signature of Physician</p>
     </div>
     <div class="footer-bar"></div>
     <div class="page-footer">

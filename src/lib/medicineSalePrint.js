@@ -55,12 +55,16 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
   <title>Medicine Sale - ${saleData.bill_number}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.4; padding: 24px; color: #1a1a1a; }
+    html { height: 100%; }
+    /* Sticky footer: body is a full-page-tall flex column, .page-content
+       (flex:1) soaks up whatever's left so .print-footer always lands at
+       the very bottom for a short bill, but for a long one that already
+       fills (or overflows) the page, .page-content simply can't grow any
+       further and the footer follows right after it — no fixed positioning,
+       no guessed reserved padding, so it never clips or overlaps either way. */
+    body { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.4; padding: 24px; color: #1a1a1a; min-height: 100vh; display: flex; flex-direction: column; }
+    .page-content { flex: 1 0 auto; }
     @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
-    /* Reserves room at the bottom of the printed page so normal-flow
-       content (the items table, totals) doesn't run under the now-fixed
-       print-footer below. */
-    @media print { body { padding-bottom: 175px; } }
     .header { text-align: center; border-bottom: 3px solid #0d9488; padding-bottom: 14px; margin-bottom: 18px; }
     .header h1 { color: #0d9488; font-size: 28px; margin: 8px 0 4px; }
     .header .tagline { color: #666; font-size: 14px; }
@@ -79,16 +83,10 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
     .totals table { margin: 0; }
     .totals td { border: none; border-bottom: 1px solid #eee; padding: 6px 8px; }
     .totals .grand { background: #0d9488; color: #fff; font-size: 16px; font-weight: bold; }
-    /* Signature/thank-you/address block, pinned to the bottom of the page
-       when printed. Earlier this was suspected of causing blank printed
-       pages and was switched to normal flow — the actual cause turned out
-       to be the old window.open()+document.write() print path (now
-       replaced with an iframe printed via its own contentWindow.print()),
-       so it's safe to pin this again now that that's fixed. */
-    .print-footer { margin-top: 50px; }
-    @media print {
-      .print-footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; padding: 0 3mm; }
-    }
+    /* Signature/thank-you/address block — the last flex child, always
+       pushed to the page's bottom edge by .page-content above soaking up
+       the leftover space (see body/.page-content above). */
+    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
@@ -99,6 +97,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
   </style>
 </head>
 <body>
+  <div class="page-content">
   <div class="header">
     <img src="/logo.png" alt="Tatva Ayurved" onerror="this.style.display='none'" style="height:95px;margin-bottom:6px">
     <h1>${HOSPITAL.name}</h1>
@@ -135,6 +134,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
     <tbody>${rowsHTML}</tbody>
   </table>
 
+  <div class="totals-wrap">
   <div class="totals">
     <table>
       ${saleData.cgst_amount != null ? `
@@ -150,9 +150,10 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
       <tr class="grand"><td>TOTAL</td><td style="text-align:right">₹${saleData.total_amount.toFixed(2)}</td></tr>
     </table>
   </div>
-
   <div style="clear:both"></div>
+  </div>
   ${saleData.notes ? `<div style="margin-top:16px"><b>Notes:</b> ${saleData.notes}</div>` : ''}
+  </div>
 
   <div class="print-footer">
     <div class="sig-block">
@@ -162,11 +163,11 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
     <div class="thank-you">
       <p>Thank you for choosing ${HOSPITAL.name}!</p>
     </div>
+    <div class="footer-bar"></div>
     <div class="page-footer">
       ${HOSPITAL.address} &nbsp;|&nbsp; ${HOSPITAL.phone} &nbsp;|&nbsp; ${HOSPITAL.website}<br>
       Reg No: ${HOSPITAL.regNo}
     </div>
-    <div class="footer-bar"></div>
   </div>
 </body>
 </html>`;

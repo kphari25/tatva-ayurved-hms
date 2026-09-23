@@ -302,7 +302,16 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
   <title>Discharge Summary – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #000; background: #fff; padding-bottom: 170px; }
+    html { height: 100%; }
+    /* Sticky footer: body is a full-page-tall flex column, .page-content
+       (flex:1) soaks up whatever's left so .footer (signature block)
+       always lands at the very bottom for a short summary, but for a long
+       one that already fills (or overflows) the page, .page-content simply
+       can't grow any further and the footer follows right after it — no
+       fixed positioning, no guessed reserved padding, so it never clips or
+       overlaps either way. */
+    body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #000; background: #fff; min-height: 100vh; display: flex; flex-direction: column; }
+    .page-content { flex: 1 0 auto; }
     @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
     @media print { body { -webkit-print-color-adjust: exact; } }
@@ -336,13 +345,10 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
 
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-    /* Signature block stays pinned to the bottom of the printed page, same
-       treatment as the prescription and invoice printouts, instead of
-       trailing wherever the content happens to end. */
-    .footer { margin-top: 50px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
-    @media print {
-      .footer { position: fixed; left: ${pageMargin.h}; right: ${pageMargin.h}; bottom: ${pageMargin.v}; margin-top: 0; background: #fff; padding: 0 3mm; }
-    }
+    /* Signature block — the last flex child, always pushed to the page's
+       bottom edge by .page-content above soaking up the leftover space
+       (see body/.page-content above). */
+    .footer { flex-shrink: 0; margin-top: 40px; border-top: 2px solid #1a5f4e; padding-top: 10px; padding-left: 3mm; padding-right: 3mm; display: flex; justify-content: space-between; }
     .sig-block { text-align: right; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
@@ -351,6 +357,7 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
   </style>
 </head>
 <body>
+<div class="page-content">
 
 <!-- HEADER (omitted on letterhead — already pre-printed on the paper) -->
 ${letterhead ? '' : `
@@ -552,6 +559,8 @@ ${form.prognosis ? `<div class="section-title">Prognosis</div><p>${form.prognosi
 
 <!-- REMARKS -->
 ${form.remarks ? `<div class="section-title">Remarks</div><p>${form.remarks}</p>` : ''}
+
+</div>
 
 <!-- FOOTER -->
 <div class="footer">

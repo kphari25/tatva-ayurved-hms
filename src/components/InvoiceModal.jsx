@@ -7,6 +7,7 @@ import { ROOMS, ROOM_TYPES, ROOM_RATES, getRoomRate } from '../lib/rooms';
 import { addDaysToDateString, todayLocalDateStr } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
 import { previewIframeStyle } from '../lib/printPreviewSize';
+import { gstPercentForItem } from '../lib/medicineSalePrint';
 
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
@@ -100,19 +101,20 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         // (what it cost when it was administered) — fall back to the
         // current inventory price only for entries typed as free text
         // without picking from the autocomplete, which never got an mrp.
+        // GST isn't captured on the medicine entry at all (MedicineTable
+        // only stores mrp/item_code), so inventory always needs a lookup
+        // for that, even when the rate itself didn't need one.
         let inventory = [];
-        if (medItems.some(m => !m.mrp)) {
+        if (medItems.length > 0) {
           const invSnap = await getDocs(collection(db, 'inventory'));
           inventory = invSnap.docs.map(d => ({ ...d.data(), id: d.id }));
         }
         setMedicineItems(medItems.map(m => {
+          const matched = inventory.find(inv => m.item_code && inv.item_code === m.item_code)
+            || inventory.find(inv => inv.item_name === m.item_name);
           let rate = Number(m.mrp) || 0;
-          if (!rate) {
-            const matched = inventory.find(inv => m.item_code && inv.item_code === m.item_code)
-              || inventory.find(inv => inv.item_name === m.item_name);
-            rate = matched ? Number(matched.MRP ?? matched.mrp) || 0 : 0;
-          }
-          return { name: m.item_name, price: rate, source: m.source, date: m.date };
+          if (!rate) rate = matched ? Number(matched.MRP ?? matched.mrp) || 0 : 0;
+          return { name: m.item_name, price: rate, source: m.source, date: m.date, gst_percentage: matched ? gstPercentForItem(matched) : null };
         }));
       } catch (e) {
         console.error('Error loading treatment/medicine items:', e);
