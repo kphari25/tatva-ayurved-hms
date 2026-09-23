@@ -95,7 +95,7 @@ const MODULES = {
 // Default permissions per role
 const DEFAULT_PERMISSIONS = {
   system_admin: Object.keys(MODULES), // All modules
-  doctor: ['dashboard', 'patients', 'scheduling', 'room-management', 'prescriptions', 'packages', 'treatment-charges', 'discharge', 'analytics', 'reports', 'ai-assist'],
+  doctor: ['dashboard', 'patients', 'scheduling', 'room-management', 'prescriptions', 'packages', 'treatment-charges', 'discharge', 'ai-assist'],
   therapist: ['dashboard', 'patients', 'scheduling', 'room-management', 'treatment-charges'],
   front_office: ['dashboard', 'patients', 'scheduling', 'room-management', 'leads', 'invoices', 'packages', 'treatment-charges', 'discharge', 'mess-management', 'reports'],
   store_admin: ['dashboard', 'inventory', 'purchase', 'reports'],
