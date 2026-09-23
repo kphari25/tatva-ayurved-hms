@@ -504,7 +504,7 @@ ${(form.daily_treatments || []).filter(t => t.treatment || t.medicines).length ?
 <!-- DIET AND LIFESTYLE -->
 ${form.diet_lifestyle ? `
 <div class="section-title">Diet and Lifestyle During Treatment</div>
-<p style="white-space:pre-line;">${form.diet_lifestyle}</p>
+<ul>${bullet(form.diet_lifestyle.split('\n').map(l => l.trim().replace(/^[•\-*]\s*/, '')))}</ul>
 ` : ''}
 
 <!-- RESPONSE TO TREATMENT -->
@@ -545,7 +545,7 @@ ${form.apathya_donts.filter(Boolean).length ? `<p style="font-weight:bold;margin
 <!-- LIFESTYLE -->
 ${form.lifestyle_modification ? `
 <div class="section-title">Life Style Modification</div>
-<p style="white-space:pre-line;">${form.lifestyle_modification}</p>
+<ul>${bullet(form.lifestyle_modification.split('\n').map(l => l.trim().replace(/^[•\-*]\s*/, '')))}</ul>
 ` : ''}
 
 <!-- FOLLOW-UP -->
@@ -1438,9 +1438,10 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
               {/* Diet & Lifestyle */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Diet and Lifestyle During Treatment</label>
+                <p className="text-xs text-gray-500 mb-1">One point per line — each line prints as its own bullet, no need to type • yourself.</p>
                 <textarea rows={5} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
                   value={form.diet_lifestyle} onChange={e => set('diet_lifestyle', e.target.value)}
-                  placeholder="• Advised warm, light, non-oily, non-spicy diet&#10;• Avoid curd, cold water, refrigerated food..." />
+                  placeholder={'Advised warm, light, non-oily, non-spicy diet\nAvoid curd, cold water, refrigerated food...'} />
               </div>
 
               {/* Response to Treatment */}
@@ -1529,9 +1530,10 @@ const DischargeSummaryModal = ({ patient, existingSummary, onClose, onSave, onVi
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Life Style Modification</label>
+                <p className="text-xs text-gray-500 mb-1">One point per line — each line prints as its own bullet, no need to type • yourself.</p>
                 <textarea rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
                   value={form.lifestyle_modification} onChange={e => set('lifestyle_modification', e.target.value)}
-                  placeholder="• Continue morning oil massage (Abhyanga) with warm oil followed by a warm-water bath.&#10;• Regular walking 20–30 minutes daily." />
+                  placeholder={'Continue morning oil massage (Abhyanga) with warm oil followed by a warm-water bath.\nRegular walking 20–30 minutes daily.'} />
               </div>
             </div>
           )}
