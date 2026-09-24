@@ -96,6 +96,7 @@ export default async function handler(req, res) {
       department: userData.department || '',
       qualification: userData.qualification || '',
       employee_id: userData.employee_id || '',
+      must_change_password: userData.must_change_password === true,
     };
     const firebaseToken = await mintFirebaseToken(match.id, { role: user.role });
     res.status(200).json({ success: true, token: createSessionToken(user), firebaseToken, user });

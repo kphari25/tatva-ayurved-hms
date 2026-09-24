@@ -35,7 +35,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    await getAdminDb().collection('users').doc(userId).update({ password: await hashPassword(password) });
+    // Flags the account so its next login is forced through the "set a new
+    // password" screen before the app itself opens — an admin-chosen
+    // password (new account or reset) is never the one someone keeps using.
+    await getAdminDb().collection('users').doc(userId).update({
+      password: await hashPassword(password),
+      must_change_password: true,
+    });
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Error setting user password:', error);

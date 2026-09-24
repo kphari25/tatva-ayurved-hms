@@ -7,7 +7,7 @@ import {
   Receipt, Utensils, FileText, Home, TrendingUp, Wallet, History, BedDouble
 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { peekNextEmployeeId, assignNextEmployeeId } from '../lib/employeeId';
 
 // ==========================================
@@ -112,10 +112,66 @@ const UserManagement = () => {
   const [activeTab, setActiveTab] = useState('users'); // users, roles, permissions
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  // Per-role default module access — seeded from the hardcoded
+  // DEFAULT_PERMISSIONS above, then overridden by whatever's been saved to
+  // Firestore (settings/role_permissions) via the group editor below, so a
+  // group's access survives reloads/deploys instead of resetting to the
+  // hardcoded default every time.
+  const [rolePermissions, setRolePermissions] = useState(DEFAULT_PERMISSIONS);
+  const [editingGroupRole, setEditingGroupRole] = useState(null);
 
   useEffect(() => {
     loadUsers();
+    loadRolePermissions();
   }, []);
+
+  const loadRolePermissions = async () => {
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'role_permissions'));
+      if (snap.exists()) {
+        setRolePermissions(prev => ({ ...prev, ...snap.data() }));
+      }
+    } catch (error) {
+      console.error('Error loading role permissions:', error);
+    }
+  };
+
+  // Saves a group's module list and immediately re-syncs every existing
+  // user who belongs to that group (a user can belong to more than one
+  // group, so each affected user's permissions are recomputed as the union
+  // across all of their groups, not just the one being edited) — otherwise
+  // the group setting would only ever apply to users created afterward.
+  const saveGroupPermissions = async (roleKey, newModules) => {
+    const affectedUsers = users.filter(u => (u.roles && u.roles.length > 0 ? u.roles : [u.role]).includes(roleKey));
+    if (!window.confirm(
+      `Update "${ROLES[roleKey]?.label || roleKey}" to ${newModules.length} module(s)?\n\n` +
+      `This will immediately update permissions for ${affectedUsers.length} existing user(s) in this group.`
+    )) {
+      return false;
+    }
+    const updatedRolePermissions = { ...rolePermissions, [roleKey]: newModules };
+    try {
+      await setDoc(doc(db, 'settings', 'role_permissions'), { [roleKey]: newModules }, { merge: true });
+      setRolePermissions(updatedRolePermissions);
+
+      if (affectedUsers.length > 0) {
+        const batch = writeBatch(db);
+        affectedUsers.forEach(u => {
+          const userRoles = u.roles && u.roles.length > 0 ? u.roles : [u.role];
+          const merged = [...new Set(userRoles.flatMap(r => updatedRolePermissions[r] || []))];
+          batch.update(doc(db, 'users', u.id), { permissions: merged });
+        });
+        await batch.commit();
+      }
+
+      await loadUsers();
+      alert(`✅ "${ROLES[roleKey]?.label || roleKey}" group updated — ${affectedUsers.length} user(s) synced.`);
+      return true;
+    } catch (error) {
+      alert('Error saving group permissions: ' + error.message);
+      return false;
+    }
+  };
 
   const loadUsers = async () => {
     setLoading(true);
@@ -168,8 +224,8 @@ const UserManagement = () => {
       ? (editUser.roles && editUser.roles.length > 0 ? editUser.roles : [editUser.role || 'front_office'])
       : ['front_office'];
     const initPerms = editUser
-      ? (editUser.permissions || DEFAULT_PERMISSIONS[editUser.role || 'front_office'] || [])
-      : DEFAULT_PERMISSIONS['front_office'];
+      ? (editUser.permissions || rolePermissions[editUser.role || 'front_office'] || [])
+      : rolePermissions['front_office'];
 
     const [userData, setUserData] = useState(editUser ? {
       name: editUser.name || '',
@@ -195,7 +251,7 @@ const UserManagement = () => {
       employee_id: '',
       password: '',
       is_active: true,
-      permissions: DEFAULT_PERMISSIONS['front_office'],
+      permissions: rolePermissions['front_office'],
       notes: ''
     });
     const [showPassword, setShowPassword] = useState(false);
@@ -227,7 +283,7 @@ const UserManagement = () => {
           : [...prev.roles, roleKey];
         if (newRoles.length === 0) return prev; // must have at least one
         // Merge permissions from all selected roles (union)
-        const merged = [...new Set(newRoles.flatMap(r => DEFAULT_PERMISSIONS[r] || []))];
+        const merged = [...new Set(newRoles.flatMap(r => rolePermissions[r] || []))];
         return { ...prev, roles: newRoles, role: newRoles[0], permissions: merged };
       });
     };
@@ -564,6 +620,83 @@ const UserManagement = () => {
   };
 
   // ==========================================
+  // GROUP (ROLE) MODULE PERMISSIONS MODAL
+  // ==========================================
+  // Same checkbox-grid UI as the per-user "Custom Module Permissions"
+  // section in UserModal, but writing to the group's own default instead of
+  // one user — saveGroupPermissions then re-syncs every existing member.
+  const GroupPermissionsModal = ({ roleKey, onClose }) => {
+    const roleData = ROLES[roleKey];
+    const [modules, setModules] = useState(rolePermissions[roleKey] || []);
+    const [saving, setSaving] = useState(false);
+
+    const toggle = (moduleId) => {
+      setModules(prev => prev.includes(moduleId) ? prev.filter(m => m !== moduleId) : [...prev, moduleId]);
+    };
+
+    const handleSave = async () => {
+      setSaving(true);
+      const ok = await saveGroupPermissions(roleKey, modules);
+      setSaving(false);
+      if (ok) onClose();
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="p-6 border-b flex items-center justify-between sticky top-0 bg-white rounded-t-2xl">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{roleData?.icon}</span>
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Edit "{roleData?.label}" Group Modules</h2>
+                <p className="text-xs text-gray-500">Applies to every current user in this group, and any new one created under it.</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {Object.entries(MODULES).map(([moduleKey, moduleData]) => {
+                const Icon = moduleData.icon;
+                const isEnabled = modules.includes(moduleKey);
+                return (
+                  <button key={moduleKey}
+                    onClick={() => toggle(moduleKey)}
+                    className={`flex items-center gap-2 p-3 rounded-lg border text-left transition-all text-sm ${
+                      isEnabled
+                        ? 'border-teal-300 bg-teal-50 text-teal-800'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                    }`}>
+                    <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
+                      isEnabled ? 'bg-teal-600 text-white' : 'bg-gray-200'
+                    }`}>
+                      {isEnabled && <CheckCircle className="w-3 h-3" />}
+                    </div>
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="font-medium truncate">{moduleData.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-6 border-t flex justify-end gap-3 sticky bottom-0 bg-white rounded-b-2xl">
+            <button onClick={onClose}
+              className="px-6 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700 font-medium">Cancel</button>
+            <button onClick={handleSave} disabled={saving}
+              className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium disabled:opacity-50">
+              {saving ? 'Saving...' : `✅ Save (${modules.length} modules)`}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ==========================================
   // RENDER
   // ==========================================
   if (loading) {
@@ -790,7 +923,7 @@ const UserManagement = () => {
                           </div>
                         </td>
                         {Object.keys(ROLES).map(roleKey => {
-                          const hasAccess = (DEFAULT_PERMISSIONS[roleKey] || []).includes(moduleKey);
+                          const hasAccess = (rolePermissions[roleKey] || []).includes(moduleKey);
                           return (
                             <td key={roleKey} className="px-3 py-3 text-center">
                               {hasAccess ? (
@@ -813,17 +946,29 @@ const UserManagement = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {Object.entries(ROLES).map(([roleKey, roleData]) => (
               <div key={roleKey} className={`p-5 rounded-xl border-2 ${roleData.color}`}>
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-3xl">{roleData.icon}</span>
-                  <div>
-                    <h3 className="font-bold text-lg">{roleData.label}</h3>
-                    <p className="text-sm opacity-75">{roleData.description}</p>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{roleData.icon}</span>
+                    <div>
+                      <h3 className="font-bold text-lg">{roleData.label}</h3>
+                      <p className="text-sm opacity-75">{roleData.description}</p>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => setEditingGroupRole(roleKey)}
+                    className="flex items-center gap-1 px-2 py-1 bg-white bg-opacity-70 hover:bg-opacity-100 rounded-lg text-xs font-medium flex-shrink-0"
+                    title={`Edit which modules ${roleData.label} can access`}
+                  >
+                    <Edit className="w-3 h-3" /> Edit Modules
+                  </button>
                 </div>
                 <div className="mb-3">
                   <p className="text-xs font-semibold mb-2 opacity-75">ACCESSIBLE MODULES:</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {(DEFAULT_PERMISSIONS[roleKey] || []).map(perm => (
+                    {(rolePermissions[roleKey] || []).length === 0 && (
+                      <span className="text-xs italic opacity-60">No modules assigned</span>
+                    )}
+                    {(rolePermissions[roleKey] || []).map(perm => (
                       <span key={perm} className="px-2 py-1 bg-white bg-opacity-60 rounded-lg text-xs font-medium">
                         {MODULES[perm]?.label || perm}
                       </span>
@@ -832,7 +977,7 @@ const UserManagement = () => {
                 </div>
                 <div className="pt-3 border-t border-current border-opacity-20">
                   <p className="text-sm font-semibold">
-                    {users.filter(u => u.role === roleKey).length} user(s) assigned
+                    {users.filter(u => (u.roles && u.roles.length > 0 ? u.roles : [u.role]).includes(roleKey)).length} user(s) assigned
                   </p>
                 </div>
               </div>
@@ -844,6 +989,7 @@ const UserManagement = () => {
       {/* Modals */}
       {showAddUser && <UserModal />}
       {showEditUser && <UserModal editUser={showEditUser} />}
+      {editingGroupRole && <GroupPermissionsModal roleKey={editingGroupRole} onClose={() => setEditingGroupRole(null)} />}
     </div>
   );
 };

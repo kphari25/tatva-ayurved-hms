@@ -15,6 +15,7 @@ const toISTDateStr = (date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asi
 
 // Import components
 import Login from './components/Login';
+import ForceChangePassword from './components/ForceChangePassword';
 import AdminUserPortal from './components/AdminUserPortal';
 import PatientPortal from './components/PatientPortal';
 import PatientRegistrationNew from './components/PatientRegistrationNew';
@@ -324,6 +325,19 @@ function App() {
   // If not logged in, show login
   if (!currentUser) {
     return <Login onLogin={handleLogin} />;
+  }
+
+  // An admin-chosen password (new account or reset — see
+  // api/set-user-password.js) blocks the rest of the app until its owner
+  // picks their own, so nobody keeps using a password someone else set.
+  if (currentUser.must_change_password) {
+    return (
+      <ForceChangePassword
+        currentUser={currentUser}
+        onChanged={setCurrentUser}
+        onLogout={handleLogout}
+      />
+    );
   }
 
   const isAdminRole = currentUser.role === 'system_admin' || currentUser.role === 'admin' || currentUser.role === 'Admin';
