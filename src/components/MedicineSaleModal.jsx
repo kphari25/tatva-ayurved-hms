@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { basePriceFromMRP, gstPercentForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { basePriceFromMRP, gstPercentForItem, batchesForItem, defaultBatchForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 import { todayLocalDateStr } from '../lib/formatDate';
 import { previewIframeStyle } from '../lib/printPreviewSize';
 
-const emptyRow = () => ({ name: '', item_code: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
+const emptyRow = () => ({ name: '', item_code: '', batch_number: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
 // initialCustomer: optional { customer_name, mrd_number, phone, patientId } —
 // pre-fills the bill for a patient handed off from elsewhere (e.g. discharge advice).
@@ -87,6 +87,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         quantity: 1,
         rate: matched ? basePriceFromMRP(matched) : 0,
         gst_percentage: matched ? gstPercentForItem(matched) : 0,
+        batch_number: matched ? defaultBatchForItem(matched) : '',
         stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
         inventory_id: matched?.id || '',
         id: Date.now() + Math.random(),
@@ -211,6 +212,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
         quantity: 1,
         rate: matched ? basePriceFromMRP(matched) : 0,
         gst_percentage: matched ? gstPercentForItem(matched) : 0,
+        batch_number: matched ? defaultBatchForItem(matched) : '',
         stock: matched ? (parseFloat(matched.stock_quantity) ?? null) : null,
         inventory_id: matched?.id || '',
         id: Date.now() + Math.random(),
@@ -228,7 +230,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
     ).slice(0, 8);
 
   const handleRowNameChange = (id, value) => {
-    setRows(prev => prev.map(r => r.id === id ? { ...r, name: value, item_code: '', rate: 0, gst_percentage: 0, stock: null, inventory_id: '' } : r));
+    setRows(prev => prev.map(r => r.id === id ? { ...r, name: value, item_code: '', batch_number: '', rate: 0, gst_percentage: 0, stock: null, inventory_id: '' } : r));
     setSuggestions(prev => ({ ...prev, [id]: getMedSuggestions(value) }));
     setOpenDropdown(id);
   };
@@ -243,6 +245,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               item_code: med.item_code || '',
               rate: basePriceFromMRP(med),
               gst_percentage: gstPercentForItem(med),
+              batch_number: defaultBatchForItem(med),
               stock: parseFloat(med.stock_quantity) ?? null,
               inventory_id: med.id || '',
             }
@@ -698,8 +701,27 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
 
                   {/* Stock badge below row */}
                   {row.name && (
-                    <div className="mt-1 ml-1">
+                    <div className="mt-1 ml-1 flex items-center gap-3">
                       <StockBadge stock={row.stock} qty={row.quantity} />
+                      {/* Batch — pre-filled (earliest-expiring live batch), printed on
+                          the bill; the item's known batches are offered as suggestions
+                          but any batch number can be typed. */}
+                      <label className="flex items-center gap-1 text-xs text-gray-500">
+                        Batch:
+                        <input
+                          type="text"
+                          list={`batches-${row.id}`}
+                          value={row.batch_number || ''}
+                          onChange={e => handleRowChange(row.id, 'batch_number', e.target.value)}
+                          placeholder="—"
+                          className="w-32 px-2 py-0.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-teal-500 outline-none"
+                        />
+                        <datalist id={`batches-${row.id}`}>
+                          {batchesForItem(inventory.find(m => m.id === row.inventory_id)).map(b => (
+                            <option key={b.batch_number} value={b.batch_number}>{b.expiry_date ? `Exp ${b.expiry_date}` : ''}</option>
+                          ))}
+                        </datalist>
+                      </label>
                     </div>
                   )}
                 </div>

@@ -11,10 +11,41 @@ export const HOSPITAL = {
 
 // The item's own GST rate (set directly, or via its GST Category in Add/Edit
 // Medicine) — falls back to 5% for older items saved before GST categories
-// existed, matching this app's previous flat-5% assumption.
+// existed, matching this app's previous flat-5% assumption. A stored 0 with
+// no GST Category is treated the same as "not set": Add/Edit Medicine can't
+// save 0%, so it only ever comes from an Excel import whose sheet had no
+// SGST/CGST columns (SGST + CGST = 0), and billing it at 0% printed
+// CGST/SGST as ₹0 on every bill.
 export const gstPercentForItem = (item) => {
   const v = parseFloat(item?.gst_percentage);
-  return Number.isFinite(v) ? v : 5;
+  if (!Number.isFinite(v) || (v === 0 && !item?.gst_category)) return 5;
+  return v;
+};
+
+// Every batch number recorded on an inventory item (its batches[] from
+// Goods Receipt / Import Invoice / Excel import, plus the legacy top-level
+// batch_number), deduped — newest-received last, as they were appended.
+export const batchesForItem = (item) => {
+  const seen = new Map();
+  (item?.batches || []).forEach(b => {
+    const num = String(b?.batch_number || '').trim();
+    if (num && !seen.has(num)) seen.set(num, { batch_number: num, expiry_date: b.expiry_date || '' });
+  });
+  const legacy = String(item?.batch_number || '').trim();
+  if (legacy && !seen.has(legacy)) seen.set(legacy, { batch_number: legacy, expiry_date: item.expiry_date || '' });
+  return [...seen.values()];
+};
+
+// Default batch to bill from: the earliest-expiring batch that hasn't
+// expired yet (first-expiry-first-out), else the most recently received one.
+export const defaultBatchForItem = (item) => {
+  const batches = batchesForItem(item);
+  if (batches.length === 0) return '';
+  const today = new Date().toISOString().split('T')[0];
+  const live = batches
+    .filter(b => b.expiry_date && String(b.expiry_date) >= today)
+    .sort((a, b) => String(a.expiry_date).localeCompare(String(b.expiry_date)));
+  return (live[0] || batches[batches.length - 1]).batch_number;
 };
 
 // Sale price is the item's MRP (not purchase price) — MRP is tax-inclusive,
@@ -43,6 +74,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
       <tr>
         <td>${i + 1}</td>
         <td>${r.name}</td>
+        <td style="text-align:center">${r.batch_number || '—'}</td>
         <td style="text-align:center">${r.quantity}</td>
         <td style="text-align:right">₹${parseFloat(r.rate).toFixed(2)}</td>
         <td style="text-align:center">${r.gst_percentage != null ? `${r.gst_percentage}%` : '—'}</td>
@@ -125,6 +157,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
     <thead>
       <tr>
         <th>#</th><th>Medicine</th>
+        <th style="text-align:center">Batch</th>
         <th style="text-align:center">Qty</th>
         <th style="text-align:right">Price (₹)</th>
         <th style="text-align:center">GST</th>
