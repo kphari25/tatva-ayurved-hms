@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, Plus, Pencil, Trash2, ClipboardList } from 'lucide-react';
+import { X, Printer, Save, Plus, Pencil, Trash2, ClipboardList, FileInput } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import InvestigationAttachments from './InvestigationAttachments';
@@ -15,6 +15,8 @@ import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
 import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms, getReservedRoomForPatient } from '../lib/roomAvailability';
 import { calculateBMI } from '../lib/bmi';
+import OPImportModal from './OPImportModal';
+import { loadOPCaseSheet, buildOPImportItems, applyOPImport, compareWithForm } from '../lib/opToIpCaseSheet';
 
 const TAB_SEQUENCE = ['sheet', 'history', 'investigations'];
 
@@ -110,13 +112,16 @@ const emptyForm = () => ({
   investigation_attachments: [],
 });
 
-const Field = ({ label, value, onChange, placeholder, type = 'text', readOnly = false }) => (
+const FROM_OP_INPUT = 'bg-amber-50 border-amber-300';
+const FromOPTag = () => <span className="ml-1.5 text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">from OP</span>;
+
+const Field = ({ label, value, onChange, placeholder, type = 'text', readOnly = false, fromOP = false }) => (
   <div>
-    <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+    <label className="block text-xs font-medium text-gray-600 mb-1">{label}{fromOP && <FromOPTag />}</label>
     <input
       type={type}
       readOnly={readOnly}
-      className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
+      className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none ${fromOP ? FROM_OP_INPUT : 'border-gray-300'} ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
@@ -124,15 +129,15 @@ const Field = ({ label, value, onChange, placeholder, type = 'text', readOnly = 
   </div>
 );
 
-const TextArea = ({ label, value, onChange, rows = 3, placeholder, actions }) => (
+const TextArea = ({ label, value, onChange, rows = 3, placeholder, actions, fromOP = false }) => (
   <div>
     <div className="flex items-center justify-between mb-1">
-      <label className="block text-sm font-semibold text-gray-700">{label}</label>
+      <label className="block text-sm font-semibold text-gray-700">{label}{fromOP && <FromOPTag />}</label>
       {actions}
     </div>
     <textarea
       rows={rows}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+      className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none ${fromOP ? FROM_OP_INPUT : 'border-gray-300'}`}
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
@@ -409,9 +414,17 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   const [showPrintOptions, setShowPrintOptions] = useState(false);
   const [occupiedRooms, setOccupiedRooms] = useState(new Set());
   const tabContainerRef = useRef(null);
+  // OP → IP carry-over: the patient's OP case sheet (if any), the review
+  // dialog, and which IP fields were just filled from it and not yet
+  // reviewed (key → IP tab). A field leaves importedKeys as soon as it's
+  // edited or the sheet is saved.
+  const [opSheet, setOpSheet] = useState(null);
+  const [showOPImport, setShowOPImport] = useState(false);
+  const [importedKeys, setImportedKeys] = useState({});
 
   useEffect(() => {
     loadCaseSheet();
+    loadOPCaseSheet(patientId).then(setOpSheet).catch(e => console.error('Error loading OP case sheet:', e));
     loadDailyProgress();
     loadDoctors().then(setDoctors);
     loadOccupiedRooms();
@@ -495,7 +508,38 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     }
   };
 
-  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+  const isFromOP = (key) => key in importedKeys;
+
+  const set = (key, val) => {
+    setForm(prev => ({ ...prev, [key]: val }));
+    if (key in importedKeys) setImportedKeys(prev => { const { [key]: _, ...rest } = prev; return rest; });
+  };
+
+  const opImport = React.useMemo(() => buildOPImportItems(opSheet), [opSheet]);
+  // Only offer the import when there's still something on the OP sheet that
+  // the IP sheet doesn't have — an already-imported sheet with nothing new
+  // (or an OP sheet the front desk opened but never filled in) stays quiet.
+  const hasNewFromOP = opImport.items.some(i => compareWithForm(i, form) !== 'same');
+  const showOPBanner = !loading && hasNewFromOP && !form.op_import;
+
+  const handleApplyOPImport = (chosen) => {
+    setForm(prev => applyOPImport(prev, chosen));
+    setImportedKeys(prev => ({ ...prev, ...Object.fromEntries(chosen.map(c => [c.item.key, c.item.tab])) }));
+    setShowOPImport(false);
+    // Land on the first tab that received something, so the doctor starts reviewing straight away.
+    const firstTab = TAB_SEQUENCE.find(t => chosen.some(c => c.item.tab === t));
+    if (firstTab) setActiveTab(firstTab);
+  };
+
+  const handleDismissOPBanner = async () => {
+    const meta = { status: 'dismissed', at: new Date().toISOString(), by: JSON.parse(localStorage.getItem('currentUser') || '{}').email || '' };
+    setForm(prev => ({ ...prev, op_import: meta }));
+    try {
+      await setDoc(doc(db, 'ip_case_sheets', patientId), { op_import: meta }, { merge: true });
+    } catch (e) {
+      console.error('Error saving OP import dismissal:', e);
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -512,7 +556,14 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
         updated_by: currentUser.email || '',
         created_at: form.created_at || now,
         created_by: form.created_by || currentUser.email || '',
+        ...(Object.keys(importedKeys).length > 0 ? {
+          op_import: { status: 'imported', at: now, by: currentUser.email || '', op_case_date: opSheet?.case_date || '' },
+        } : {}),
       }, { merge: true });
+      if (Object.keys(importedKeys).length > 0) {
+        setForm(prev => ({ ...prev, op_import: { status: 'imported', at: now, by: currentUser.email || '', op_case_date: opSheet?.case_date || '' } }));
+        setImportedKeys({});
+      }
 
       // Keep the patient's own admission_date in sync with this case
       // sheet's — Room Management, the Dashboard's In-Patient Status table,
@@ -666,6 +717,15 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                 <ClipboardList className="w-4 h-4" /> Discharge Summary
               </button>
             )}
+            {opImport.items.length > 0 && (
+              <button
+                onClick={() => setShowOPImport(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-800 text-white rounded-lg hover:bg-teal-900 font-medium text-sm"
+                title="Copy details from this patient's OP Case Sheet"
+              >
+                <FileInput className="w-4 h-4" /> Import from OP
+              </button>
+            )}
             <button
               onClick={() => setShowPrintOptions(true)}
               className="flex items-center gap-2 px-4 py-2 bg-white text-teal-700 rounded-lg hover:bg-teal-50 font-medium text-sm"
@@ -694,6 +754,11 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
               className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === t.id ? 'border-teal-600 text-teal-700 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               {t.label}
+              {Object.values(importedKeys).filter(tab => tab === t.id).length > 0 && (
+                <span className="ml-2 text-[10px] font-bold text-amber-800 bg-amber-200 rounded-full px-1.5 py-0.5" title="Fields from the OP case sheet awaiting your review">
+                  {Object.values(importedKeys).filter(tab => tab === t.id).length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -704,11 +769,30 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
             <div className="text-center py-8 text-gray-400">Loading case sheet…</div>
           ) : (
             <>
+              {showOPBanner && (
+                <div className="flex items-center justify-between gap-4 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3">
+                  <div className="text-sm text-teal-900">
+                    <p className="font-semibold">This patient has an OP case sheet{opSheet?.case_date ? ` from ${fmtDate(opSheet.case_date)}` : ''}.</p>
+                    <p className="text-teal-700">Bring over the history, examination and investigations instead of re-entering them — you choose what to copy.</p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button onClick={handleDismissOPBanner} className="px-3 py-2 text-sm text-teal-800 hover:bg-teal-100 rounded-lg">Start fresh</button>
+                    <button onClick={() => setShowOPImport(true)} className="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg">Review &amp; import</button>
+                  </div>
+                </div>
+              )}
+              {Object.keys(importedKeys).length > 0 && (
+                <div className="flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-sm text-amber-900">
+                  <span><strong>{Object.keys(importedKeys).length}</strong> field{Object.keys(importedKeys).length === 1 ? '' : 's'} copied from the OP case sheet (highlighted). Review or edit them, then Save.</span>
+                  <button onClick={() => setImportedKeys({})} className="text-amber-800 underline flex-shrink-0">Clear highlights</button>
+                </div>
+              )}
+
               {/* ── CASE SHEET ── */}
               {activeTab === 'sheet' && (
                 <div className="space-y-5" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e, () => advanceTab('sheet'))}>
                   <div className="grid grid-cols-3 gap-4">
-                    <Field label="Department" value={form.department} onChange={v => set('department', v)} />
+                    <Field label="Department" value={form.department} onChange={v => set('department', v)} fromOP={isFromOP('department')} />
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Physician's Name</label>
                       <select
@@ -728,13 +812,13 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
                   <SectionTitle>Demographics</SectionTitle>
                   <div className="grid grid-cols-3 gap-4">
-                    <Field label="Father / Husband Name" value={form.father_husband_name} onChange={v => set('father_husband_name', v)} />
-                    <Field label="Religion" value={form.religion} onChange={v => set('religion', v)} />
+                    <Field label="Father / Husband Name" value={form.father_husband_name} onChange={v => set('father_husband_name', v)} fromOP={isFromOP('father_husband_name')} />
+                    <Field label="Religion" value={form.religion} onChange={v => set('religion', v)} fromOP={isFromOP('religion')} />
                     <Field label="Caste" value={form.caste} onChange={v => set('caste', v)} />
-                    <Field label="Occupation" value={form.occupation} onChange={v => set('occupation', v)} />
+                    <Field label="Occupation" value={form.occupation} onChange={v => set('occupation', v)} fromOP={isFromOP('occupation')} />
                     <Field label="Nationality" value={form.nationality} onChange={v => set('nationality', v)} />
                     <Field label="Monthly Income" value={form.monthly_income} onChange={v => set('monthly_income', v)} />
-                    <Field label="Marital Status" value={form.marital_status} onChange={v => set('marital_status', v)} />
+                    <Field label="Marital Status" value={form.marital_status} onChange={v => set('marital_status', v)} fromOP={isFromOP('marital_status')} />
                     <div className="col-span-2">
                       <Field label="Nearest Relative (Name & Address)" value={form.nearest_relative} onChange={v => set('nearest_relative', v)} />
                     </div>
@@ -767,12 +851,12 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                     <Field label="Time of Admission" type="time" value={form.admission_time} onChange={v => set('admission_time', v)} />
                     <Field label="Date of Discharge" type="date" value={form.discharge_date} onChange={v => set('discharge_date', v)} />
                     <Field label="Time of Discharge" type="time" value={form.discharge_time} onChange={v => set('discharge_time', v)} />
-                    <Field label="Diagnosis" value={form.admin_diagnosis} onChange={v => set('admin_diagnosis', v)} />
+                    <Field label="Diagnosis" value={form.admin_diagnosis} onChange={v => set('admin_diagnosis', v)} fromOP={isFromOP('admin_diagnosis')} />
                     <Field label="Result" value={form.result} onChange={v => set('result', v)} />
                   </div>
 
                   <TextArea label="Roopam (Presenting complaints, signs & symptoms with duration)" rows={4}
-                    value={form.roopam} onChange={v => set('roopam', v)} />
+                    value={form.roopam} onChange={v => set('roopam', v)} fromOP={isFromOP('roopam')} />
                 </div>
               )}
 
@@ -780,56 +864,56 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
               {activeTab === 'history' && (
                 <div className="space-y-5" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e, () => advanceTab('history'))}>
                   <SectionTitle>History</SectionTitle>
-                  <TextArea label="History of Presenting Complaints" rows={3} value={form.history_presenting_complaints} onChange={v => set('history_presenting_complaints', v)} />
-                  <TextArea label="History of Past Illness" rows={3} value={form.history_past_illness} onChange={v => set('history_past_illness', v)} />
-                  <TextArea label="Family History" rows={2} value={form.family_history} onChange={v => set('family_history', v)} />
+                  <TextArea label="History of Presenting Complaints" rows={3} value={form.history_presenting_complaints} onChange={v => set('history_presenting_complaints', v)} fromOP={isFromOP('history_presenting_complaints')} />
+                  <TextArea label="History of Past Illness" rows={3} value={form.history_past_illness} onChange={v => set('history_past_illness', v)} fromOP={isFromOP('history_past_illness')} />
+                  <TextArea label="Family History" rows={2} value={form.family_history} onChange={v => set('family_history', v)} fromOP={isFromOP('family_history')} />
                   <TextArea label="Presently Taking the Following Medicines" rows={2} value={form.current_medicines} onChange={v => set('current_medicines', v)} />
                   <TextArea
                     label="Medication Details"
                     rows={3}
                     value={form.medication_details}
-                    onChange={v => set('medication_details', v)}
+                    onChange={v => set('medication_details', v)} fromOP={isFromOP('medication_details')}
                     placeholder="Medications reported by the patient (as told to you) — the structured, per-day medication list is entered in the Vitals & Daily Log tab."
                   />
                   <TextArea
                     label="Treatment Details"
                     rows={3}
                     value={form.treatment_details}
-                    onChange={v => set('treatment_details', v)}
+                    onChange={v => set('treatment_details', v)} fromOP={isFromOP('treatment_details')}
                     placeholder="Treatment history reported by the patient — the structured, per-day treatment list is entered in the Vitals & Daily Log tab."
                   />
 
                   <SectionTitle>Personal History</SectionTitle>
                   <div className="grid grid-cols-3 gap-4">
-                    <Field label="Diet" value={form.diet} onChange={v => set('diet', v)} />
-                    <Field label="Appetite" value={form.appetite} onChange={v => set('appetite', v)} />
-                    <Field label="Bowel" value={form.bowel} onChange={v => set('bowel', v)} />
-                    <Field label="Micturition" value={form.micturition} onChange={v => set('micturition', v)} />
-                    <Field label="Sleep" value={form.sleep} onChange={v => set('sleep', v)} />
-                    <Field label="Habits / Addiction" value={form.habits_addiction} onChange={v => set('habits_addiction', v)} />
-                    <Field label="Hypersensitivity" value={form.hypersensitivity} onChange={v => set('hypersensitivity', v)} />
+                    <Field label="Diet" value={form.diet} onChange={v => set('diet', v)} fromOP={isFromOP('diet')} />
+                    <Field label="Appetite" value={form.appetite} onChange={v => set('appetite', v)} fromOP={isFromOP('appetite')} />
+                    <Field label="Bowel" value={form.bowel} onChange={v => set('bowel', v)} fromOP={isFromOP('bowel')} />
+                    <Field label="Micturition" value={form.micturition} onChange={v => set('micturition', v)} fromOP={isFromOP('micturition')} />
+                    <Field label="Sleep" value={form.sleep} onChange={v => set('sleep', v)} fromOP={isFromOP('sleep')} />
+                    <Field label="Habits / Addiction" value={form.habits_addiction} onChange={v => set('habits_addiction', v)} fromOP={isFromOP('habits_addiction')} />
+                    <Field label="Hypersensitivity" value={form.hypersensitivity} onChange={v => set('hypersensitivity', v)} fromOP={isFromOP('hypersensitivity')} />
                     <Field label="Hereditary" value={form.hereditary} onChange={v => set('hereditary', v)} />
-                    <Field label="Menstrual History" value={form.menstrual_history} onChange={v => set('menstrual_history', v)} />
+                    <Field label="Menstrual History" value={form.menstrual_history} onChange={v => set('menstrual_history', v)} fromOP={isFromOP('menstrual_history')} />
                   </div>
 
                   <SectionTitle>General Examination</SectionTitle>
                   <div className="grid grid-cols-3 gap-4">
-                    <Field label="Pulse" value={form.pulse} onChange={v => set('pulse', v)} />
+                    <Field label="Pulse" value={form.pulse} onChange={v => set('pulse', v)} fromOP={isFromOP('pulse')} />
                     <Field label="Heart Rate" value={form.heart_rate} onChange={v => set('heart_rate', v)} />
-                    <Field label="Height (cm)" value={form.height} onChange={v => set('height', v)} />
-                    <Field label="BP" value={form.bp} onChange={v => set('bp', v)} />
-                    <Field label="Temperature" value={form.temperature} onChange={v => set('temperature', v)} />
-                    <Field label="Weight (kg)" value={form.weight} onChange={v => set('weight', v)} />
+                    <Field label="Height (cm)" value={form.height} onChange={v => set('height', v)} fromOP={isFromOP('height')} />
+                    <Field label="BP" value={form.bp} onChange={v => set('bp', v)} fromOP={isFromOP('bp')} />
+                    <Field label="Temperature" value={form.temperature} onChange={v => set('temperature', v)} fromOP={isFromOP('temperature')} />
+                    <Field label="Weight (kg)" value={form.weight} onChange={v => set('weight', v)} fromOP={isFromOP('weight')} />
                     <Field label="BMI" value={form.bmi} onChange={v => set('bmi', v)} readOnly placeholder="Auto-calculated" />
                   </div>
 
                   <SectionTitle>Systemic Examination</SectionTitle>
-                  <TextArea label="CVS / CNS / RS / LS" rows={2} value={form.cvs_cns_rs_ls} onChange={v => set('cvs_cns_rs_ls', v)} />
+                  <TextArea label="CVS / CNS / RS / LS" rows={2} value={form.cvs_cns_rs_ls} onChange={v => set('cvs_cns_rs_ls', v)} fromOP={isFromOP('cvs_cns_rs_ls')} />
                   <div className="grid grid-cols-4 gap-4">
-                    <Field label="DM" value={form.dm} onChange={v => set('dm', v)} />
-                    <Field label="HTN" value={form.htn} onChange={v => set('htn', v)} />
-                    <Field label="IHD" value={form.ihd} onChange={v => set('ihd', v)} />
-                    <Field label="Hyperlipidemia" value={form.hyperlipidemia} onChange={v => set('hyperlipidemia', v)} />
+                    <Field label="DM" value={form.dm} onChange={v => set('dm', v)} fromOP={isFromOP('dm')} />
+                    <Field label="HTN" value={form.htn} onChange={v => set('htn', v)} fromOP={isFromOP('htn')} />
+                    <Field label="IHD" value={form.ihd} onChange={v => set('ihd', v)} fromOP={isFromOP('ihd')} />
+                    <Field label="Hyperlipidemia" value={form.hyperlipidemia} onChange={v => set('hyperlipidemia', v)} fromOP={isFromOP('hyperlipidemia')} />
                   </div>
 
                   <SectionTitle>ASHTASTHANA PAREEKSHA</SectionTitle>
@@ -846,20 +930,20 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
                   <SectionTitle>Dasa Vidha Pareeksha</SectionTitle>
                   <div className="grid grid-cols-5 gap-3">
-                    <Field label="Dooshya" value={form.dooshya} onChange={v => set('dooshya', v)} />
+                    <Field label="Dooshya" value={form.dooshya} onChange={v => set('dooshya', v)} fromOP={isFromOP('dooshya')} />
                     <Field label="Desha" value={form.desha} onChange={v => set('desha', v)} />
                     <Field label="Bala" value={form.bala} onChange={v => set('bala', v)} />
-                    <Field label="Kala" value={form.kala} onChange={v => set('kala', v)} />
+                    <Field label="Kala" value={form.kala} onChange={v => set('kala', v)} fromOP={isFromOP('kala')} />
                     <Field label="Anala" value={form.anala} onChange={v => set('anala', v)} />
-                    <Field label="Prakruti" value={form.prakruti} onChange={v => set('prakruti', v)} />
-                    <Field label="Vayah" value={form.vayah} onChange={v => set('vayah', v)} />
-                    <Field label="Satwa" value={form.satwa} onChange={v => set('satwa', v)} />
-                    <Field label="Satmya" value={form.satmya} onChange={v => set('satmya', v)} />
+                    <Field label="Prakruti" value={form.prakruti} onChange={v => set('prakruti', v)} fromOP={isFromOP('prakruti')} />
+                    <Field label="Vayah" value={form.vayah} onChange={v => set('vayah', v)} fromOP={isFromOP('vayah')} />
+                    <Field label="Satwa" value={form.satwa} onChange={v => set('satwa', v)} fromOP={isFromOP('satwa')} />
+                    <Field label="Satmya" value={form.satmya} onChange={v => set('satmya', v)} fromOP={isFromOP('satmya')} />
                     <Field label="Ahara" value={form.ahara} onChange={v => set('ahara', v)} />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <Field label="Srotas Involved" value={form.srotas_involved} onChange={v => set('srotas_involved', v)} />
+                    <Field label="Srotas Involved" value={form.srotas_involved} onChange={v => set('srotas_involved', v)} fromOP={isFromOP('srotas_involved')} />
                     <Field label="Diagnosis (Ayurvedic)" value={form.ayurvedic_diagnosis} onChange={v => set('ayurvedic_diagnosis', v)} />
                   </div>
                 </div>
@@ -1038,7 +1122,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
               {/* ── INVESTIGATIONS & PROCEDURE ── */}
               {activeTab === 'investigations' && (
                 <div className="space-y-5" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e, () => advanceTab('investigations'))}>
-                  <TextArea label="Investigations" rows={8} value={form.investigations} onChange={v => set('investigations', v)}
+                  <TextArea label="Investigations" rows={8} value={form.investigations} onChange={v => set('investigations', v)} fromOP={isFromOP('investigations')}
                     placeholder="Lab reports, imaging, and other investigation notes…" />
                   <InvestigationAttachments
                     patientId={patientId}
@@ -1061,6 +1145,17 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
           </button>
         </div>
       </div>
+
+      {showOPImport && (
+        <OPImportModal
+          op={opSheet}
+          items={opImport.items}
+          unmapped={opImport.unmapped}
+          form={form}
+          onApply={handleApplyOPImport}
+          onClose={() => setShowOPImport(false)}
+        />
+      )}
 
       {showPrintOptions && (
         <PrintSectionModal
