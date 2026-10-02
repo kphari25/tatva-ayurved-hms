@@ -49,12 +49,17 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
   const addRows = (n = 5) => setRows(prev => [...prev, ...Array.from({ length: n }, emptyRow)]);
   const removeRow = (id) => setRows(prev => prev.length > 1 ? prev.filter(r => r.id !== id) : prev);
 
-  // Enter moves to the same column on the next row, like a spreadsheet.
+  // Enter acts like Tab: moves to the next column in the row, and from the
+  // last column wraps to the first column of the next row. Works from the
+  // GST Category dropdown too (it lands there, pick with arrows, Enter moves on).
   const handleKeyDown = (e, rowIdx, colIdx) => {
-    if (e.key !== 'Enter' || e.target.tagName === 'SELECT') return;
+    if (e.key !== 'Enter') return;
     e.preventDefault();
-    if (rowIdx === rows.length - 1) addRows(1);
-    setTimeout(() => gridRef.current?.querySelector(`[data-cell="${rowIdx + 1}-${colIdx}"]`)?.focus(), 0);
+    const lastCol = colIdx === COLUMNS.length - 1;
+    const nextRow = lastCol ? rowIdx + 1 : rowIdx;
+    const nextCol = lastCol ? 0 : colIdx + 1;
+    if (nextRow >= rows.length) addRows(1);
+    setTimeout(() => gridRef.current?.querySelector(`[data-cell="${nextRow}-${nextCol}"]`)?.focus(), 0);
   };
 
   // Pasting multi-cell data copied from Excel/Sheets fills down and across
@@ -210,6 +215,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
                           data-cell={`${ri}-${ci}`}
                           value={r.gst_category}
                           onChange={e => setCell(r.id, c.key, e.target.value)}
+                          onKeyDown={e => handleKeyDown(e, ri, ci)}
                           className={cellCls}
                         >
                           <option value="">Default (12%)</option>
