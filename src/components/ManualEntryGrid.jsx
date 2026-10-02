@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Save, X, Package, Trash2, AlertCircle } from 'lucide-react';
-import { collection, doc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
 
@@ -44,6 +44,50 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
   const [error, setError] = useState('');
   const [errorIds, setErrorIds] = useState(new Set());
   const gridRef = useRef(null);
+  // Existing inventory, for name autocomplete (same source AddMedicine uses).
+  const [inventory, setInventory] = useState([]);
+  // { rowId, rowIdx, rect, list, index } while the Medicine Name dropdown is open.
+  const [sugg, setSugg] = useState(null);
+
+  useEffect(() => {
+    getDocs(collection(db, 'inventory'))
+      .then(snap => setInventory(snap.docs.map(d => d.data())))
+      .catch(err => console.error('Error loading inventory for autocomplete:', err));
+  }, []);
+
+  const focusCell = (r, c) => setTimeout(() => gridRef.current?.querySelector(`[data-cell="${r}-${c}"]`)?.focus(), 0);
+
+  const updateSuggestions = (row, rowIdx, value, el) => {
+    const term = value.trim().toLowerCase();
+    if (term.length < 2) { setSugg(null); return; }
+    const seen = new Set();
+    const list = inventory.filter(m => {
+      const name = String(m.item_name || '');
+      if (!name || seen.has(name.toLowerCase())) return false;
+      const hit = name.toLowerCase().includes(term) || String(m.item_code || '').toLowerCase().includes(term);
+      if (hit) seen.add(name.toLowerCase());
+      return hit;
+    }).slice(0, 8);
+    setSugg(list.length ? { rowId: row.id, rowIdx, rect: el.getBoundingClientRect(), list, index: -1 } : null);
+  };
+
+  // Picking an existing medicine fills its master details (like Add Medicine
+  // does) but leaves batch, stock and dates for the new stock being entered.
+  const pickSuggestion = (rowId, rowIdx, m) => {
+    setRows(prev => prev.map(r => r.id === rowId ? {
+      ...r,
+      item_name: m.item_name || '',
+      item_code: m.item_code != null ? String(m.item_code) : '',
+      manufacturer: m.manufacturer || '',
+      hsn_code: m.hsn_code || '',
+      purchase_price: String(m.purchase_price ?? m.purchase_rate ?? ''),
+      MRP: String(m.MRP ?? m.mrp ?? ''),
+      discount_percentage: m.discount_percentage ? String(m.discount_percentage) : '',
+      gst_category: m.gst_category || '',
+    } : r));
+    setSugg(null);
+    focusCell(rowIdx, 2); // Batch Code — name and code are already filled
+  };
 
   const setCell = (id, key, value) => setRows(prev => prev.map(r => r.id === id ? { ...r, [key]: value } : r));
   const addRows = (n = 5) => setRows(prev => [...prev, ...Array.from({ length: n }, emptyRow)]);
@@ -53,13 +97,20 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
   // last column wraps to the first column of the next row. Works from the
   // GST Category dropdown too (it lands there, pick with arrows, Enter moves on).
   const handleKeyDown = (e, rowIdx, colIdx) => {
+    if (colIdx === 0 && sugg && sugg.rowId === rows[rowIdx].id) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSugg({ ...sugg, index: Math.min(sugg.index + 1, sugg.list.length - 1) }); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSugg({ ...sugg, index: Math.max(sugg.index - 1, -1) }); return; }
+      if (e.key === 'Escape') { setSugg(null); return; }
+      if (e.key === 'Enter' && sugg.index >= 0) { e.preventDefault(); pickSuggestion(sugg.rowId, rowIdx, sugg.list[sugg.index]); return; }
+    }
     if (e.key !== 'Enter') return;
     e.preventDefault();
+    setSugg(null);
     const lastCol = colIdx === COLUMNS.length - 1;
     const nextRow = lastCol ? rowIdx + 1 : rowIdx;
     const nextCol = lastCol ? 0 : colIdx + 1;
     if (nextRow >= rows.length) addRows(1);
-    setTimeout(() => gridRef.current?.querySelector(`[data-cell="${nextRow}-${nextCol}"]`)?.focus(), 0);
+    focusCell(nextRow, nextCol);
   };
 
   // Pasting multi-cell data copied from Excel/Sheets fills down and across
@@ -193,7 +244,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto p-6" ref={gridRef}>
+        <div className="flex-1 overflow-auto p-6" ref={gridRef} onScroll={() => setSugg(null)}>
           <table className="border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-100">
@@ -228,7 +279,9 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
                           min={c.type === 'number' ? 0 : undefined}
                           step={c.type === 'number' ? 'any' : undefined}
                           value={r[c.key]}
-                          onChange={e => setCell(r.id, c.key, e.target.value)}
+                          onChange={e => { setCell(r.id, c.key, e.target.value); if (ci === 0) updateSuggestions(r, ri, e.target.value, e.target); }}
+                          onBlur={ci === 0 ? () => setTimeout(() => setSugg(null), 150) : undefined}
+                          autoComplete="off"
                           onKeyDown={e => handleKeyDown(e, ri, ci)}
                           onPaste={e => handlePaste(e, ri, ci)}
                           className={cellCls}
@@ -247,6 +300,24 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
             <Plus className="w-4 h-4" /> Add 5 more rows
           </button>
         </div>
+
+        {sugg && (
+          <ul
+            className="fixed z-[60] bg-white border border-gray-300 rounded-md shadow-lg max-h-64 overflow-auto text-sm"
+            style={{ top: sugg.rect.bottom + 2, left: sugg.rect.left, minWidth: Math.max(sugg.rect.width, 320) }}
+          >
+            {sugg.list.map((m, i) => (
+              <li
+                key={i}
+                onMouseDown={e => { e.preventDefault(); pickSuggestion(sugg.rowId, sugg.rowIdx, m); }}
+                className={`px-3 py-2 cursor-pointer ${i === sugg.index ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
+              >
+                <div className="font-medium text-gray-800">{m.item_name}</div>
+                <div className="text-xs text-gray-500">{[m.item_code, m.manufacturer, (m.MRP ?? m.mrp) ? `MRP ₹${m.MRP ?? m.mrp}` : ''].filter(Boolean).join(' · ')}</div>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
           <span className="text-sm text-gray-600">{filledCount} medicine{filledCount === 1 ? '' : 's'} entered · Blank rows are ignored</span>
