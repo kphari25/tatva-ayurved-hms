@@ -81,7 +81,8 @@ const buildTreatmentRows = (data) => {
   const groups = {};
   items.forEach(it => {
     const rate = Number(it.price) || 0;
-    const key = `${it.name}__${rate}`;
+    const batch = it.batch_number || '';
+    const key = `${it.name}__${rate}__${batch}`;
     if (!groups[key]) groups[key] = { name: it.name, rate, qty: 0 };
     groups[key].qty += 1;
   });
@@ -105,13 +106,14 @@ const buildMedicineRows = (data) => {
   const groups = {};
   items.forEach(it => {
     const rate = Number(it.price) || 0;
-    const key = `${it.name}__${rate}`;
-    if (!groups[key]) groups[key] = { name: it.name, rate, qty: 0, gst_percentage: it.gst_percentage ?? null };
+    const batch = it.batch_number || '';
+    const key = `${it.name}__${rate}__${batch}`;
+    if (!groups[key]) groups[key] = { name: it.name, rate, qty: 0, batch, gst_percentage: it.gst_percentage ?? null };
     groups[key].qty += 1;
   });
   return Object.values(groups).map(g => `
     <tr>
-      <td>${g.name}${g.gst_percentage != null ? ` <span style="font-size:11px;color:#888;">(GST ${g.gst_percentage}%)</span>` : ''}</td>
+      <td>${g.name}${g.batch ? ` <span style="font-size:11px;color:#888;">(Batch ${g.batch})</span>` : ''}${g.gst_percentage != null ? ` <span style="font-size:11px;color:#888;">(GST ${g.gst_percentage}%)</span>` : ''}</td>
       <td>${g.qty}</td>
       <td>₹${g.rate.toFixed(2)}</td>
       <td>₹${(g.qty * g.rate).toFixed(2)}</td>

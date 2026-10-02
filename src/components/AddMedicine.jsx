@@ -3,6 +3,7 @@ import { Plus, Save, X, Package, IndianRupee, Calendar, Barcode, Tag, FileText, 
 import { collection, addDoc, updateDoc, doc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
+import ManualEntryGrid from './ManualEntryGrid';
 
 // Passing `item` switches this into edit mode for that existing inventory
 // document — same form, but it updates the item's master fields (price, MRP,
@@ -11,6 +12,7 @@ import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategori
 // Import Invoice flows so multi-batch tracking doesn't get clobbered.
 const AddMedicine = ({ item, onClose, onSuccess }) => {
   const isEditMode = !!item;
+  const [manualMode, setManualMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [existingMedicines, setExistingMedicines] = useState([]);
@@ -405,6 +407,10 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
     }
   };
 
+  if (manualMode && !isEditMode) {
+    return <ManualEntryGrid onClose={onClose} onSuccess={onSuccess} onSwitchToForm={() => setManualMode(false)} />;
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full my-8">
@@ -421,6 +427,13 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
             <X className="w-6 h-6" />
           </button>
         </div>
+
+        {!isEditMode && (
+          <div className="flex gap-1 px-6 pt-3 border-b border-gray-200">
+            <button className="px-4 py-2 text-sm font-medium text-blue-700 border-b-2 border-blue-600">Single Entry Form</button>
+            <button type="button" onClick={() => setManualMode(true)} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent">Manual Entry</button>
+          </div>
+        )}
 
         {/* Error Alert */}
         {error && (

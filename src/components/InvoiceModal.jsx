@@ -7,7 +7,7 @@ import { ROOMS, ROOM_TYPES, ROOM_RATES, getRoomRate } from '../lib/rooms';
 import { addDaysToDateString, todayLocalDateStr } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
 import { previewIframeStyle } from '../lib/printPreviewSize';
-import { gstPercentForItem } from '../lib/medicineSalePrint';
+import { gstPercentForItem, defaultBatchForItem } from '../lib/medicineSalePrint';
 
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
@@ -114,7 +114,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
             || inventory.find(inv => inv.item_name === m.item_name);
           let rate = Number(m.mrp) || 0;
           if (!rate) rate = matched ? Number(matched.MRP ?? matched.mrp) || 0 : 0;
-          return { name: m.item_name, price: rate, source: m.source, date: m.date, gst_percentage: matched ? gstPercentForItem(matched) : null };
+          return { name: m.item_name, price: rate, source: m.source, date: m.date, gst_percentage: matched ? gstPercentForItem(matched) : null, batch_number: m.batch_number || (matched ? defaultBatchForItem(matched) : '') };
         }));
       } catch (e) {
         console.error('Error loading treatment/medicine items:', e);
