@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Save, X, Package, Trash2, AlertCircle } from 'lucide-react';
-import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
 
@@ -27,7 +27,7 @@ const emptyRow = () => ({
   id: Date.now() + Math.random(),
   item_name: '', item_code: '', batch_number: '', manufacturer: '', hsn_code: '',
   purchase_price: '', MRP: '', discount_percentage: '', gst_category: '',
-  stock_quantity: '', entry_date: today(), manufacturing_date: '', expiry_date: '',
+  stock_quantity: '', entry_date: today(), manufacturing_date: '', expiry_date: '', existing_id: '',
 });
 const isBlank = (r) => !r.item_name.trim() && !r.item_code.trim() && !r.purchase_price && !r.MRP && !r.stock_quantity;
 
@@ -51,7 +51,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
 
   useEffect(() => {
     getDocs(collection(db, 'inventory'))
-      .then(snap => setInventory(snap.docs.map(d => d.data())))
+      .then(snap => setInventory(snap.docs.map(d => ({ ...d.data(), _id: d.id }))))
       .catch(err => console.error('Error loading inventory for autocomplete:', err));
   }, []);
 
@@ -84,6 +84,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
       MRP: String(m.MRP ?? m.mrp ?? ''),
       discount_percentage: m.discount_percentage ? String(m.discount_percentage) : '',
       gst_category: m.gst_category || '',
+      existing_id: m._id,
     } : r));
     setSugg(null);
     focusCell(rowIdx, 2); // Batch Code — name and code are already filled
@@ -157,9 +158,51 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
       const user = JSON.parse(localStorage.getItem('currentUser') || '{}').email;
       const now = new Date().toISOString();
       // Firestore batches cap at 500 writes.
-      for (let i = 0; i < filled.length; i += 400) {
+      // Rows picked from the autocomplete add stock to that existing item
+      // (new batch + summed stock, same as Goods Receipt); the rest are new items.
+      const existingRows = filled.filter(r => r.existing_id);
+      const newRows = filled.filter(r => !r.existing_id);
+      const today0 = today();
+      const byId = {};
+      existingRows.forEach(r => { (byId[r.existing_id] = byId[r.existing_id] || []).push(r); });
+      let topped = 0;
+      for (const [id, group] of Object.entries(byId)) {
+        const snap = await getDoc(doc(db, 'inventory', id));
+        if (!snap.exists()) throw new Error(`"${group[0].item_name}" no longer exists in inventory — clear the row and re-enter it.`);
+        const cur = snap.data();
+        const batches = [...(cur.batches || [])];
+        let stock = Number(cur.stock_quantity) || 0;
+        group.forEach(r => {
+          const qty = parseInt(r.stock_quantity);
+          stock += qty;
+          batches.push({
+            batch_number: r.batch_number.trim(),
+            quantity: qty,
+            manufacturing_date: r.manufacturing_date || null,
+            expiry_date: r.expiry_date || null,
+            purchase_date: r.entry_date || today0,
+            purchase_price: parseFloat(r.purchase_price),
+            mrp: parseFloat(r.MRP),
+          });
+        });
+        const last = group[group.length - 1];
+        let value = 0, qtySum = 0;
+        batches.forEach(b => { value += (Number(b.quantity) || 0) * (Number(b.purchase_price) || 0); qtySum += Number(b.quantity) || 0; });
         const wb = writeBatch(db);
-        filled.slice(i, i + 400).forEach(r => {
+        wb.update(doc(db, 'inventory', id), {
+          stock_quantity: stock,
+          batches,
+          purchase_price: qtySum > 0 ? Math.round((value / qtySum) * 100) / 100 : parseFloat(last.purchase_price),
+          MRP: parseFloat(last.MRP),
+          last_purchase_date: last.entry_date || today0,
+          last_updated: new Date().toISOString(),
+        });
+        await wb.commit();
+        topped += group.length;
+      }
+      for (let i = 0; i < newRows.length; i += 400) {
+        const wb = writeBatch(db);
+        newRows.slice(i, i + 400).forEach(r => {
           const catRate = rateForGSTCategory(r.gst_category);
           const gst = catRate ?? 12;
           const { cgst, sgst } = splitGST(gst);
@@ -204,7 +247,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
         });
         await wb.commit();
       }
-      alert(`✅ ${filled.length} medicine${filled.length === 1 ? '' : 's'} added to inventory.`);
+      alert(`✅ ${newRows.length} new medicine${newRows.length === 1 ? '' : 's'} added, ${topped} existing item${topped === 1 ? '' : 's'} restocked.`);
       onSuccess?.();
       onClose?.();
     } catch (err) {
@@ -257,7 +300,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
             </thead>
             <tbody>
               {rows.map((r, ri) => (
-                <tr key={r.id} className={errorIds.has(r.id) ? 'bg-red-50' : ''}>
+                <tr key={r.id} className={errorIds.has(r.id) ? 'bg-red-50' : r.existing_id ? 'bg-green-50' : ''} title={r.existing_id ? 'Existing item — stock will be added to it' : undefined}>
                   <td className="border border-gray-300 px-2 text-center text-gray-400 bg-gray-50">{ri + 1}</td>
                   {COLUMNS.map((c, ci) => (
                     <td key={c.key} className="border border-gray-300 p-0">
@@ -279,7 +322,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
                           min={c.type === 'number' ? 0 : undefined}
                           step={c.type === 'number' ? 'any' : undefined}
                           value={r[c.key]}
-                          onChange={e => { setCell(r.id, c.key, e.target.value); if (ci === 0) updateSuggestions(r, ri, e.target.value, e.target); }}
+                          onChange={e => { setCell(r.id, c.key, e.target.value); if (ci === 0 && r.existing_id) setCell(r.id, 'existing_id', ''); if (ci === 0) updateSuggestions(r, ri, e.target.value, e.target); }}
                           onBlur={ci === 0 ? () => setTimeout(() => setSugg(null), 150) : undefined}
                           autoComplete="off"
                           onKeyDown={e => handleKeyDown(e, ri, ci)}
@@ -320,7 +363,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
         )}
 
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-          <span className="text-sm text-gray-600">{filledCount} medicine{filledCount === 1 ? '' : 's'} entered · Blank rows are ignored</span>
+          <span className="text-sm text-gray-600">{filledCount} medicine{filledCount === 1 ? '' : 's'} entered · Blank rows are ignored · Green rows add stock to an existing item</span>
           <div className="flex gap-3">
             <button onClick={onClose} className="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
             <button onClick={handleSave} disabled={saving || filledCount === 0} className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
