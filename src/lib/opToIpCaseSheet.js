@@ -28,6 +28,7 @@ const MAPPINGS = [
   { section: 'Demographics', tab: 'sheet', from: 'occupation', to: 'occupation', label: 'Occupation' },
   { section: 'Demographics', tab: 'sheet', from: 'marital_status', to: 'marital_status', label: 'Marital Status' },
   { section: 'Demographics', tab: 'sheet', from: 'department', to: 'department', label: 'Department' },
+  { section: 'Demographics', tab: 'sheet', from: 'physician', to: 'physician_name', label: "Physician's Name" },
   { section: 'Presenting complaints', tab: 'sheet', from: 'presenting_complaints', to: 'roopam', label: 'Roopam (Presenting Complaints)' },
   { section: 'Presenting complaints', tab: 'sheet', value: (op) => op.diagnosis || op.provisional_diagnosis, to: 'admin_diagnosis', label: 'Diagnosis' },
 
