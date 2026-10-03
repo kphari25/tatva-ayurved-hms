@@ -17,7 +17,7 @@ const HOSPITAL = {
   email: 'info@tatvaayurved.com',
   website: 'www.tatvaayurved.com',
   regNo: 'BFHP03-C110100-00061-2025',
-  preparedBy: 'Dr. Satheesh Kumar – Chief Physician\nDr. Abirami PB – RMO\nTatva Ayurved Hospital, Calicut',
+  preparedBy: 'Dr. Satheesh Kumar – Chief Physician\nDr. Aswathi – RMO\nTatva Ayurved Hospital, Calicut',
 };
 
 // Formats the IP Case Sheet's native <input type="time"> value ("HH:MM",
