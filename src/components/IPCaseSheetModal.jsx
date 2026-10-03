@@ -74,6 +74,8 @@ const emptyForm = () => ({
   nationality: '',
   monthly_income: '',
   nearest_relative: '',
+  informant: '',
+  socio_economic_status: '',
   marital_status: '',
   caste: '',
 
@@ -86,6 +88,7 @@ const emptyForm = () => ({
   admin_diagnosis: '',
   result: '',
   roopam: '',
+  pain_assessment: '',
 
   history_presenting_complaints: '',
   history_past_illness: '',
@@ -95,15 +98,18 @@ const emptyForm = () => ({
   treatment_details: '',
 
   diet: '', appetite: '', bowel: '', micturition: '', sleep: '',
-  habits_addiction: '', hypersensitivity: '', hereditary: '', menstrual_history: '',
+  habits_addiction: '', hypersensitivity: '', hereditary: '', menstrual_history: '', immunization_history: '',
 
   pulse: '', bp: '', heart_rate: '', temperature: '', height: '', weight: '', bmi: '',
+  consciousness: '', orientation: '', mobility: '',
 
   cvs_cns_rs_ls: '', dm: '', htn: '', ihd: '', hyperlipidemia: '',
+  thyroid_dysfunction: '', comorbidity_other_label: '', comorbidity_other_value: '',
 
   nadi: '', mutra: '', malam: '', jihwa: '', sabda: '', sparsa: '', drik: '', akriti: '',
 
   dooshya: '', desha: '', bala: '', kala: '', anala: '', prakruti: '', vayah: '', satwa: '', satmya: '', ahara: '',
+  vikrithi: '', sara: '', samhanana: '', pramana: '', aharasakthi: '', vyayamasakthi: '', dosham: '', agni: '',
 
   srotas_involved: '',
   ayurvedic_diagnosis: '',
@@ -213,7 +219,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
   ${row2('Appetite', form.appetite, 'Hypersensitivity', form.hypersensitivity)}
   ${row2('Bowel', form.bowel, 'Hereditary', form.hereditary)}
   ${row2('Micturition', form.micturition, 'Menstrual History', form.menstrual_history)}
-  ${row2('Sleep', form.sleep, '', '')}
+  ${row2('Sleep', form.sleep, 'Immunization History', form.immunization_history)}
 </table>
 
 <div class="section-title">General Examination</div>
@@ -222,6 +228,8 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
   ${row2('BP', form.bp, 'Temperature', form.temperature)}
   ${row2('Height', form.height, 'Weight', form.weight)}
   ${row2('BMI', form.bmi, '', '')}
+  ${row2('Consciousness', form.consciousness, 'Orientation', form.orientation)}
+  ${row2('Mobility', form.mobility, '', '')}
 </table>
 
 <div class="section-title">Systemic Examination</div>
@@ -229,6 +237,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
 <table class="grid">
   ${row2('DM', form.dm, 'HTN', form.htn)}
   ${row2('IHD', form.ihd, 'Hyperlipidemia', form.hyperlipidemia)}
+  ${row2('Thyroid Dysfunction', form.thyroid_dysfunction, form.comorbidity_other_label || 'Other Condition', form.comorbidity_other_value)}
 </table>
 
 <div class="section-title">ASHTASTHANA PAREEKSHA</div>
@@ -246,6 +255,10 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
   ${row2('Anala', form.anala, 'Prakruti', form.prakruti)}
   ${row2('Vayah', form.vayah, 'Satwa', form.satwa)}
   ${row2('Satmya', form.satmya, 'Ahara', form.ahara)}
+  ${row2('Vikrithi', form.vikrithi, 'Sara', form.sara)}
+  ${row2('Samhanana', form.samhanana, 'Pramana', form.pramana)}
+  ${row2('Aharasakthi', form.aharasakthi, 'Vyayamasakthi', form.vyayamasakthi)}
+  ${row2('Dosham', form.dosham, 'Agni', form.agni)}
 </table>
 
 <div class="section-title">Srotas Involved</div>
@@ -822,6 +835,8 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                     <div className="col-span-2">
                       <Field label="Nearest Relative (Name & Address)" value={form.nearest_relative} onChange={v => set('nearest_relative', v)} />
                     </div>
+                    <Field label="Informant (if applicable)" value={form.informant} onChange={v => set('informant', v)} fromOP={isFromOP('informant')} />
+                    <Field label="Socio-Economic Status" value={form.socio_economic_status} onChange={v => set('socio_economic_status', v)} fromOP={isFromOP('socio_economic_status')} />
                   </div>
 
                   <SectionTitle>Admission Details</SectionTitle>
@@ -857,6 +872,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
                   <TextArea label="Roopam (Presenting complaints, signs & symptoms with duration)" rows={4}
                     value={form.roopam} onChange={v => set('roopam', v)} fromOP={isFromOP('roopam')} />
+                  <Field label="Pain Assessment (Score)" value={form.pain_assessment} onChange={v => set('pain_assessment', v)} fromOP={isFromOP('pain_assessment')} />
                 </div>
               )}
 
@@ -894,6 +910,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                     <Field label="Hypersensitivity" value={form.hypersensitivity} onChange={v => set('hypersensitivity', v)} fromOP={isFromOP('hypersensitivity')} />
                     <Field label="Hereditary" value={form.hereditary} onChange={v => set('hereditary', v)} />
                     <Field label="Menstrual History" value={form.menstrual_history} onChange={v => set('menstrual_history', v)} fromOP={isFromOP('menstrual_history')} />
+                    <Field label="Immunization History" value={form.immunization_history} onChange={v => set('immunization_history', v)} fromOP={isFromOP('immunization_history')} />
                   </div>
 
                   <SectionTitle>General Examination</SectionTitle>
@@ -905,6 +922,9 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                     <Field label="Temperature" value={form.temperature} onChange={v => set('temperature', v)} fromOP={isFromOP('temperature')} />
                     <Field label="Weight (kg)" value={form.weight} onChange={v => set('weight', v)} fromOP={isFromOP('weight')} />
                     <Field label="BMI" value={form.bmi} onChange={v => set('bmi', v)} readOnly placeholder="Auto-calculated" />
+                    <Field label="Consciousness" value={form.consciousness} onChange={v => set('consciousness', v)} fromOP={isFromOP('consciousness')} />
+                    <Field label="Orientation" value={form.orientation} onChange={v => set('orientation', v)} fromOP={isFromOP('orientation')} />
+                    <Field label="Mobility" value={form.mobility} onChange={v => set('mobility', v)} fromOP={isFromOP('mobility')} />
                   </div>
 
                   <SectionTitle>Systemic Examination</SectionTitle>
@@ -914,6 +934,11 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                     <Field label="HTN" value={form.htn} onChange={v => set('htn', v)} fromOP={isFromOP('htn')} />
                     <Field label="IHD" value={form.ihd} onChange={v => set('ihd', v)} fromOP={isFromOP('ihd')} />
                     <Field label="Hyperlipidemia" value={form.hyperlipidemia} onChange={v => set('hyperlipidemia', v)} fromOP={isFromOP('hyperlipidemia')} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <Field label="Thyroid Dysfunction" value={form.thyroid_dysfunction} onChange={v => set('thyroid_dysfunction', v)} fromOP={isFromOP('thyroid_dysfunction')} />
+                    <Field label="Other Condition" value={form.comorbidity_other_label} onChange={v => set('comorbidity_other_label', v)} fromOP={isFromOP('comorbidity_other_label')} />
+                    <Field label="Value" value={form.comorbidity_other_value} onChange={v => set('comorbidity_other_value', v)} fromOP={isFromOP('comorbidity_other_value')} />
                   </div>
 
                   <SectionTitle>ASHTASTHANA PAREEKSHA</SectionTitle>
@@ -940,6 +965,16 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                     <Field label="Satwa" value={form.satwa} onChange={v => set('satwa', v)} fromOP={isFromOP('satwa')} />
                     <Field label="Satmya" value={form.satmya} onChange={v => set('satmya', v)} fromOP={isFromOP('satmya')} />
                     <Field label="Ahara" value={form.ahara} onChange={v => set('ahara', v)} />
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    <Field label="Vikrithi" value={form.vikrithi} onChange={v => set('vikrithi', v)} fromOP={isFromOP('vikrithi')} />
+                    <Field label="Sara" value={form.sara} onChange={v => set('sara', v)} fromOP={isFromOP('sara')} />
+                    <Field label="Samhanana" value={form.samhanana} onChange={v => set('samhanana', v)} fromOP={isFromOP('samhanana')} />
+                    <Field label="Pramana" value={form.pramana} onChange={v => set('pramana', v)} fromOP={isFromOP('pramana')} />
+                    <Field label="Aharasakthi" value={form.aharasakthi} onChange={v => set('aharasakthi', v)} fromOP={isFromOP('aharasakthi')} />
+                    <Field label="Vyayamasakthi" value={form.vyayamasakthi} onChange={v => set('vyayamasakthi', v)} fromOP={isFromOP('vyayamasakthi')} />
+                    <Field label="Dosham" value={form.dosham} onChange={v => set('dosham', v)} fromOP={isFromOP('dosham')} />
+                    <Field label="Agni" value={form.agni} onChange={v => set('agni', v)} fromOP={isFromOP('agni')} />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

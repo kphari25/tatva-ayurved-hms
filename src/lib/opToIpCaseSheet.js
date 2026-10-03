@@ -29,7 +29,10 @@ const MAPPINGS = [
   { section: 'Demographics', tab: 'sheet', from: 'marital_status', to: 'marital_status', label: 'Marital Status' },
   { section: 'Demographics', tab: 'sheet', from: 'department', to: 'department', label: 'Department' },
   { section: 'Demographics', tab: 'sheet', from: 'physician', to: 'physician_name', label: "Physician's Name" },
+  { section: 'Demographics', tab: 'sheet', from: 'informant', to: 'informant', label: 'Informant' },
+  { section: 'Demographics', tab: 'sheet', from: 'socio_economic_status', to: 'socio_economic_status', label: 'Socio-Economic Status' },
   { section: 'Presenting complaints', tab: 'sheet', from: 'presenting_complaints', to: 'roopam', label: 'Roopam (Presenting Complaints)' },
+  { section: 'Presenting complaints', tab: 'sheet', from: 'pain_assessment', to: 'pain_assessment', label: 'Pain Assessment (Score)' },
   { section: 'Presenting complaints', tab: 'sheet', value: (op) => op.diagnosis || op.provisional_diagnosis, to: 'admin_diagnosis', label: 'Diagnosis' },
 
   { section: 'History', tab: 'history', from: 'history_present_illness', to: 'history_presenting_complaints', label: 'History of Presenting Complaints' },
@@ -46,12 +49,19 @@ const MAPPINGS = [
   { section: 'Personal history', tab: 'history', from: 'known_addictions', to: 'habits_addiction', label: 'Habits / Addiction' },
   { section: 'Personal history', tab: 'history', from: 'known_allergies', to: 'hypersensitivity', label: 'Hypersensitivity (Allergies)' },
   { section: 'Personal history', tab: 'history', value: menstrualSummary, to: 'menstrual_history', label: 'Menstrual History' },
+  { section: 'Personal history', tab: 'history', from: 'immunization_history', to: 'immunization_history', label: 'Immunization History' },
 
   { section: 'Examination', tab: 'history', from: 'systemic_examination', to: 'cvs_cns_rs_ls', label: 'CVS / CNS / RS / LS' },
   { section: 'Examination', tab: 'history', from: 'dm', to: 'dm', label: 'DM' },
   { section: 'Examination', tab: 'history', from: 'htn', to: 'htn', label: 'HTN' },
   { section: 'Examination', tab: 'history', from: 'ihd', to: 'ihd', label: 'IHD' },
   { section: 'Examination', tab: 'history', from: 'hyperlipidemia', to: 'hyperlipidemia', label: 'Hyperlipidemia' },
+  { section: 'Examination', tab: 'history', from: 'thyroid_dysfunction', to: 'thyroid_dysfunction', label: 'Thyroid Dysfunction' },
+  { section: 'Examination', tab: 'history', from: 'comorbidity_other_label', to: 'comorbidity_other_label', label: 'Other Condition' },
+  { section: 'Examination', tab: 'history', from: 'comorbidity_other_value', to: 'comorbidity_other_value', label: 'Other Condition — Value' },
+  { section: 'Examination', tab: 'history', from: 'consciousness', to: 'consciousness', label: 'Consciousness' },
+  { section: 'Examination', tab: 'history', from: 'orientation', to: 'orientation', label: 'Orientation' },
+  { section: 'Examination', tab: 'history', from: 'mobility', to: 'mobility', label: 'Mobility' },
 
   { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'prakrithi', to: 'prakruti', label: 'Prakruti' },
   { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'vayah', to: 'vayah', label: 'Vayah' },
@@ -60,6 +70,14 @@ const MAPPINGS = [
   { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'dushyam', to: 'dooshya', label: 'Dooshya' },
   { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'kalam', to: 'kala', label: 'Kala' },
   { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'srotas', to: 'srotas_involved', label: 'Srotas Involved' },
+  { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'vikrithi', to: 'vikrithi', label: 'Vikrithi' },
+  { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'sara', to: 'sara', label: 'Sara' },
+  { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'samhanana', to: 'samhanana', label: 'Samhanana' },
+  { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'pramana', to: 'pramana', label: 'Pramana' },
+  { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'aharasakthi', to: 'aharasakthi', label: 'Aharasakthi' },
+  { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'vyayamasakthi', to: 'vyayamasakthi', label: 'Vyayamasakthi' },
+  { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'dosham', to: 'dosham', label: 'Dosham' },
+  { section: 'Dasa Vidha Pareeksha', tab: 'history', from: 'agni', to: 'agni', label: 'Agni' },
 
   { section: 'Investigations', tab: 'investigations', from: 'investigations', to: 'investigations', label: 'Investigations' },
   { section: 'Investigations', tab: 'investigations', from: 'investigation_attachments', to: 'investigation_attachments', label: 'Investigation Attachments', kind: 'attachments' },
@@ -74,14 +92,7 @@ const MAPPINGS = [
 // Filled-in OP fields with no equivalent on the IP sheet — surfaced in the
 // review dialog so the doctor knows to re-enter them by hand if they matter,
 // instead of them silently vanishing.
-const UNMAPPED = [
-  ['informant', 'Informant'], ['socio_economic_status', 'Socio-Economic Status'],
-  ['thyroid_dysfunction', 'Thyroid Dysfunction'], ['comorbidity_other_value', 'Other Comorbidity'],
-  ['pain_assessment', 'Pain Assessment'], ['immunization_history', 'Immunization History'],
-  ['consciousness', 'Consciousness'], ['orientation', 'Orientation'], ['mobility', 'Mobility'],
-  ['vikrithi', 'Vikrithi'], ['sara', 'Sara'], ['samhanana', 'Samhanana'], ['pramana', 'Pramana'],
-  ['aharasakthi', 'Aharasakthi'], ['vyayamasakthi', 'Vyayamasakthi'], ['dosham', 'Dosham'], ['agni', 'Agni'],
-];
+const UNMAPPED = [];
 
 export const IP_KEYS_FROM_OP = new Set(MAPPINGS.map(m => m.to));
 
