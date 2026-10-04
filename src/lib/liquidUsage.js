@@ -78,8 +78,8 @@ const restore = (inv, ml, batchesUsed) => {
   let open = (Number(inv.open_balance) || 0) + ml;
   const batches = (inv.batches || []).map(b => ({ ...b }));
   const lastBatch = (batchesUsed && batchesUsed.length ? batchesUsed[batchesUsed.length - 1].batch_number : inv.open_batch) || '';
-  // More than one bottle's worth back in the open balance → return full bottles to sealed stock.
-  while (open > pack) {
+  // A full bottle's worth (or more) back in the open balance is just a sealed bottle again.
+  while (open >= pack) {
     open -= pack;
     sealed += 1;
     const b = batches.find(x => (x.batch_number || '') === lastBatch);
