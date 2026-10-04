@@ -4,6 +4,7 @@ import {
   Stethoscope, ChevronDown, ChevronUp, Save, Calendar
 } from 'lucide-react';
 import { collection, addDoc, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import { db } from '../lib/firebase';
 import { formatDateOnly } from '../lib/formatDate';
 import TreatmentPickerButton from './TreatmentPickerButton';
@@ -113,7 +114,16 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
         created_at: new Date().toISOString(),
         created_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email || '',
       };
-      await addDoc(collection(db, 'daily_progress'), data);
+      const ref = await addDoc(collection(db, 'daily_progress'), data);
+      try {
+        await syncEntryUsage({
+          id: ref.id, source: 'ip_daily_progress', date: data.date, patient_id: patientId, patient_name: patientName,
+          mrd_number: data.mrd_number, ip_number: data.ip_number,
+        }, data.medicine_items || []);
+      } catch (usageErr) {
+        console.error('Stock usage update failed:', usageErr);
+        alert('Entry saved, but updating the medicine stock failed: ' + usageErr.message);
+      }
       setForm(emptyEntry());
       await loadEntries();
     } catch (e) {
@@ -127,6 +137,7 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
   const handleDelete = async (entryId) => {
     if (!window.confirm('Delete this daily record?')) return;
     try {
+      await removeEntryUsage(entryId);
       await deleteDoc(doc(db, 'daily_progress', entryId));
       setEntries(prev => prev.filter(e => e.id !== entryId));
     } catch (e) {
@@ -222,6 +233,7 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
                 />
               </div>
               <MedicineTable
+                trackUsage
                 items={form.medicine_items}
                 onChange={(items) => setForm(f => ({ ...f, medicine_items: items, medicines_given: summarizeMedicineItems(items) }))}
                 label="Medicines Given"

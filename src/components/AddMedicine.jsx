@@ -38,6 +38,8 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
     stock_quantity: (item.stock_quantity ?? '').toString(),
     reorder_level: (item.reorder_level ?? '').toString(),
     unit_of_measurement: item.unit_of_measurement || 'Nos',
+    pack_size: (item.pack_size ?? '').toString(),
+    pack_unit: item.pack_unit || 'ml',
 
     batch_number: '',
     manufacturing_date: '',
@@ -81,6 +83,8 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
     stock_quantity: '',
     reorder_level: '',
     unit_of_measurement: 'Nos',
+    pack_size: '',
+    pack_unit: 'ml',
 
     // Batch Information
     batch_number: '',
@@ -346,6 +350,11 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
         stock_quantity: parseInt(formData.stock_quantity),
         reorder_level: parseInt(formData.reorder_level) || 10,
         unit_of_measurement: formData.unit_of_measurement,
+        // Liquids measured in ml: bottle size enables partial-use tracking from
+        // the daily logs. 0 = ordinary item counted in whole units.
+        pack_size: parseFloat(formData.pack_size) > 0 ? parseFloat(formData.pack_size) : 0,
+        pack_unit: formData.pack_unit || 'ml',
+        ...(parseFloat(formData.pack_size) > 0 ? { open_balance: Number(item?.open_balance) || 0 } : {}),
 
         // Storage
         storage_location: formData.storage_location || '',
@@ -803,6 +812,31 @@ const AddMedicine = ({ item, onClose, onSuccess }) => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="10"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Bottle Size (liquids only)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={formData.pack_size}
+                    onChange={(e) => handleChange('pack_size', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. 100"
+                  />
+                  <select
+                    value={formData.pack_unit}
+                    onChange={(e) => handleChange('pack_unit', e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="ml">ml</option>
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Set this to track partial use (e.g. 25 ml per patient) from the daily logs. Stock Quantity stays the number of sealed bottles.</p>
               </div>
             </div>
           </div>

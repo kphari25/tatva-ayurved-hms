@@ -6,6 +6,7 @@ import TreatmentPickerButton from './TreatmentPickerButton';
 import PackagePickerButton, { packageTreatmentDetails } from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
+import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import InvestigationAttachments from './InvestigationAttachments';
 import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
@@ -552,6 +553,21 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     }
   };
 
+  // Internal liquid-stock tracking (ml used) for a visit entry — a failure here
+  // is reported but never blocks the entry itself from being saved.
+  const syncUsageSafely = async ({ id, date, items }) => {
+    try {
+      await syncEntryUsage({
+        id, source: 'op_visit_log', date, patient_id: patientId,
+        patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
+        mrd_number: patient?.mrd_number || patient?.patient_number || '', ip_number: patient?.ip_number || '',
+      }, items || []);
+    } catch (e) {
+      console.error('Stock usage update failed:', e);
+      alert('Entry saved, but updating the medicine stock failed: ' + e.message);
+    }
+  };
+
   const handleSaveVisitNote = async () => {
     if (!visitForm.date) { alert('Please select a date.'); return; }
     try {
@@ -566,6 +582,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
           updated_at: now,
           updated_by: currentUser.email || '',
         });
+        await syncUsageSafely({ id: editingVisitId, date: entryFields.date, items: entryFields.medicine_items });
       } else {
         // "Treatment Days" pre-schedules one entry per consecutive day, all
         // starting with the same findings/medication/treatment — the doctor
@@ -573,8 +590,10 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
         const days = Math.max(1, Math.min(15, Number(treatment_days) || 1));
         const groupId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const batch = writeBatch(db);
+        const created = [];
         for (let i = 0; i < days; i++) {
           const ref = doc(collection(db, 'op_visit_notes'));
+          created.push({ id: ref.id, date: addDaysToDateString(visitForm.date, i) });
           batch.set(ref, {
             ...entryFields,
             date: addDaysToDateString(visitForm.date, i),
@@ -588,6 +607,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
           });
         }
         await batch.commit();
+        for (const c of created) await syncUsageSafely({ id: c.id, date: c.date, items: entryFields.medicine_items });
       }
 
       setVisitForm(emptyVisitEntry());
@@ -624,6 +644,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
   const handleDeleteVisitNote = async (id) => {
     if (!window.confirm('Remove this visit entry?')) return;
     try {
+      await removeEntryUsage(id);
       await deleteDoc(doc(db, 'op_visit_notes', id));
       setVisitNotes(prev => prev.filter(v => v.id !== id));
       if (editingVisitId === id) handleCancelEditVisit();
@@ -936,6 +957,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                     <div className="space-y-3 mb-3">
                       <TextArea label="Clinical Findings" rows={2} value={visitForm.clinical_findings} onChange={v => setVisitForm(p => ({ ...p, clinical_findings: v }))} />
                       <MedicineTable
+                        trackUsage
                         items={visitForm.medicine_items}
                         onChange={(items) => setVisitForm(p => ({ ...p, medicine_items: items, medication_notes: summarizeMedicineItems(items) }))}
                       />

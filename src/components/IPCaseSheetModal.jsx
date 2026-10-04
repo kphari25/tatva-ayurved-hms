@@ -7,6 +7,7 @@ import TreatmentPickerButton from './TreatmentPickerButton';
 import PackagePickerButton, { packageTreatmentDetails } from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
+import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import PrintSectionModal from './PrintSectionModal';
 import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
 import { loadDoctors } from '../lib/staff';
@@ -596,6 +597,20 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     }
   };
 
+  // Internal liquid-stock tracking (ml used) for a daily entry — a failure here
+  // is reported but never blocks the entry itself from being saved.
+  const syncUsageSafely = async ({ id, date, items, patientName }) => {
+    try {
+      await syncEntryUsage({
+        id, source: 'ip_daily_progress', date, patient_id: patientId, patient_name: patientName,
+        mrd_number: patient?.mrd_number || patient?.patient_number || '', ip_number: patient?.ip_number || '',
+      }, items || []);
+    } catch (e) {
+      console.error('Stock usage update failed:', e);
+      alert('Entry saved, but updating the medicine stock failed: ' + e.message);
+    }
+  };
+
   const handleSaveDailyEntry = async () => {
     if (!dailyForm.date) { alert('Please select a date.'); return; }
     try {
@@ -611,6 +626,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
           updated_at: now,
           updated_by: currentUser.email || '',
         });
+        await syncUsageSafely({ id: editingDailyId, date: entryFields.date, items: entryFields.medicine_items, patientName });
       } else {
         // "Treatment Days" pre-schedules one entry per consecutive day, all
         // starting with the same vitals/treatment/medication — the doctor
@@ -618,8 +634,10 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
         const days = Math.max(1, Math.min(15, Number(treatment_days) || 1));
         const groupId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const batch = writeBatch(db);
+        const created = [];
         for (let i = 0; i < days; i++) {
           const ref = doc(collection(db, 'daily_progress'));
+          created.push({ id: ref.id, date: addDaysToDateString(dailyForm.date, i) });
           batch.set(ref, {
             ...entryFields,
             date: addDaysToDateString(dailyForm.date, i),
@@ -635,6 +653,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
           });
         }
         await batch.commit();
+        for (const c of created) await syncUsageSafely({ id: c.id, date: c.date, items: entryFields.medicine_items, patientName });
       }
 
       setDailyForm(emptyDailyEntry());
@@ -675,6 +694,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   const handleDeleteDailyEntry = async (id) => {
     if (!window.confirm('Delete this daily record?')) return;
     try {
+      await removeEntryUsage(id);
       await deleteDoc(doc(db, 'daily_progress', id));
       setDailyProgress(prev => prev.filter(e => e.id !== id));
       if (editingDailyId === id) handleCancelEditDaily();
@@ -1025,6 +1045,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
                     <div className="space-y-3 mb-3">
                       <MedicineTable
+                        trackUsage
                         items={dailyForm.medicine_items}
                         onChange={(items) => setDailyForm(p => ({ ...p, medicine_items: items, medicines_given: summarizeMedicineItems(items) }))}
                         label="Medicines Given"

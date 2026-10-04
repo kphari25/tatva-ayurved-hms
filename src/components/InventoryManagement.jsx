@@ -3,11 +3,12 @@ import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, Che
 import * as XLSX from 'xlsx';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch,
-  query, orderBy, limit, startAfter, startAt, endAt, getCountFromServer,
+  query, orderBy, limit, startAfter, startAt, endAt, getCountFromServer, where,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
 import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { hasPack, liquidStockLabel, totalMl } from '../lib/liquidUsage';
 import { previewIframeStyle } from '../lib/printPreviewSize';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
 import { formatDateOnly } from '../lib/formatDate';
@@ -78,6 +79,8 @@ const InventoryManagement = () => {
   // loading it on every page visit.
   const [salesHistory, setSalesHistory] = useState(null); // null = not loaded yet
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
+  // Internal ml-usage log per liquid item, loaded when its row is expanded.
+  const [usageByItem, setUsageByItem] = useState({});
   const [viewingInvoice, setViewingInvoice] = useState(false);
   // In-page iframe print preview (see MedicineSaleModal's printPreviewData
   // comment) rather than a popup — reliable across Chrome/Safari.
@@ -447,6 +450,17 @@ const InventoryManagement = () => {
     }
   };
 
+  const loadUsage = async (itemId) => {
+    try {
+      const snap = await getDocs(query(collection(db, 'inventory_usage'), where('inventory_id', '==', itemId)));
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      setUsageByItem(prev => ({ ...prev, [itemId]: rows }));
+    } catch (e) {
+      console.error('Error loading usage history:', e);
+      setUsageByItem(prev => ({ ...prev, [itemId]: [] }));
+    }
+  };
+
   const ensureSalesHistoryLoaded = async () => {
     if (salesHistory !== null || salesHistoryLoading) return;
     try {
@@ -465,6 +479,8 @@ const InventoryManagement = () => {
     const next = expandedRow === item.firebaseId ? null : item.firebaseId;
     setExpandedRow(next);
     if (next) ensureSalesHistoryLoaded();
+    const nextItem = next && items.find(i => i.firebaseId === next);
+    if (nextItem && hasPack(nextItem)) loadUsage(nextItem.firebaseId);
   };
 
   const toggleSelected = (firebaseId) => {
@@ -805,8 +821,9 @@ const InventoryManagement = () => {
                           (item.stock_quantity || 0) < (item.reorder_level || 10) ? 'text-orange-600' :
                           'text-green-600'
                         }`}>
-                          {item.stock_quantity || 0} {item.unit_of_measurement || 'Nos'}
+                          {hasPack(item) ? liquidStockLabel(item) : `${item.stock_quantity || 0} ${item.unit_of_measurement || 'Nos'}`}
                         </span>
+                        {hasPack(item) && <span className="block text-[11px] font-normal text-gray-500">{Math.round(totalMl(item))} {item.pack_unit || 'ml'} total</span>}
                       </td>
                       <td className="px-6 py-4 text-sm text-right text-gray-700">₹{(item.purchase_price || item.purchase_rate || 0).toFixed(2)}</td>
                       <td className="px-6 py-4 text-sm text-right text-gray-700">₹{(item.MRP || item.mrp || 0).toFixed(2)}</td>
@@ -1093,6 +1110,46 @@ const InventoryManagement = () => {
                               );
                             })()}
                           </div>
+
+                          {/* Usage History — internal ml usage logged from the daily logs (liquids only) */}
+                          {hasPack(item) && (
+                            <div className="mt-6 pt-4 border-t border-blue-200">
+                              <h4 className="font-bold text-gray-800 mb-1">🧴 Usage History</h4>
+                              <p className="text-xs text-gray-500 mb-3">
+                                {item.pack_size} {item.pack_unit || 'ml'} bottles · {liquidStockLabel(item)} · {Math.round(totalMl(item))} {item.pack_unit || 'ml'} on hand. Internal only — never billed or printed.
+                              </p>
+                              {!usageByItem[item.firebaseId] ? (
+                                <p className="text-sm text-gray-400 px-4 py-3">Loading…</p>
+                              ) : usageByItem[item.firebaseId].length === 0 ? (
+                                <p className="text-sm text-gray-400 bg-gray-50 rounded-lg px-4 py-3">No usage recorded yet.</p>
+                              ) : (
+                                <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Patient</th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">From</th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
+                                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Used</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {usageByItem[item.firebaseId].map(u => (
+                                        <tr key={u.id}>
+                                          <td className="px-3 py-2">{u.date ? formatDateOnly(u.date, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '-'}</td>
+                                          <td className="px-3 py-2">{u.patient_name || '-'}{(u.ip_number || u.mrd_number) && <span className="text-gray-400"> · {u.ip_number || u.mrd_number}</span>}</td>
+                                          <td className="px-3 py-2">{u.source === 'op_visit_log' ? 'OP Visit Log' : 'IP Daily Log'}</td>
+                                          <td className="px-3 py-2">{(u.batches_used || []).map(b => b.batch_number || '-').join(', ') || '-'}</td>
+                                          <td className="px-3 py-2 text-right font-medium">{u.ml} {u.unit || 'ml'}{u.shortage > 0 && <span className="ml-1 text-red-600 text-xs">(short {u.shortage})</span>}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           {/* Actions */}
                           <div className="mt-4 pt-4 border-t border-blue-200 flex gap-3">

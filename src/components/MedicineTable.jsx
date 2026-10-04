@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { hasPack, liquidStockLabel } from '../lib/liquidUsage';
 
 const emptyRow = () => ({
   id: Date.now() + Math.random(),
@@ -13,6 +14,7 @@ const emptyRow = () => ({
   frequency: '',
   instructions: '',
   days: '',
+  ml_used: '',
 });
 
 const stockLabel = (item) => {
@@ -27,7 +29,10 @@ const stockLabel = (item) => {
 // inventory (like the Medicine Sale bill), with Dose/Frequency/Instructions/Days
 // columns matching the clinic's printed prescription format. Enter moves across
 // a row's fields, and off the last field it adds (or jumps to) the next row.
-const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
+// trackUsage: daily-log contexts only — adds an internal "Used" column for
+// liquid items (those with a pack size set in Inventory) so partial-bottle use
+// is deducted from stock on save. Never printed or billed.
+const MedicineTable = ({ items, onChange, label = 'Medication Details', trackUsage = false }) => {
   const [inventory, setInventory] = useState([]);
   const [loadingInventory, setLoadingInventory] = useState(true);
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -103,14 +108,14 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
     ).slice(0, 8);
 
   const handleNameChange = (rowId, value) => {
-    setRows(rows.map(r => r.id === rowId ? { ...r, item_name: value, item_code: '', mrp: 0 } : r));
+    setRows(rows.map(r => r.id === rowId ? { ...r, item_name: value, item_code: '', mrp: 0, inventory_id: '', pack_size: 0, ml_used: '' } : r));
     openDropdownFor(rowId);
   };
 
   const handleSelectMedicine = (rowId, med) => {
     let updated = rows.map(r =>
       r.id === rowId
-        ? { ...r, item_name: med.item_name || med.item_code, item_code: med.item_code || '', mrp: Number(med.mrp) || 0 }
+        ? { ...r, item_name: med.item_name || med.item_code, item_code: med.item_code || '', mrp: Number(med.mrp) || 0, inventory_id: med.id, pack_size: hasPack(med) ? Number(med.pack_size) : 0, pack_unit: med.pack_unit || 'ml', ml_used: '' }
         : r
     );
     if (updated[updated.length - 1].id === rowId) updated = [...updated, emptyRow()];
@@ -132,7 +137,10 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
     if (el) { el.focus(); if (el.select) el.select(); }
   };
 
-  const ROW_FIELD_ORDER = ['item_name', 'dose', 'frequency', 'instructions', 'days'];
+  const showUsage = trackUsage && rows.some(r => Number(r.pack_size) > 0);
+  const BASE_ORDER = ['item_name', 'dose', 'frequency', 'instructions', 'days'];
+  // The ml column only exists (and takes focus) on liquid rows.
+  const orderFor = (rowId) => showUsage && Number(rows.find(r => r.id === rowId)?.pack_size) > 0 ? [...BASE_ORDER, 'ml_used'] : BASE_ORDER;
 
   const advanceWithinRow = (rowId, field) => (e) => {
     if (e.key !== 'Enter') return;
@@ -140,9 +148,10 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
     // Keep row navigation self-contained — don't let the outer case sheet's
     // tab-level Enter-to-advance also react to this keypress.
     e.stopPropagation();
-    const idx = ROW_FIELD_ORDER.indexOf(field);
-    if (idx < ROW_FIELD_ORDER.length - 1) {
-      focusField(rowId, ROW_FIELD_ORDER[idx + 1]);
+    const order = orderFor(rowId);
+    const idx = order.indexOf(field);
+    if (idx < order.length - 1) {
+      focusField(rowId, order[idx + 1]);
       return;
     }
     // Last field in the row (Days) — move to (or create) the next row.
@@ -178,6 +187,7 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
               <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Frequency</th>
               <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Instructions</th>
               <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase w-20">Days</th>
+              {showUsage && <th className="px-2 py-1.5 text-left text-xs font-medium text-amber-700 uppercase w-28" title="Internal stock tracking only — not billed or printed">Used (ml)</th>}
               <th className="px-2 py-1.5 w-8"></th>
             </tr>
           </thead>
@@ -277,6 +287,26 @@ const MedicineTable = ({ items, onChange, label = 'Medication Details' }) => {
                       className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     />
                   </td>
+                  {showUsage && (
+                    <td className="px-2 py-1.5 align-top">
+                      {Number(row.pack_size) > 0 ? (
+                        <>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={row.ml_used ?? ''}
+                            onChange={e => handleFieldChange(row.id, 'ml_used', e.target.value)}
+                            onKeyDown={advanceWithinRow(row.id, 'ml_used')}
+                            ref={el => { fieldRefs.current[`${row.id}_ml_used`] = el; }}
+                            placeholder={`of ${row.pack_size}`}
+                            className="w-full px-2 py-1.5 border border-amber-300 bg-amber-50 rounded text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                          />
+                          {(() => { const inv = inventory.find(m => m.id === row.inventory_id); return inv ? <span className="block text-[11px] text-gray-500 mt-0.5">{liquidStockLabel(inv)}</span> : null; })()}
+                        </>
+                      ) : null}
+                    </td>
+                  )}
                   <td className="px-2 py-1.5 align-top pt-2.5">
                     <button type="button" onClick={() => handleRemoveRow(row.id)} className="text-gray-400 hover:text-red-600">
                       <Trash2 className="w-4 h-4" />
