@@ -17,6 +17,7 @@ const COLUMNS = [
   { key: 'discount_percentage', label: 'Discount %', type: 'number', width: 'min-w-[90px]' },
   { key: 'gst_category', label: 'GST Category', type: 'select', width: 'min-w-[200px]' },
   { key: 'stock_quantity', label: 'Stock Qty', type: 'number', width: 'min-w-[90px]' },
+  { key: 'pack_size', label: 'Bottle Size (ml)', type: 'number', width: 'min-w-[110px]' },
   { key: 'entry_date', label: 'Entry Date', type: 'date', width: 'min-w-[140px]' },
   { key: 'manufacturing_date', label: 'Mfg Date', type: 'date', width: 'min-w-[140px]' },
   { key: 'expiry_date', label: 'Expiry Date', type: 'date', width: 'min-w-[140px]' },
@@ -27,7 +28,7 @@ const emptyRow = () => ({
   id: Date.now() + Math.random(),
   item_name: '', item_code: '', batch_number: '', manufacturer: '', hsn_code: '',
   purchase_price: '', MRP: '', discount_percentage: '', gst_category: '',
-  stock_quantity: '', entry_date: today(), manufacturing_date: '', expiry_date: '', existing_id: '',
+  stock_quantity: '', pack_size: '', entry_date: today(), manufacturing_date: '', expiry_date: '', existing_id: '',
 });
 const isBlank = (r) => !r.item_name.trim() && !r.item_code.trim() && !r.purchase_price && !r.MRP && !r.stock_quantity;
 
@@ -84,6 +85,7 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
       MRP: String(m.MRP ?? m.mrp ?? ''),
       discount_percentage: m.discount_percentage ? String(m.discount_percentage) : '',
       gst_category: m.gst_category || '',
+      pack_size: Number(m.pack_size) > 0 ? String(m.pack_size) : '',
       existing_id: m._id,
     } : r));
     setSugg(null);
@@ -189,7 +191,10 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
         let value = 0, qtySum = 0;
         batches.forEach(b => { value += (Number(b.quantity) || 0) * (Number(b.purchase_price) || 0); qtySum += Number(b.quantity) || 0; });
         const wb = writeBatch(db);
+        const rowPack = parseFloat(group.find(r => parseFloat(r.pack_size) > 0)?.pack_size);
         wb.update(doc(db, 'inventory', id), {
+          // Only fills in a missing bottle size — never changes one already set.
+          ...(!(Number(cur.pack_size) > 0) && rowPack > 0 ? { pack_size: rowPack, pack_unit: 'ml', open_balance: 0 } : {}),
           stock_quantity: stock,
           batches,
           purchase_price: qtySum > 0 ? Math.round((value / qtySum) * 100) / 100 : parseFloat(last.purchase_price),
@@ -224,6 +229,10 @@ const ManualEntryGrid = ({ onClose, onSuccess, onSwitchToForm }) => {
             stock_quantity: qty,
             reorder_level: 10,
             unit_of_measurement: 'Nos',
+            // Liquids: bottle size enables partial-use (ml) tracking from the daily logs.
+            pack_size: parseFloat(r.pack_size) > 0 ? parseFloat(r.pack_size) : 0,
+            pack_unit: 'ml',
+            ...(parseFloat(r.pack_size) > 0 ? { open_balance: 0 } : {}),
             manufacturing_date: r.manufacturing_date || '',
             expiry_date: r.expiry_date || '',
             batch_number: r.batch_number.trim(),
