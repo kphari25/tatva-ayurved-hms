@@ -421,6 +421,22 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     }
   };
 
+  // Inline General / PNC switch in the list's Category column — saves
+  // straight away, rolling the dropdown back if the write fails.
+  const handleCategoryChange = async (patient, category) => {
+    const patientId = patient.id || patient.firebaseId;
+    const previous = patient.patient_category || 'General';
+    const apply = (value) => setPatients(prev => prev.map(p => (p.id || p.firebaseId) === patientId ? { ...p, patient_category: value } : p));
+    apply(category);
+    try {
+      await updateDoc(doc(db, 'patients', patientId), { patient_category: category, updated_at: new Date().toISOString() });
+    } catch (error) {
+      console.error('Error updating patient category:', error);
+      apply(previous);
+      alert('Failed to update category: ' + error.message);
+    }
+  };
+
   // Undo for an OP checkout or an IP discharge marked by mistake — moves the
   // patient back to Active without re-running the full admission workflow.
   const handleReactivate = async (patient) => {
@@ -831,9 +847,15 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 text-xs rounded-full font-semibold ${patient.patient_category === 'PNC' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {patient.patient_category || 'General'}
-                      </span>
+                      <select
+                        value={patient.patient_category || 'General'}
+                        onChange={(e) => handleCategoryChange(patient, e.target.value)}
+                        title="Change patient category"
+                        className={`px-2 py-1 text-xs rounded-full font-semibold border-0 cursor-pointer focus:ring-2 focus:ring-teal-500 outline-none ${patient.patient_category === 'PNC' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'}`}
+                      >
+                        <option value="General">General</option>
+                        <option value="PNC">PNC</option>
+                      </select>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm">
