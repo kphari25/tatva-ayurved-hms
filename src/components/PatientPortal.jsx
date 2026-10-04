@@ -30,6 +30,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGender, setFilterGender] = useState('all');
   const [filterPatientType, setFilterPatientType] = useState('all');
+  const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('active');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
@@ -496,6 +497,10 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       filterPatientType === 'all' ||
       (patient.patient_type || 'OP') === filterPatientType;
 
+    const matchesCategory =
+      filterCategory === 'all' ||
+      (patient.patient_category || 'General') === filterCategory;
+
     // Discharged patients are hidden by default (same rule Dashboard's IP
     // list already uses) so they don't linger in the active roster forever —
     // but a name/MRD/phone search should still be able to recall them, so the
@@ -505,7 +510,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       filterStatus === 'all' ||
       (filterStatus === 'discharged' ? patient.admission_status === 'discharged' : patient.admission_status !== 'discharged');
 
-    return matchesSearch && matchesGender && matchesType && matchesStatus;
+    return matchesSearch && matchesGender && matchesType && matchesCategory && matchesStatus;
   });
 
   const calculateAge = (dob) => {
@@ -686,6 +691,15 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
               <option value="IP">IP (In-Patient)</option>
               <option value="OP">OP (Out-Patient)</option>
             </select>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="flex-1 sm:flex-none px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+            >
+              <option value="all">All Categories</option>
+              <option value="General">General</option>
+              <option value="PNC">PNC</option>
+            </select>
           </div>
 
           <button
@@ -738,6 +752,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Age/Gender</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Contact</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Registration Date</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
@@ -814,6 +829,11 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                           Pending Admission
                         </span>
                       )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 text-xs rounded-full font-semibold ${patient.patient_category === 'PNC' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {patient.patient_category || 'General'}
+                      </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm">
