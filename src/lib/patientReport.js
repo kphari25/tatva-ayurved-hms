@@ -9,7 +9,6 @@
 // The system only keeps a patient's LATEST visit date (last_visit_date), so
 // Return counts for older periods can under-count patients who have visited
 // again since — checked-in appointments are the only per-visit history.
-import { findDoctorInfo } from './doctors';
 
 export const PATIENT_CATEGORIES = ['General', 'PNC'];
 
@@ -32,14 +31,40 @@ const inRange = (v, start, end) => {
 const norm = (s) => String(s || '').replace(/^dr\.?\s*/i, '').trim();
 export const UNASSIGNED = 'Unassigned';
 
-// Canonical doctor label — matches the stored name against the HR/user
-// doctor list tolerantly ("Dr. Satheesh" vs "Dr. Satheesh Kumar") so one
-// doctor isn't split across several spellings.
+// Name parts for matching: lowercase, no title/punctuation, no initials.
+const nameTokens = (s) => norm(s).toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(t => t.length > 1);
+
+const editDistance = (a, b) => {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return dp[a.length][b.length];
+};
+
+const sameToken = (a, b) => a === b || (a.length >= 4 && b.length >= 4 && editDistance(a, b) <= 1);
+
+// Same person if every name part of the shorter name appears (allowing a
+// one-letter typo) in the longer one — "Dr. Satheesh" / "Dr. C . Satheesh
+// Kumar" / "Dr. Satheesh Kumar", or "Dr. shruthi" / "Dr. Sruthi Muralidharan".
+const sameDoctor = (a, b) => {
+  const ta = nameTokens(a), tb = nameTokens(b);
+  if (!ta.length || !tb.length) return false;
+  const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  return short.every(t => long.some(u => sameToken(t, u)));
+};
+
+const tidy = (name) => norm(name).replace(/\s+\./g, '.').replace(/\.(?=\S)/g, '. ').replace(/\s+/g, ' ');
+
+// Canonical doctor label — a stored name is matched against the HR/user
+// doctor list by name parts, so one doctor isn't split across spellings.
+// If a short name fits more than one doctor it is left as typed.
 export const doctorLabel = (assigned, doctors = []) => {
   const raw = norm(assigned);
   if (!raw) return UNASSIGNED;
-  const info = findDoctorInfo(doctors, assigned);
-  return `Dr. ${norm(info?.name) || raw}`;
+  const matches = doctors.filter(d => sameDoctor(assigned, d.name));
+  if (matches.length === 1) return `Dr. ${tidy(matches[0].name)}`;
+  return `Dr. ${tidy(raw)}`;
 };
 
 const diagnosisTexts = (p, ctx) => {
