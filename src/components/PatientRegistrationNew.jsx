@@ -11,7 +11,7 @@ import InvoiceModal from './InvoiceModal';
 // field when the user presses Enter, instead of the browser's default of
 // submitting the form on Enter inside any single-line input.
 const FIELD_ORDER = [
-  'first_name', 'last_name', 'age', 'gender', 'patient_type', 'registration_fee', 'consultation_fees',
+  'first_name', 'last_name', 'age', 'gender', 'patient_type', 'patient_category', 'registration_fee', 'consultation_fees',
   'blood_group', 'phone', 'email', 'address', 'city', 'state', 'pincode',
   'emergency_contact_name', 'emergency_contact_phone',
   'allergies', 'chronic_conditions', 'current_medications', 'medical_history', 'notes'
@@ -46,6 +46,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
       age: patient?.age || '',
       gender: patient?.gender || '',
       patient_type: patient?.patient_type || 'OP',
+      patient_category: patient?.patient_category || 'General',
       phone: patient?.phone || lead?.phone || '',
       email: patient?.email || lead?.email || '',
       address: patient?.address || '',
@@ -455,6 +456,24 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
                 >
                   <option value="OP">OP (Out-Patient)</option>
                   <option value="IP">IP (In-Patient)</option>
+                </select>
+              </div>
+
+              {/* Patient Category — feeds the PNC count in Reports */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Patient Category
+                </label>
+                <select
+                  name="patient_category"
+                  value={formData.patient_category}
+                  onChange={handleChange}
+                  onKeyDown={advanceOnEnter('patient_category')}
+                  ref={setFieldRef('patient_category')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="General">General</option>
+                  <option value="PNC">PNC (Post-Natal Care)</option>
                 </select>
               </div>
 

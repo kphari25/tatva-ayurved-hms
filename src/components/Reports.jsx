@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileBarChart, Users, Package, Calendar, Download, Bed, UserRound, Phone, TrendingUp, TrendingDown, IndianRupee, ShoppingCart } from 'lucide-react';
+import { FileBarChart, Users, Package, Calendar, Download, Bed, UserRound, Phone, TrendingUp, TrendingDown, IndianRupee, ShoppingCart, UserPlus, Repeat, Baby, Stethoscope } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { loadDoctorsList } from '../lib/doctors';
+import { buildContext, classifyPatients, summarize, ROW_FILTERS, byDoctor } from '../lib/patientReport';
+import ReportPatientList from './ReportPatientList';
 
 const fmt = (n) => `₹${(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -16,6 +19,7 @@ const inRange = (dateVal, start, end) => {
 };
 
 const quickRanges = {
+  'this-month': () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth(), 1), now]; },
   'last-3': () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth() - 2, 1), now]; },
   'last-6': () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth() - 5, 1), now]; },
   'last-12': () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth() - 11, 1), now]; },
@@ -33,8 +37,13 @@ const buildMonthList = (start, end) => {
   return months;
 };
 
-const StatCard = ({ title, value, icon: Icon, color, subtitle }) => (
-  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 border-l-4" style={{ borderLeftColor: color }}>
+const StatCard = ({ title, value, icon: Icon, color, subtitle, onClick }) => (
+  <div
+    onClick={onClick}
+    className={`bg-white rounded-xl shadow-sm border border-gray-100 p-5 border-l-4 ${onClick ? 'cursor-pointer hover:shadow-md hover:bg-gray-50 transition' : ''}`}
+    style={{ borderLeftColor: color }}
+    title={onClick ? 'Click to see the patients' : undefined}
+  >
     <div className="flex items-center justify-between mb-2">
       <p className="text-sm font-medium text-gray-600">{title}</p>
       <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
@@ -48,8 +57,9 @@ const StatCard = ({ title, value, icon: Icon, color, subtitle }) => (
 
 const Reports = () => {
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('patients'); // patients | inventory
+  const [activeTab, setActiveTab] = useState('patients'); // patients | doctors | inventory
   const [rangeMode, setRangeMode] = useState('last-6');
+  const [detail, setDetail] = useState(null); // { title, subtitle, rows } — patient drill-down
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [rawData, setRawData] = useState(null);
@@ -61,13 +71,18 @@ const Reports = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [patientsSnap, leadsSnap, salesSnap, expensesSnap, purchaseEntriesSnap, inventorySnap] = await Promise.all([
+      const [patientsSnap, leadsSnap, salesSnap, expensesSnap, purchaseEntriesSnap, inventorySnap, apptSnap, opSnap, ipSnap, summarySnap, doctors] = await Promise.all([
         getDocs(collection(db, 'patients')),
         getDocs(collection(db, 'leads')),
         getDocs(collection(db, 'medicine_sales')),
         getDocs(collection(db, 'expenses')),
         getDocs(collection(db, 'purchase_entries')),
         getDocs(collection(db, 'inventory')),
+        getDocs(collection(db, 'appointments')),
+        getDocs(collection(db, 'op_case_sheets')),
+        getDocs(collection(db, 'ip_case_sheets')),
+        getDocs(collection(db, 'discharge_summaries')),
+        loadDoctorsList().catch(() => []),
       ]);
       setRawData({
         patients: patientsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
@@ -78,6 +93,13 @@ const Reports = () => {
         // Spread first, id last: some inventory docs carry their own legacy
         // numeric `id` field, which would otherwise clobber the real doc id.
         inventory: inventorySnap.docs.map(d => ({ ...d.data(), id: d.id })),
+        reportContext: buildContext({
+          appointments: apptSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          opSheets: opSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          ipSheets: ipSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          summaries: summarySnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          doctors,
+        }),
       });
     } catch (error) {
       console.error('Error loading report data:', error);
@@ -100,23 +122,36 @@ const Reports = () => {
   const months = useMemo(() => buildMonthList(selectedRange[0], selectedRange[1]), [selectedRange]);
 
   // ── Patient Reports ──────────────────────────────────────────────────
+  // Every patient seen in the selected range (new registrations + returning
+  // visits), and the same per month (clipped to the range) for the table/chart.
+  const rangeRows = useMemo(() => {
+    if (!rawData) return [];
+    return classifyPatients(rawData.patients, rawData.reportContext, selectedRange[0], selectedRange[1]);
+  }, [rawData, selectedRange]);
+
   const patientMonthly = useMemo(() => {
     if (!rawData) return [];
     return months.map(m => {
       const monthStart = new Date(m.year, m.month, 1);
       const monthEnd = new Date(m.year, m.month + 1, 0, 23, 59, 59);
-      const ip = rawData.patients.filter(p => p.patient_type === 'IP' && inRange(p.created_at, monthStart, monthEnd)).length;
-      const op = rawData.patients.filter(p => p.patient_type === 'OP' && inRange(p.created_at, monthStart, monthEnd)).length;
-      const calledIn = rawData.leads.filter(l => inRange(l.created_at, monthStart, monthEnd)).length;
-      return { ...m, ip, op, calledIn, total: ip + op };
+      const start = monthStart < selectedRange[0] ? selectedRange[0] : monthStart;
+      const end = monthEnd > selectedRange[1] ? selectedRange[1] : monthEnd;
+      const rows = classifyPatients(rawData.patients, rawData.reportContext, start, end);
+      const calledIn = rawData.leads.filter(l => inRange(l.created_at, start, end)).length;
+      return { ...m, rows, calledIn, ...summarize(rows) };
     });
-  }, [rawData, months]);
+  }, [rawData, months, selectedRange]);
 
-  const patientSummary = useMemo(() => patientMonthly.reduce((acc, m) => ({
-    ip: acc.ip + m.ip,
-    op: acc.op + m.op,
-    calledIn: acc.calledIn + m.calledIn,
-  }), { ip: 0, op: 0, calledIn: 0 }), [patientMonthly]);
+  const patientSummary = useMemo(() => ({
+    ...summarize(rangeRows),
+    calledIn: patientMonthly.reduce((sum, m) => sum + m.calledIn, 0),
+  }), [rangeRows, patientMonthly]);
+
+  const doctorRows = useMemo(() => byDoctor(rangeRows), [rangeRows]);
+
+  const openDetail = (title, rows, scope) => setDetail({ title, subtitle: scope, rows });
+  const openFiltered = (key, label, sourceRows, scope) =>
+    openDetail(label, sourceRows.filter(ROW_FILTERS[key]), scope);
 
   // ── Inventory Reports ────────────────────────────────────────────────
   const inventoryMonthly = useMemo(() => {
@@ -188,17 +223,32 @@ const Reports = () => {
   }, [rawData, selectedRange]);
 
   const handleExportPatients = () => {
-    const exportData = patientMonthly.map(m => ({
-      Month: m.label,
-      'New IP Patients': m.ip,
-      'New OP Patients': m.op,
-      'Called In': m.calledIn,
-      Total: m.total,
-    }));
-    const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Patient Report');
+    const monthlySheet = XLSX.utils.json_to_sheet(patientMonthly.map(m => ({
+      Month: m.label, 'Patients Seen': m.total, OP: m.op, IP: m.ip, New: m.new, Return: m.returning, PNC: m.pnc, 'Called In': m.calledIn,
+    })));
+    XLSX.utils.book_append_sheet(wb, monthlySheet, 'Monthly Summary');
+    const detailSheet = XLSX.utils.json_to_sheet(rangeRows.map(r => ({
+      Patient: r.name, MRD: r.mrd, 'IP No': r.ip, Phone: r.phone, Type: r.type, 'New / Return': r.kind,
+      Category: r.category, PNC: r.pnc ? 'Yes' : '', Doctor: r.doctor,
+      Registered: r.registered ? new Date(r.registered).toLocaleDateString('en-IN') : '', 'Last Visit': r.lastVisit,
+    })));
+    XLSX.utils.book_append_sheet(wb, detailSheet, 'Patients');
     XLSX.writeFile(wb, `Patient_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleExportDoctors = () => {
+    const wb = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(doctorRows.map(d => ({
+      Doctor: d.doctor, Patients: d.total, OP: d.op, IP: d.ip, New: d.new, Return: d.returning, PNC: d.pnc,
+      'Share %': patientSummary.total ? Math.round((d.total / patientSummary.total) * 1000) / 10 : 0,
+    })));
+    XLSX.utils.book_append_sheet(wb, sheet, 'By Doctor');
+    const detailSheet = XLSX.utils.json_to_sheet(doctorRows.flatMap(d => d.rows.map(r => ({
+      Doctor: d.doctor, Patient: r.name, MRD: r.mrd, Type: r.type, 'New / Return': r.kind, PNC: r.pnc ? 'Yes' : '', Phone: r.phone,
+    }))));
+    XLSX.utils.book_append_sheet(wb, detailSheet, 'Patients by Doctor');
+    XLSX.writeFile(wb, `Patients_By_Doctor_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleExportInventory = () => {
@@ -231,11 +281,12 @@ const Reports = () => {
           <FileBarChart className="w-8 h-8 text-teal-600" />
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Reports</h1>
-            <p className="text-gray-600 text-sm">Patient intake and inventory movement, by month</p>
+            <p className="text-gray-600 text-sm">Patients, doctors and inventory movement</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {[
+            { id: 'this-month', label: '1 Month' },
             { id: 'last-3', label: 'Last 3 Months' },
             { id: 'last-6', label: 'Last 6 Months' },
             { id: 'last-12', label: 'Last 12 Months' },
@@ -284,6 +335,7 @@ const Reports = () => {
             <div className="flex border-b border-gray-100">
               {[
                 { id: 'patients', label: 'Patient Reports', icon: Users },
+                { id: 'doctors', label: 'Patients by Doctor', icon: Stethoscope },
                 { id: 'inventory', label: 'Inventory Reports', icon: Package },
               ].map(tab => {
                 const Icon = tab.icon;
@@ -305,11 +357,17 @@ const Reports = () => {
 
           {activeTab === 'patients' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <StatCard title="New IP Patients" value={patientSummary.ip} icon={Bed} color="#8b5cf6" subtitle={rangeLabel} />
-                <StatCard title="New OP Patients" value={patientSummary.op} icon={UserRound} color="#3b82f6" subtitle={rangeLabel} />
-                <StatCard title="Called In" value={patientSummary.calledIn} icon={Phone} color="#f59e0b" subtitle="From Lead Management" />
-                <StatCard title="Total Patients" value={patientSummary.ip + patientSummary.op} icon={Users} color="#14b8a6" subtitle="IP + OP" />
+              <p className="text-sm text-gray-500">
+                Patients seen in {rangeLabel}: <strong>New</strong> = registered in this period, <strong>Return</strong> = registered earlier and visited in this period. Click any count to see the patients.
+              </p>
+              <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+                <StatCard title="Patients Seen" value={patientSummary.total} icon={Users} color="#14b8a6" subtitle="New + Return" onClick={() => openFiltered('total', 'All Patients', rangeRows, rangeLabel)} />
+                <StatCard title="OP Patients" value={patientSummary.op} icon={UserRound} color="#3b82f6" subtitle={rangeLabel} onClick={() => openFiltered('op', 'OP Patients', rangeRows, rangeLabel)} />
+                <StatCard title="IP Patients" value={patientSummary.ip} icon={Bed} color="#8b5cf6" subtitle={rangeLabel} onClick={() => openFiltered('ip', 'IP Patients', rangeRows, rangeLabel)} />
+                <StatCard title="New Patients" value={patientSummary.new} icon={UserPlus} color="#10b981" subtitle="Registered in range" onClick={() => openFiltered('new', 'New Patients', rangeRows, rangeLabel)} />
+                <StatCard title="Return Patients" value={patientSummary.returning} icon={Repeat} color="#f59e0b" subtitle="Registered earlier" onClick={() => openFiltered('returning', 'Return Patients', rangeRows, rangeLabel)} />
+                <StatCard title="PNC Patients" value={patientSummary.pnc} icon={Baby} color="#ec4899" subtitle="Category or diagnosis" onClick={() => openFiltered('pnc', 'PNC Patients', rangeRows, rangeLabel)} />
+                <StatCard title="Called In" value={patientSummary.calledIn} icon={Phone} color="#6b7280" subtitle="From Lead Management" />
               </div>
 
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -321,9 +379,11 @@ const Reports = () => {
                     <YAxis allowDecimals={false} />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="ip" name="IP Patients" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="op" name="OP Patients" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="calledIn" name="Called In" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="ip" name="IP Patients" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="new" name="New" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="returning" name="Return" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="pnc" name="PNC" fill="#ec4899" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -343,22 +403,108 @@ const Reports = () => {
                     <thead className="bg-gray-50 border-b">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">New IP</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">New OP</th>
+                        {['Patients Seen', 'OP', 'IP', 'New', 'Return', 'PNC'].map(h => (
+                          <th key={h} className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">{h}</th>
+                        ))}
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Called In</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {patientMonthly.map(m => (
                         <tr key={m.key} className="hover:bg-gray-50">
                           <td className="px-6 py-3 text-sm font-medium text-gray-900">{m.label}</td>
-                          <td className="px-6 py-3 text-sm text-right text-gray-700">{m.ip}</td>
-                          <td className="px-6 py-3 text-sm text-right text-gray-700">{m.op}</td>
+                          {[['total', 'Patients Seen', 'All Patients'], ['op', 'OP', 'OP Patients'], ['ip', 'IP', 'IP Patients'], ['new', 'New', 'New Patients'], ['returning', 'Return', 'Return Patients'], ['pnc', 'PNC', 'PNC Patients']].map(([key, , label]) => (
+                            <td key={key} className="px-6 py-3 text-sm text-right">
+                              {m[key] > 0 ? (
+                                <button onClick={() => openFiltered(key, `${label} — ${m.label}`, m.rows, m.label)} className="text-teal-700 font-medium underline decoration-dotted hover:text-teal-900">{m[key]}</button>
+                              ) : <span className="text-gray-400">0</span>}
+                            </td>
+                          ))}
                           <td className="px-6 py-3 text-sm text-right text-gray-700">{m.calledIn}</td>
-                          <td className="px-6 py-3 text-sm text-right font-semibold text-gray-900">{m.total}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'doctors' && (
+            <div className="space-y-6">
+              <p className="text-sm text-gray-500">
+                Patients seen in {rangeLabel}, grouped by the doctor on each patient's record (Assign Doctor). Each patient is counted once. Click a doctor or a count to see the patients.
+              </p>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard title="Patients Seen" value={patientSummary.total} icon={Users} color="#14b8a6" subtitle={rangeLabel} onClick={() => openFiltered('total', 'All Patients', rangeRows, rangeLabel)} />
+                <StatCard title="Doctors" value={doctorRows.filter(d => d.doctor !== 'Unassigned').length} icon={Stethoscope} color="#3b82f6" subtitle="With patients in range" />
+                <StatCard title="Busiest Doctor" value={doctorRows.find(d => d.doctor !== 'Unassigned')?.doctor || '—'} icon={TrendingUp} color="#8b5cf6" subtitle={doctorRows.find(d => d.doctor !== 'Unassigned') ? `${doctorRows.find(d => d.doctor !== 'Unassigned').total} patients` : ''} />
+                <StatCard title="Unassigned" value={doctorRows.find(d => d.doctor === 'Unassigned')?.total || 0} icon={UserRound} color="#6b7280" subtitle="No doctor on record" onClick={() => { const u = doctorRows.find(d => d.doctor === 'Unassigned'); if (u) openDetail('Unassigned patients', u.rows, rangeLabel); }} />
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 className="font-bold text-gray-800 mb-4">Patients per Doctor</h3>
+                {doctorRows.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-8">No patients in this period.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={Math.max(180, doctorRows.length * 48)}>
+                    <BarChart data={doctorRows} layout="vertical" margin={{ left: 24 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" allowDecimals={false} />
+                      <YAxis type="category" dataKey="doctor" width={170} tick={{ fontSize: 12 }} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="op" name="OP" stackId="a" fill="#3b82f6" />
+                      <Bar dataKey="ip" name="IP" stackId="a" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                  <h3 className="font-bold text-gray-800">Distribution by Doctor</h3>
+                  <button onClick={handleExportDoctors} className="flex items-center gap-2 px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700">
+                    <Download className="w-4 h-4" /> Export
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Doctor</th>
+                        {['Patients', 'Share', 'OP', 'IP', 'New', 'Return', 'PNC'].map(h => (
+                          <th key={h} className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {doctorRows.map(d => (
+                        <tr key={d.doctor} className="hover:bg-gray-50">
+                          <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                            <button onClick={() => openDetail(`${d.doctor} — patients`, d.rows, rangeLabel)} className="text-teal-700 hover:underline">{d.doctor}</button>
+                          </td>
+                          <td className="px-6 py-3 text-sm text-right font-semibold text-gray-900">{d.total}</td>
+                          <td className="px-6 py-3 text-sm text-right text-gray-600">{patientSummary.total ? `${Math.round((d.total / patientSummary.total) * 1000) / 10}%` : '—'}</td>
+                          {[['op', 'OP'], ['ip', 'IP'], ['new', 'New'], ['returning', 'Return'], ['pnc', 'PNC']].map(([key, label]) => (
+                            <td key={key} className="px-6 py-3 text-sm text-right">
+                              {d[key] > 0 ? (
+                                <button onClick={() => openFiltered(key, `${d.doctor} — ${label} patients`, d.rows, rangeLabel)} className="text-teal-700 underline decoration-dotted hover:text-teal-900">{d[key]}</button>
+                              ) : <span className="text-gray-400">0</span>}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      <tr className="bg-gray-50 font-semibold">
+                        <td className="px-6 py-3 text-sm text-gray-900">Total</td>
+                        <td className="px-6 py-3 text-sm text-right text-gray-900">{patientSummary.total}</td>
+                        <td className="px-6 py-3 text-sm text-right text-gray-600">{patientSummary.total ? '100%' : '—'}</td>
+                        <td className="px-6 py-3 text-sm text-right">{patientSummary.op}</td>
+                        <td className="px-6 py-3 text-sm text-right">{patientSummary.ip}</td>
+                        <td className="px-6 py-3 text-sm text-right">{patientSummary.new}</td>
+                        <td className="px-6 py-3 text-sm text-right">{patientSummary.returning}</td>
+                        <td className="px-6 py-3 text-sm text-right">{patientSummary.pnc}</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -493,6 +639,7 @@ const Reports = () => {
           )}
         </>
       )}
+      {detail && <ReportPatientList title={detail.title} subtitle={detail.subtitle} rows={detail.rows} onClose={() => setDetail(null)} />}
     </div>
   );
 };
