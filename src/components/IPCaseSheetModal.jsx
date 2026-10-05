@@ -7,6 +7,7 @@ import TreatmentPickerButton from './TreatmentPickerButton';
 import PackagePickerButton, { packageTreatmentDetails } from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
+import { useWritingCheck } from './useWritingCheck';
 import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import PrintSectionModal from './PrintSectionModal';
 import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
@@ -128,6 +129,8 @@ const Field = ({ label, value, onChange, placeholder, type = 'text', readOnly = 
     <input
       type={type}
       readOnly={readOnly}
+      spellCheck
+      lang="en"
       className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none ${fromOP ? FROM_OP_INPUT : 'border-gray-300'} ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
       value={value}
       onChange={e => onChange(e.target.value)}
@@ -136,21 +139,27 @@ const Field = ({ label, value, onChange, placeholder, type = 'text', readOnly = 
   </div>
 );
 
-const TextArea = ({ label, value, onChange, rows = 3, placeholder, actions, fromOP = false }) => (
-  <div>
-    <div className="flex items-center justify-between mb-1">
-      <label className="block text-sm font-semibold text-gray-700">{label}{fromOP && <FromOPTag />}</label>
-      {actions}
+const TextArea = ({ label, value, onChange, rows = 3, placeholder, actions, fromOP = false }) => {
+  const wc = useWritingCheck(value, onChange);
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-sm font-semibold text-gray-700">{label}{fromOP && <FromOPTag />}</label>
+        <div className="flex items-center gap-1">{actions}{wc.button}</div>
+      </div>
+      <textarea
+        rows={rows}
+        spellCheck
+        lang="en"
+        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none ${fromOP ? FROM_OP_INPUT : 'border-gray-300'}`}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+      {wc.panel}
     </div>
-    <textarea
-      rows={rows}
-      className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none ${fromOP ? FROM_OP_INPUT : 'border-gray-300'}`}
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-    />
-  </div>
-);
+  );
+};
 
 const SectionTitle = ({ children }) => (
   <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide pt-3 border-t border-gray-100 first:pt-0 first:border-0">{children}</h3>

@@ -11,6 +11,7 @@ import TreatmentPickerButton from './TreatmentPickerButton';
 import PackagePickerButton, { packageTreatmentDetails } from './PackagePickerButton';
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
+import { useWritingCheck } from './useWritingCheck';
 import { summarizeMedicineItems } from '../lib/medicineSummary';
 
 const today = () => new Date().toISOString().split('T')[0];
@@ -46,28 +47,36 @@ const Field = ({ label, value, onChange, placeholder, icon: Icon }) => (
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
+      spellCheck
+      lang="en"
       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
     />
   </div>
 );
 
-const TextArea = ({ label, value, onChange, placeholder, icon: Icon, actions }) => (
-  <div>
-    <div className="flex items-center justify-between mb-1">
-      <label className="flex items-center gap-1 text-xs font-medium text-gray-600">
-        {Icon && <Icon className="w-3.5 h-3.5" />} {label}
-      </label>
-      {actions}
+const TextArea = ({ label, value, onChange, placeholder, icon: Icon, actions }) => {
+  const wc = useWritingCheck(value, onChange);
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="flex items-center gap-1 text-xs font-medium text-gray-600">
+          {Icon && <Icon className="w-3.5 h-3.5" />} {label}
+        </label>
+        <div className="flex items-center gap-1">{actions}{wc.button}</div>
+      </div>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={2}
+        spellCheck
+        lang="en"
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+      />
+      {wc.panel}
     </div>
-    <textarea
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      rows={2}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none resize-none"
-    />
-  </div>
-);
+  );
+};
 
 const IPDailyProgressModal = ({ patient, onClose }) => {
   const [entries, setEntries] = useState([]);
