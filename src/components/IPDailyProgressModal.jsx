@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, Plus, Trash2, Activity, Thermometer, Utensils,
-  Stethoscope, ChevronDown, ChevronUp, Save, Calendar
+  Stethoscope, ChevronDown, ChevronUp, Save, Calendar, Pencil
 } from 'lucide-react';
-import { collection, addDoc, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, deleteDoc, updateDoc, doc } from 'firebase/firestore';
 import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import { db } from '../lib/firebase';
 import { formatDateOnly } from '../lib/formatDate';
@@ -75,6 +75,7 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyEntry());
   const [expandedId, setExpandedId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
 
   const patientId = patient?.firebaseId || patient?.id;
   const patientName = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim();
@@ -101,28 +102,60 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
     }
   };
 
+  const syncUsage = async (id, data) => {
+    try {
+      await syncEntryUsage({
+        id, source: 'ip_daily_progress', date: data.date, patient_id: patientId, patient_name: patientName,
+        mrd_number: patient?.mrd_number || patient?.patient_number || '', ip_number: patient?.ip_number || '',
+      }, data.medicine_items || []);
+    } catch (usageErr) {
+      console.error('Stock usage update failed:', usageErr);
+      alert('Entry saved, but updating the medicine stock failed: ' + usageErr.message);
+    }
+  };
+
+  // Loads a past record into the form above for editing. The form sits above
+  // the (possibly long) history list, so scroll up to it — otherwise the
+  // pencil appears to do nothing.
+  const handleEdit = (entry) => {
+    const base = emptyEntry();
+    const loaded = {};
+    Object.keys(base).forEach(k => { loaded[k] = entry[k] ?? base[k]; });
+    setForm(loaded);
+    setEditingId(entry.id);
+    setTimeout(() => document.getElementById('ip-progress-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setForm(emptyEntry());
+  };
+
   const handleSave = async () => {
     if (!form.date) { alert('Please select a date.'); return; }
+    const user = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
     try {
       setSaving(true);
-      const data = {
-        ...form,
-        patient_id: patientId,
-        patient_name: patientName,
-        mrd_number: patient?.mrd_number || patient?.patient_number || '',
-        ip_number: patient?.ip_number || '',
-        created_at: new Date().toISOString(),
-        created_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email || '',
-      };
-      const ref = await addDoc(collection(db, 'daily_progress'), data);
-      try {
-        await syncEntryUsage({
-          id: ref.id, source: 'ip_daily_progress', date: data.date, patient_id: patientId, patient_name: patientName,
-          mrd_number: data.mrd_number, ip_number: data.ip_number,
-        }, data.medicine_items || []);
-      } catch (usageErr) {
-        console.error('Stock usage update failed:', usageErr);
-        alert('Entry saved, but updating the medicine stock failed: ' + usageErr.message);
+      if (editingId) {
+        await updateDoc(doc(db, 'daily_progress', editingId), {
+          ...form,
+          updated_at: new Date().toISOString(),
+          updated_by: user,
+        });
+        await syncUsage(editingId, form);
+        setEditingId(null);
+      } else {
+        const data = {
+          ...form,
+          patient_id: patientId,
+          patient_name: patientName,
+          mrd_number: patient?.mrd_number || patient?.patient_number || '',
+          ip_number: patient?.ip_number || '',
+          created_at: new Date().toISOString(),
+          created_by: user,
+        };
+        const ref = await addDoc(collection(db, 'daily_progress'), data);
+        await syncUsage(ref.id, data);
       }
       setForm(emptyEntry());
       await loadEntries();
@@ -140,6 +173,7 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
       await removeEntryUsage(entryId);
       await deleteDoc(doc(db, 'daily_progress', entryId));
       setEntries(prev => prev.filter(e => e.id !== entryId));
+      if (editingId === entryId) handleCancelEdit();
     } catch (e) {
       alert('Failed to delete: ' + e.message);
     }
@@ -168,9 +202,11 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
         <div className="p-6 space-y-6">
 
           {/* ── New Entry Form ── */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+          <div id="ip-progress-form" className={`bg-gray-50 border rounded-xl p-5 ${editingId ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-200'}`}>
             <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Plus className="w-4 h-4 text-teal-600" /> Add Daily Record
+              {editingId
+                ? <><Pencil className="w-4 h-4 text-teal-600" /> Editing Record — {formatDateOnly(form.date, { day: 'numeric', month: 'short', year: 'numeric' })}</>
+                : <><Plus className="w-4 h-4 text-teal-600" /> Add Daily Record</>}
             </h3>
 
             {/* Date */}
@@ -249,9 +285,17 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
             >
               {saving
                 ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving…</>
-                : <><Save className="w-4 h-4" /> Save Record</>
+                : <><Save className="w-4 h-4" /> {editingId ? 'Update Record' : 'Save Record'}</>
               }
             </button>
+            {editingId && (
+              <button
+                onClick={handleCancelEdit}
+                className="mt-4 ml-3 px-4 py-2.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-100"
+              >
+                Cancel Edit
+              </button>
+            )}
           </div>
 
           {/* ── Past Records ── */}
@@ -270,7 +314,7 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
             ) : (
               <div className="space-y-3">
                 {entries.map(entry => (
-                  <div key={entry.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div key={entry.id} className={`border rounded-xl overflow-hidden ${editingId === entry.id ? 'border-teal-400 ring-1 ring-teal-200' : 'border-gray-200'}`}>
                     {/* Row header */}
                     <div
                       className="flex items-center justify-between px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100"
@@ -287,6 +331,13 @@ const IPDailyProgressModal = ({ patient, onClose }) => {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={e => { e.stopPropagation(); handleEdit(entry); }}
+                          className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded"
+                          title="Edit this record"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={e => { e.stopPropagation(); handleDelete(entry.id); }}
                           className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
