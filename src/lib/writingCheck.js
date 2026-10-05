@@ -11,6 +11,9 @@ export const checkWriting = async (text) => {
       },
       body: JSON.stringify({ text }),
     });
+    // 403 = the 24-hour sign-in token is missing or has expired (the app can
+    // still look signed in) — say what to do instead of a vague failure.
+    if (response.status === 403) throw new Error('Your sign-in has expired. Please log out and log back in, then try Check writing again.');
     const result = await response.json();
     if (!response.ok || !result.success) throw new Error(result.error || `Request failed (${response.status})`);
     return { success: true, correctedText: result.corrected_text, changes: result.changes || [] };
