@@ -1,16 +1,18 @@
 ---
 name: full-test-agent
-description: Full test agent for the Tatva Ayurved HMS — drives the live app in the Browser pane with disposable "ZZ" data and reports pass/fail. Suite A tests the OP → IP conversion field by field (OP Case Sheet → IP Case Sheet import). Suite B tests internal liquid (ml) usage tracking — bottle size in the Manual Entry grid and Add Medicine, the Used (ml) deduction from the IP Daily Log and OP Visit Log, edit/delete reversal, restocking and Usage History. Use when the user says "run the full test agent", "test the OP to IP conversion", "test the liquid/ml usage", or asks whether OP details are captured in the IP sheet or whether ml usage deducts stock correctly. With no suite named, run both.
+description: Full test agent for the Tatva Ayurved HMS — drives the live app in the Browser pane with disposable "ZZ" data and reports pass/fail. Suite A tests the OP → IP conversion field by field (OP Case Sheet → IP Case Sheet import). Suite B tests internal liquid (ml) usage tracking — bottle size in the Manual Entry grid and Add Medicine, the Used (ml) deduction from the IP Daily Log and OP Visit Log, edit/delete reversal, restocking and Usage History. Suite C tests Patient Category (General/PNC) — registration field, Patient Portal column, filter and inline dropdown, persistence. Suite D tests the Reports — patient counts (OP/IP/New/Return/PNC), the 1 Month / 3 / 6 / custom ranges, clickable drill-downs, and the Patients by Doctor report. Use when the user says "run the full test agent", "test the OP to IP conversion", "test the liquid/ml usage", "test the reports", "test patient category / PNC", or asks whether report counts reconcile. With no suite named, run all four.
 ---
 
 # Full Test Agent
 
-Drives the live app (https://tatva-ayurved-hms.vercel.app, or `preview_start dev` only if `vercel dev` is available — plain `vite` dev cannot log in for real, and Firestore then rejects every write) using disposable `ZZ ...` data, and reports a pass/fail summary. Two suites:
+Drives the live app (https://tatva-ayurved-hms.vercel.app, or `preview_start dev` only if `vercel dev` is available — plain `vite` dev cannot log in for real, and Firestore then rejects every write) using disposable `ZZ ...` data, and reports a pass/fail summary. Four suites:
 
 - **Suite A — OP → IP conversion** (all OP Case Sheet details carried into the IP Case Sheet)
 - **Suite B — Liquid (ml) usage tracking** (internal stock tracking, never billed or printed)
+- **Suite C — Patient Category** (General / PNC on registration, the Patient Portal list, filter, inline dropdown)
+- **Suite D — Reports** (patient counts, date ranges, drill-downs, Patients by Doctor)
 
-## Rules (both suites)
+## Rules (all suites)
 - The user must sign in themselves in the Browser pane (never type their password). Ask, wait for "logged in". If a navigation opens a fresh tab, the session usually persists; if the login page shows, ask again.
 - It writes to the **real Firestore**. Say so before starting, narrate each stage so the user can watch the pane, and delete every `ZZ` record at the end (patients: Patient Portal → Delete Patient; inventory items: Inventory → expand row → Delete; both with `window.confirm=()=>true`). Verify Inventory "Total Items" is back to what it was.
 - Never deploy/commit as part of a test run. Never leave a `ZZ` item or patient behind; if a step fails midway, still clean up.
@@ -28,6 +30,8 @@ window.__alerts=[];window.alert=(m)=>window.__alerts.push(m);window.confirm=()=>
 - Layout shifts: e.g. choosing Treatment Days ≥ 2 in the OP Visit Log inserts a notice banner and moves the medicine row down — re-screenshot before clicking by coordinate.
 - Icon-only buttons (close X, trash, pencil) have no text: find the close button with `b.querySelector('svg')&&!b.innerText.trim()&&b.getBoundingClientRect().top<200`; for Visit Log entry delete/edit, screenshot and click the entry's own pencil/bin (the form's medicine-row trash icons look the same and match a generic selector).
 - After a save, lists reload asynchronously — wait 3–5 s (retry a read once) before concluding something didn't save. To tell whether a save fired, check `window.__alerts`, not old console history.
+- **Reports screen**: it loads ~8 collections, so wait ~8–9 s after opening it before reading (a spinner says "Loading report data…"). Reports is read-only — it needs no cleanup. Range buttons are plain buttons (`1 Month`, `Last 3 Months`, `Last 6 Months`, `Last 12 Months`, `This Year`, `Custom`); Custom shows two `input[type=date]` — set both with `__set` (`dates[0]` from, `dates[1]` to). Clickable counts have `title="Click to see the patients"`; the drill-down is the topmost `.fixed` modal (close with its icon-only X). Clicking a row in it fires the `viewPatient` event and lands on Patient Details.
+- **Patient Portal**: the default Active tab hides inactive/discharged patients; search (`input[placeholder^="Search by name"]`) searches across all of them. Row action buttons are found by `title` (`Edit Patient`, `Delete Patient`, …); the category dropdown is `select[title="Change patient category"]`.
 - Searching the Inventory list: `__set(document.querySelector('input[placeholder^="Search"]'), 'ZZ ...')`, wait ~3 s; clicking a row (`tr`) expands it. Total Items shows in the header.
 
 ---
@@ -100,5 +104,42 @@ Delete the OP patient and both IP patients; delete the `ZZ` inventory items (exp
 
 ---
 
+# Suite C — Patient Category (General / PNC)
+
+`patient_category` is a patient field ('General' default, or 'PNC'). It is set on registration/Edit Patient, shown and editable inline in the Patient Portal list, and feeds the PNC count in Suite D. (It does not belong on the inventory Manual Entry grid — that grid is for medicines.)
+
+Disposable data: patient `ZZ Test PNCCat` / `ZZ Test CatInline`; note Patient Portal "Total Patients" first.
+
+1. **Registration form:** Patient Portal → Register New Patient: confirm **Patient Category** (General / PNC (Post-Natal Care)) right after Patient Type, default General. Register `ZZ Test PNCCat` (Female, 29, fee 0) with category **PNC** (`__set` on the select found via its label).
+2. **List column:** in Patient Portal the table header must read `MRD / IP NO., NAME, AGE/GENDER, TYPE, CATEGORY, CONTACT, REGISTRATION DATE, STATUS, ACTIONS`. Switch to **All Patients** and confirm every untouched patient shows General (a patient without the field counts as General) and `ZZ Test PNCCat` shows PNC (pink).
+3. **Filter:** the "All Categories" dropdown offers All / General / PNC. PNC → only PNC patients (initially just the ZZ patient, unless real ones were marked); General → excludes it; General + PNC = All.
+4. **Inline dropdown:** register a second patient `ZZ Test CatInline` (General). In its row, `select[title="Change patient category"]` must show General with options General/PNC; set it to **PNC** → it saves immediately (no alert, dropdown turns pink). **Reload the page** (`navigate`) and re-search: still PNC (proves it was written to Firestore).
+5. **Flows into Reports:** Reports → **1 Month** → **PNC Patients** card count must include the ZZ patients (compare before/after if a baseline was taken; open the card's list and see them with a PNC badge). See Suite D.
+6. **Switch back:** set `ZZ Test CatInline` back to General (value persists), then delete both ZZ patients; Total Patients returns to its starting number.
+Not covered unless asked: the save-failure rollback of the inline dropdown.
+
+---
+
+# Suite D — Reports (patient counts, ranges, drill-down, doctors)
+
+Read-only against live data, so no cleanup. Definitions (see `src/lib/patientReport.js`): a patient is **seen** in a range if they are **New** (registered inside the range) or **Return** (registered before the range but visited in it — last visit date, an admission, or a checked-in appointment). Each patient counts once. **PNC** = Patient Category PNC *or* a diagnosis (OP/IP case sheet, discharge summary) containing "PNC"/"post natal". Doctor = the patient's assigned doctor, with spelling variants merged to the HR/user doctor list.
+
+Open Reports (sidebar), wait ~9 s. Record every number.
+
+1. **Range controls:** buttons `1 Month`, `Last 3 Months`, `Last 6 Months`, `Last 12 Months`, `This Year`, `Custom` all exist; the info line reads "Patients seen in <range>…".
+2. **Invariants (must hold for every range tried — check at least Last 6 Months, 1 Month and a Custom month such as the previous full month):** Patients Seen = OP + IP = New + Return. The Monthly Breakdown row for a month that is fully inside the range equals the Custom result for exactly that month (e.g. custom 1–30 Sep ⇒ same six numbers as the "Sept 2026" row of the 6-month view). Note that Return can be 0 for a long range even when its monthly rows show some (Return is relative to the period chosen).
+3. **Cards → drill-down:** click each card (Patients Seen / OP / IP / New / Return / PNC). The list's title and "N patients" subtitle must equal the card number, its row count must equal N, and the rows must all satisfy the filter (OP card ⇒ every Type = OP, Return card ⇒ every row Return, PNC card ⇒ every row shows PNC). Columns: Patient, MRD / IP, Type, New / Return, Category, Doctor, Registered, Last Visit, Phone. Test the search box (type a name → filtered rows) and, if wanted, Export (downloads an .xlsx — only click it if the user agreed to a download).
+4. **Click-through:** click a patient row in a drill-down → the app jumps to Patient Portal and opens that patient's **Patient Details** modal (name/MRD match); close it and return to Reports.
+5. **Monthly table:** counts in the table are clickable links (underlined) that open that month's list; zero counts are plain "0".
+6. **Patients by Doctor tab:** select the same range. Cards: Patients Seen (must equal the Patient Reports total), Doctors, Busiest Doctor, Unassigned. The "Distribution by Doctor" table: **the Patients column of all doctor rows must sum to the Total row, and the Total row must equal Patients Seen**; Share % sums to 100; each doctor's OP + IP = Patients and New + Return = Patients. Click a doctor name → list whose title/subtitle count equals that doctor's Patients number and whose Doctor column is that one doctor only. Click a count cell (e.g. PNC for one doctor) → that filtered subset.
+7. **Doctor name merging:** the same person must not appear on several rows because of spelling (e.g. "Dr. Satheesh" / "Dr. Satheesh Kumar" / "Dr. C . Satheesh Kumar" ⇒ one row; "Dr. shruthi" / "Dr. sruthy" ⇒ Dr. Sruthi Muralidharan). Report any near-duplicate rows as a failure; a genuinely different name staying separate is fine. Patients with no doctor appear as **Unassigned**.
+8. **PNC detection:** the PNC card must include patients whose diagnosis says PNC even though their Category is still General (e.g. Mrs. Nasriyath, whose discharge summary diagnosis is PNC), and any patient set to PNC in Suite C.
+9. **1 Month:** shows the current calendar month so far; its numbers equal the matching month row in the Last 3/6 Months views for the portion of that month up to today.
+10. **Inventory Reports tab** is untouched by these changes — one glance that it still renders is enough.
+
+Failure examples to watch for: card number ≠ list length, OP + IP ≠ total, doctor rows not summing to the total, a patient in the OP list showing IP, a drill-down click that does nothing, the Reports page stuck on "Loading report data…" (check the console for Firestore permission errors).
+
+---
+
 ## Report
-Per step pass/fail. Suite A: a table of every mapped field (OP value → IP value → ✓/✗), the unmatched list, anything unexpected. Suite B: the stock line (sealed + open · total ml) after each step against the expected value, Usage History rows, and any step that needed a retry because of pane timing (say so — don't count it as an app failure unless it reproduces). Finish with what was cleaned up and the final Total Items count. Any mapped field missing/different after save, or any stock figure that doesn't match, is a failure.
+Per step pass/fail. Suite C: the category value at each step (form → list → filter → inline → after reload → in Reports). Suite D: the numbers read at each range, the invariant checks (✓/✗ with the actual figures), drill-down count vs card count, the doctor table with its sum check, and any near-duplicate doctor rows. Suite A: a table of every mapped field (OP value → IP value → ✓/✗), the unmatched list, anything unexpected. Suite B: the stock line (sealed + open · total ml) after each step against the expected value, Usage History rows, and any step that needed a retry because of pane timing (say so — don't count it as an app failure unless it reproduces). Finish with what was cleaned up and the final Total Items count. Any mapped field missing/different after save, or any stock figure that doesn't match, is a failure.
