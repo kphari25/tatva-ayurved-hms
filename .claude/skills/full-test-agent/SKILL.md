@@ -1,22 +1,26 @@
 ---
 name: full-test-agent
-description: Full test agent for the Tatva Ayurved HMS — drives the live app in the Browser pane with disposable "ZZ" data and reports pass/fail. Suite A tests the OP → IP conversion field by field (OP Case Sheet → IP Case Sheet import). Suite B tests internal liquid (ml) usage tracking — bottle size in the Manual Entry grid and Add Medicine, the Used (ml) deduction from the IP Daily Log and OP Visit Log, edit/delete reversal, restocking and Usage History. Suite C tests Patient Category (General/PNC) — registration field, Patient Portal column, filter and inline dropdown, persistence. Suite D tests the Reports — patient counts (OP/IP/New/Return/PNC), the 1 Month / 3 / 6 / custom ranges, clickable drill-downs, and the Patients by Doctor report. Use when the user says "run the full test agent", "test the OP to IP conversion", "test the liquid/ml usage", "test the reports", "test patient category / PNC", or asks whether report counts reconcile. With no suite named, run all four.
+description: Full test agent for the Tatva Ayurved HMS — drives the live app in the Browser pane with disposable "ZZ" data and reports pass/fail. Suite A tests the OP → IP conversion field by field (OP Case Sheet → IP Case Sheet import). Suite B tests internal liquid (ml) usage tracking — bottle size in the Manual Entry grid and Add Medicine, the Used (ml) deduction from the IP Daily Log and OP Visit Log, edit/delete reversal, restocking and Usage History. Suite C tests Patient Category (General/PNC) — registration field, Patient Portal column, filter and inline dropdown, persistence. Suite D tests the Reports — patient counts (OP/IP/New/Return/PNC), the 1 Month / 3 / 6 / custom ranges, clickable drill-downs, and the Patients by Doctor report. Suite E tests the spelling/grammar writing check (the Check writing button and suggestion panel in the IP/OP logs and case sheets, plus the daily-log pencil edit). Use when the user says "run the full test agent", "test the OP to IP conversion", "test the liquid/ml usage", "test the reports", "test patient category / PNC", "test the writing check / grammar check", or asks whether report counts reconcile. With no suite named, run all five.
 ---
 
 # Full Test Agent
 
-Drives the live app (https://tatva-ayurved-hms.vercel.app, or `preview_start dev` only if `vercel dev` is available — plain `vite` dev cannot log in for real, and Firestore then rejects every write) using disposable `ZZ ...` data, and reports a pass/fail summary. Four suites:
+Drives the live app (https://tatva-ayurved-hms.vercel.app, or `preview_start dev` only if `vercel dev` is available — plain `vite` dev cannot log in for real, and Firestore then rejects every write) using disposable `ZZ ...` data, and reports a pass/fail summary. Five suites:
 
 - **Suite A — OP → IP conversion** (all OP Case Sheet details carried into the IP Case Sheet)
 - **Suite B — Liquid (ml) usage tracking** (internal stock tracking, never billed or printed)
 - **Suite C — Patient Category** (General / PNC on registration, the Patient Portal list, filter, inline dropdown)
 - **Suite D — Reports** (patient counts, date ranges, drill-downs, Patients by Doctor)
+- **Suite E — Writing check** (Check writing button / suggestion panel on the log text boxes; daily-log editing)
 
 ## Rules (all suites)
 - The user must sign in themselves in the Browser pane (never type their password). Ask, wait for "logged in". If a navigation opens a fresh tab, the session usually persists; if the login page shows, ask again.
 - It writes to the **real Firestore**. Say so before starting, narrate each stage so the user can watch the pane, and delete every `ZZ` record at the end (patients: Patient Portal → Delete Patient; inventory items: Inventory → expand row → Delete; both with `window.confirm=()=>true`). Verify Inventory "Total Items" is back to what it was.
 - Never deploy/commit as part of a test run. Never leave a `ZZ` item or patient behind; if a step fails midway, still clean up.
 - Leave "Send Welcome SMS" off. Fake phones like `99999000xx`. Registration fee 0.
+
+## Sign-in token (matters for any feature that calls `/api/*`)
+The app keeps a signed 24-hour `sessionToken` in localStorage and still *looks* signed in after it expires (it restores the session another way). API-backed features — Check writing, Import Invoice — then fail with "Not authorized / Your sign-in has expired". Before such tests run: `const p=JSON.parse(atob(localStorage.getItem('sessionToken').split('.')[0].replace(/-/g,'+').replace(/_/g,'/')));p.exp<Date.now()` — if expired (or missing), ask the user to log out and back in (never type their password), then continue.
 
 ## Pane gotchas (learned the hard way)
 - React inputs need the native setter + an `input`/`change` event. Install once per page load (a reload wipes it):
@@ -141,5 +145,36 @@ Failure examples to watch for: card number ≠ list length, OP + IP ≠ total, d
 
 ---
 
+# Suite E — Writing check (spelling / grammar / clarity)
+
+What it is: every free-text box in the IP Case Sheet, OP Case Sheet and IP Daily Progress window has (1) the browser's red-underline spell check (`spellcheck` on, `lang="en"`) and (2) a **Check writing** button (`useWritingCheck`, `src/components/useWritingCheck.jsx`) that POSTs only the box's text to `/api/check-writing` (server-side Anthropic key, Haiku model, tool-forced JSON) and shows a **Suggested correction** panel — changed words highlighted green, a strikethrough list of fixes with reasons, **Accept** / **Keep mine**. Nothing changes without a click; editing the text clears the suggestion; empty/very short text disables the button.
+
+**Cost/privacy rules for the test:** each Check is one real API call. Use only made-up sentences (never real patient text), and keep the whole suite to ~6 checks. Check the sign-in token first (see "Sign-in token" above).
+
+Disposable data: IP patient `ZZ Test WriteChk` (type IP, fee 0) and OP patient `ZZ Test WriteOP`; delete both at the end.
+
+Helper to get a text box's wrapper (label → header row → wrapper; do NOT go one level higher or you get the whole tab and click the wrong box):
+```js
+window.__tb=(name)=>[...__modal().querySelectorAll('label')].find(l=>l.innerText.trim().startsWith(name)).parentElement.parentElement;
+```
+To type for real, `ta.focus()` the right textarea via JS, then use the `computer` `type` action; `__set(ta, text)` is fine for the rest.
+
+1. **Endpoint guard:** `curl -s -o /dev/null -w "%{http_code}" -X POST https://tatva-ayurved-hms.vercel.app/api/check-writing -H 'Content-Type: application/json' -d '{"text":"hello"}'` must print **403** (an anonymous call is refused; a 500 "key not configured" would mean `ANTHROPIC_API_KEY` is missing on Vercel).
+2. **Buttons everywhere:** register the IP patient → Open IP Case Sheet → **Vitals & Daily Log**: three boxes (Treatment Performed, Diet / Food, Doctor's Notes / Observations) each with a **Check writing** button and `spellcheck=true`; the buttons of empty boxes are disabled. The IP Case Sheet's other tabs use the same box. IP Daily Progress window (`button[title="IP Daily Progress"]`): 3 buttons. OP Case Sheet: Initial Assessment 2, History & Examination 9, Visit Log 2.
+3. **Real correction:** in Doctor's Notes type `Patient respnse is good, he have no pain and sleep well. Advice to continue Abhyanga and shirodhara for 7 days, pt tolerated treatmnt wel.` and click **Check writing** (wait up to ~30 s). Expect a "Suggested correction" panel that fixes respnse→response, treatmnt→treatment, wel→well, have→has, sleep→sleeps (and likely Advice→Advised, shirodhara→Shirodhara) while leaving `pt` and `Abhyanga` alone, with green-highlighted changes and a reasons list, plus **Accept** and **Keep mine**.
+4. **Accept:** click Accept → the textarea now holds the corrected text and the panel is gone. Click Check writing again → green **"Looks good — no spelling or grammar problems found."**
+5. **Vague wording + Keep mine:** in Diet / Food set `give light food and it is ok for patient eating, no oily thing and spicy thing too`, Check → a clearer rewrite is offered; click **Keep mine** → text unchanged, panel gone.
+6. **Edit clears / empty disables:** run a check, then add a character → the panel disappears; clear the box → its button is disabled.
+7. **Other screens:** IP Daily Progress window — Doctor's Notes `Patinet complained of headach since morning, no vomitting.` → suggests Patient / headache / vomiting. OP: register `ZZ Test WriteOP`, Open OP Case Sheet → **Visit Log** → Clinical Findings `Pain in lower back is reduce but still have stiffnes in morning, advise to continue same medicines.` → suggests reduced / stiffness (and fixes the tense of "advise"). Read each suggestion — the AI can change wording slightly, which is why Accept is manual.
+8. **Expired token (only if it happens):** a 403 must show "Your sign-in has expired. Please log out and log back in, then try Check writing again." — report it, don't treat it as an app failure; ask the user to re-login and rerun.
+9. **Daily-log editing (shipped alongside — quick check):** in the IP Case Sheet **Vitals & Daily Log** add 3 entries (Treatment Days = 3, with a diet and doctor's note), scroll to the bottom of the list and click the **pencil** on the last entry → the view scrolls up to the form, headed **"EDITING ENTRY — <date>"** in a teal outline with the saved values loaded and **Update Entry / Cancel Edit** (the form comes into view only after the smooth scroll ends, about a second — wait before screenshotting). Edit the comment, Update → that entry changes in place and the others don't; reopen the sheet → persisted. Same for the OP **Visit Log** (heading `EDITING ENTRY`; fields: clinical findings, treatment details, pain score, time, signed by) and the **IP Daily Progress** window (pencil `button[title="Edit this record"]`, heading "Editing Record — <date>", **Update Record**; deleting a record while editing it returns to "Add Daily Record"). Delete each entry with its own bin icon and confirm the count falls (3 → 2 → 1 → 0) before deleting the patient.
+
+## Cleanup (Suite E)
+Delete every `ZZ` daily entry first (to avoid orphaned `daily_progress` / `op_visit_notes` records), then both patients; the patient list must no longer show them.
+
+Not covered unless asked: the native red underlines themselves (only the `spellcheck` attribute is checked), correction quality beyond the examples, very long text (over 6000 characters is rejected by the server), and the Discharge Summary (it does not have the writing check).
+
+---
+
 ## Report
-Per step pass/fail. Suite C: the category value at each step (form → list → filter → inline → after reload → in Reports). Suite D: the numbers read at each range, the invariant checks (✓/✗ with the actual figures), drill-down count vs card count, the doctor table with its sum check, and any near-duplicate doctor rows. Suite A: a table of every mapped field (OP value → IP value → ✓/✗), the unmatched list, anything unexpected. Suite B: the stock line (sealed + open · total ml) after each step against the expected value, Usage History rows, and any step that needed a retry because of pane timing (say so — don't count it as an app failure unless it reproduces). Finish with what was cleaned up and the final Total Items count. Any mapped field missing/different after save, or any stock figure that doesn't match, is a failure.
+Per step pass/fail. Suite E: for each check the text typed, the suggestion returned, and what Accept / Keep mine did, any 403 / token problem, and the number of API checks used. Suite C: the category value at each step (form → list → filter → inline → after reload → in Reports). Suite D: the numbers read at each range, the invariant checks (✓/✗ with the actual figures), drill-down count vs card count, the doctor table with its sum check, and any near-duplicate doctor rows. Suite A: a table of every mapped field (OP value → IP value → ✓/✗), the unmatched list, anything unexpected. Suite B: the stock line (sealed + open · total ml) after each step against the expected value, Usage History rows, and any step that needed a retry because of pane timing (say so — don't count it as an app failure unless it reproduces). Finish with what was cleaned up and the final Total Items count. Any mapped field missing/different after save, or any stock figure that doesn't match, is a failure.
