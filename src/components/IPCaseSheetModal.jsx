@@ -666,7 +666,15 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     }
   };
 
+  // The entry form sits above the (possibly long) list of entries, so jump to
+  // it after loading the entry — otherwise clicking the pencil appears to do
+  // nothing because the form being edited is off-screen.
+  const scrollToForm = (formId) => setTimeout(() => {
+    document.getElementById(formId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
+
   const handleEditDailyEntry = (entry) => {
+    scrollToForm('daily-entry-form');
     setEditingDailyId(entry.id);
     setDailyForm({
       date: entry.date || today(),
@@ -1007,7 +1015,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
               {/* ── VITALS & DAILY LOG ── */}
               {activeTab === 'vitals' && (
                 <div className="space-y-5">
-                  <div className="border border-gray-200 rounded-xl p-4 bg-gray-50" ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e)}>
+                  <div id="daily-entry-form" className={`border rounded-xl p-4 bg-gray-50 ${editingDailyId ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-200'}`} ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e)}>
                     <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">
                       {editingDailyId ? `Editing Entry — ${fmtDate(dailyForm.date)}` : 'Add Daily Record'}
                     </h3>
