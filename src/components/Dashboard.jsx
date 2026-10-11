@@ -1528,9 +1528,9 @@ const Dashboard = () => {
                               <div className="flex items-start justify-between gap-2">
                                 <p className={`text-sm font-bold ${color.time}`}>{apt.time}</p>
                                 <div className="flex items-center gap-0.5">
-                                  {apt.phone && (
+                                  {(apt.phone || apt.patient_phone) && (
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); openWhatsAppChat(apt.phone, appointmentMessage(apt.patient, { appointmentType: apt.type, doctorName: apt.doctorName ? withDrPrefix(apt.doctorName) : '', date: apt.date || toDateStr(new Date()), time: apt.time })); }}
+                                      onClick={(e) => { e.stopPropagation(); openWhatsAppChat(apt.phone || apt.patient_phone, appointmentMessage(apt.patient, { appointmentType: apt.type, doctorName: apt.doctorName ? withDrPrefix(apt.doctorName) : '', date: apt.date || toDateStr(new Date()), time: apt.time })); }}
                                       className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                       title="Send appointment details on WhatsApp"
                                     >
@@ -1640,9 +1640,9 @@ const Dashboard = () => {
                             <div className="flex items-start justify-between gap-2">
                               <p className={`text-base font-bold ${color.time}`}>{apt.time}</p>
                               <div className="flex items-center gap-0.5">
-                                {apt.phone && (
+                                {(apt.phone || apt.patient_phone) && (
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); openWhatsAppChat(apt.phone, appointmentMessage(apt.patient, { appointmentType: apt.type, doctorName: apt.doctorName ? withDrPrefix(apt.doctorName) : '', date: apt.date || toDateStr(new Date()), time: apt.time })); }}
+                                    onClick={(e) => { e.stopPropagation(); openWhatsAppChat(apt.phone || apt.patient_phone, appointmentMessage(apt.patient, { appointmentType: apt.type, doctorName: apt.doctorName ? withDrPrefix(apt.doctorName) : '', date: apt.date || toDateStr(new Date()), time: apt.time })); }}
                                     className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                     title="Send appointment details on WhatsApp"
                                   >

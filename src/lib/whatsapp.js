@@ -28,7 +28,14 @@ export const sendWhatsAppText = (phone, text) => post({ phone, text });
 export const sendWhatsAppTemplate = (phone, name, params = []) =>
   post({ phone, template: { name, params } });
 
-const dateStr = (d) => new Date(d).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+// A bare YYYY-MM-DD string parses as UTC midnight, which shows as the previous
+// day anywhere west of UTC — read it as a local date instead.
+const toLocalDate = (d) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(d);
+};
+
+const dateStr = (d) => toLocalDate(d).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
 // Template: welcome_patient — "Dear {{1}}, welcome to Tatva Ayurved! Your Patient ID is {{2}}."
 export const sendWelcomeWhatsApp = (phone, patientName, patientNumber) =>
@@ -38,7 +45,7 @@ export const sendWelcomeWhatsApp = (phone, patientName, patientNumber) =>
 export const sendInvoiceWhatsApp = (phone, patientName, d) =>
   sendWhatsAppTemplate(phone, 'invoice_generated', [
     patientName,
-    new Date(d.invoice_date).toLocaleDateString('en-IN'),
+    toLocalDate(d.invoice_date).toLocaleDateString('en-IN'),
     d.invoice_type,
     Number(d.total_amount).toFixed(2),
     d.payment_mode,
@@ -72,7 +79,7 @@ export const welcomeMessage = (patientName, patientNumber) =>
   `Dear ${patientName}, Welcome to Tatva Ayurved! Your Patient ID is ${patientNumber}. We look forward to serving you. For appointments call us. - Tatva Ayurved`;
 
 export const invoiceMessage = (patientName, d) =>
-  `Dear ${patientName}, Your invoice at Tatva Ayurved dated ${new Date(d.invoice_date).toLocaleDateString('en-IN')} (${d.invoice_type}) is generated. Total Amount: Rs.${Number(d.total_amount).toFixed(2)}. Payment Mode: ${d.payment_mode}. Patient ID: ${d.patient_number}. Thank you! - Tatva Ayurved`;
+  `Dear ${patientName}, Your invoice at Tatva Ayurved dated ${toLocalDate(d.invoice_date).toLocaleDateString('en-IN')} (${d.invoice_type}) is generated. Total Amount: Rs.${Number(d.total_amount).toFixed(2)}. Payment Mode: ${d.payment_mode}. Patient ID: ${d.patient_number}. Thank you! - Tatva Ayurved`;
 
 export const appointmentMessage = (patientName, d) =>
   `Dear ${patientName}, Your ${d.appointmentType || 'appointment'} at Tatva Ayurved is scheduled on ${dateStr(d.date)} at ${d.time}${d.doctorName ? ` with ${d.doctorName}` : ''}. Please arrive 10 mins early. - Tatva Ayurved`;
