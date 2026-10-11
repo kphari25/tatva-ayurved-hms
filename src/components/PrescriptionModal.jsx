@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Pill } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import PrintSectionModal from './PrintSectionModal';
 import { formatDateOnly } from '../lib/formatDate';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
@@ -42,7 +42,6 @@ const PrescriptionModal = ({ patient, onClose }) => {
   // picked below, since it isn't tied to a particular day.
   const [dischargeMedicines, setDischargeMedicines] = useState([]);
   const [dischargeDate, setDischargeDate] = useState('');
-  const [complaints, setComplaints] = useState('');
   const [doctorDesignation, setDoctorDesignation] = useState('');
   const [doctorRegistrationNumber, setDoctorRegistrationNumber] = useState('');
   const [printPageSize, setPrintPageSize] = useState('A4');
@@ -76,12 +75,6 @@ const PrescriptionModal = ({ patient, onClose }) => {
       const ipList = ipSnap.docs.map(d => d.data()).filter(v => (v.medicine_items || []).some(i => i.item_name));
       ipList.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
       setIpEntries(ipList);
-
-      const caseSheetSnap = await getDoc(doc(db, isIP ? 'ip_case_sheets' : 'op_case_sheets', patientId));
-      if (caseSheetSnap.exists()) {
-        const d = caseSheetSnap.data();
-        setComplaints(isIP ? (d.history_presenting_complaints || '') : (d.presenting_complaints || ''));
-      }
 
       const latestSummary = await fetchLatestDischargeSummary(patientId);
       if (latestSummary) {
@@ -267,10 +260,6 @@ const PrescriptionModal = ({ patient, onClose }) => {
     </table>
   ` : ''}
 
-  ${complaints ? `
-    <div class="section-title">Presenting Complaints</div>
-    <p class="section-body">${complaints}</p>
-  ` : ''}
   </div>
 
   <div class="print-footer">
