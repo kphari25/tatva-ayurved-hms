@@ -61,37 +61,44 @@ const PrescriptionModal = ({ patient, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Everything the window needs is fetched at the same time (it used to be
+  // four requests one after another), and only the collection that applies to
+  // this patient is read — IP patients use the daily progress entries, OP
+  // patients the visit log, so the other one was never shown anyway.
   const loadData = async () => {
     if (!patientId) return;
     try {
       setLoading(true);
 
-      const opSnap = await getDocs(query(collection(db, 'op_visit_notes'), where('patient_id', '==', patientId)));
-      const opList = opSnap.docs.map(d => d.data()).filter(v => (v.medicine_items || []).some(i => i.item_name));
-      opList.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-      setOpEntries(opList);
+      const entriesPromise = getDocs(query(collection(db, isIP ? 'daily_progress' : 'op_visit_notes'), where('patient_id', '==', patientId)))
+        .then(snap => {
+          const list = snap.docs.map(d => d.data()).filter(v => (v.medicine_items || []).some(i => i.item_name));
+          list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+          return list;
+        });
+      // Tolerant of assigned_doctor carrying a shorter name than the doctor's
+      // own record (e.g. "Dr. Satheesh" vs the HR/User Management record's
+      // full "Dr. Satheesh Kumar"). A failed doctor lookup only costs the
+      // designation/registration number on the print — never the medicines.
+      const doctorsPromise = patient?.assigned_doctor ? loadDoctorsList().catch(() => []) : Promise.resolve([]);
 
-      const ipSnap = await getDocs(query(collection(db, 'daily_progress'), where('patient_id', '==', patientId)));
-      const ipList = ipSnap.docs.map(d => d.data()).filter(v => (v.medicine_items || []).some(i => i.item_name));
-      ipList.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-      setIpEntries(ipList);
+      const [entries, latestSummary, doctorsList] = await Promise.all([
+        entriesPromise,
+        fetchLatestDischargeSummary(patientId),
+        doctorsPromise,
+      ]);
 
-      const latestSummary = await fetchLatestDischargeSummary(patientId);
+      (isIP ? setIpEntries : setOpEntries)(entries);
+
       if (latestSummary) {
         setDischargeMedicines((latestSummary.discharge_internal_medicines || []).filter(m => m.item_name));
         setDischargeDate(latestSummary.discharge_date || '');
       }
 
-      if (patient?.assigned_doctor) {
-        // Tolerant of assigned_doctor carrying a shorter name than the
-        // doctor's own record (e.g. "Dr. Satheesh" vs the HR/User
-        // Management record's full "Dr. Satheesh Kumar").
-        const doctorsList = await loadDoctorsList();
-        const match = findDoctorInfo(doctorsList, patient.assigned_doctor);
-        if (match) {
-          setDoctorDesignation(match.designation || '');
-          setDoctorRegistrationNumber(match.registrationNumber || '');
-        }
+      const match = patient?.assigned_doctor ? findDoctorInfo(doctorsList, patient.assigned_doctor) : null;
+      if (match) {
+        setDoctorDesignation(match.designation || '');
+        setDoctorRegistrationNumber(match.registrationNumber || '');
       }
     } catch (e) {
       console.error('Error loading prescription:', e);

@@ -9,6 +9,7 @@ import {
 import { db } from '../lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { peekNextEmployeeId, assignNextEmployeeId } from '../lib/employeeId';
+import { clearDoctorsCache } from '../lib/doctors';
 
 // ==========================================
 // ROLE DEFINITIONS & PERMISSIONS
@@ -193,6 +194,7 @@ const UserManagement = () => {
     if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
     try {
       await deleteDoc(doc(db, 'users', userId));
+      clearDoctorsCache();
       alert('✅ User deleted successfully');
       loadUsers();
     } catch (error) {
@@ -336,9 +338,11 @@ const UserManagement = () => {
         let userId = editUser?.id;
         if (editUser) {
           await updateDoc(doc(db, 'users', editUser.id), saveData);
+          clearDoctorsCache();
         } else {
           saveData.created_at = new Date().toISOString();
           const ref = await addDoc(collection(db, 'users'), saveData);
+          clearDoctorsCache();
           userId = ref.id;
         }
 

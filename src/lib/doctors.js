@@ -13,7 +13,28 @@ const normalizeDocName = (s) => (s || '').replace(/^dr\.?\s*/i, '').trim().toLow
 // more obvious place to add a new doctor — silently never appears anywhere
 // a patient, appointment, prescription or discharge summary needs to
 // reference them.
-export const loadDoctorsList = async () => {
+// The list is read from two whole collections, which made every caller (the
+// Prescription window, Discharge Summary, Scheduling, Dashboard…) wait on the
+// same slow lookup. It is cached for a few minutes and shared between callers;
+// anywhere doctors are added/edited/deleted calls clearDoctorsCache() so a
+// change shows up immediately.
+const DOCTORS_CACHE_MS = 5 * 60 * 1000;
+let doctorsCache = { at: 0, promise: null };
+
+export const clearDoctorsCache = () => { doctorsCache = { at: 0, promise: null }; };
+
+export const loadDoctorsList = () => {
+  if (!doctorsCache.promise || Date.now() - doctorsCache.at > DOCTORS_CACHE_MS) {
+    const promise = fetchDoctorsList().catch((e) => {
+      if (doctorsCache.promise === promise) clearDoctorsCache(); // never cache a failure
+      throw e;
+    });
+    doctorsCache = { at: Date.now(), promise };
+  }
+  return doctorsCache.promise.then(list => [...list]); // a copy, so callers can't alter the shared list
+};
+
+const fetchDoctorsList = async () => {
   const [hrSnap, usersSnap] = await Promise.all([
     getDocs(collection(db, 'hr_employees')),
     getDocs(query(collection(db, 'users'), where('role', '==', 'doctor'))),

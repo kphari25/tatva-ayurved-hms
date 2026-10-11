@@ -7,6 +7,7 @@ import {
   Palmtree, HeartPulse, Receipt, BarChart3, BookOpen
 } from 'lucide-react';
 import { db } from '../lib/firebase';
+import { clearDoctorsCache } from '../lib/doctors';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy
 } from 'firebase/firestore';
@@ -501,10 +502,12 @@ const HRPayrollModule = ({ userRole, currentUser }) => {
     const data = { ...form, updatedAt: new Date().toISOString() };
     if (editEmp?.id) {
       await updateDoc(doc(db, 'hr_employees', editEmp.id), data);
+      clearDoctorsCache();
       setEmployees(prev => prev.map(e => e.id === editEmp.id ? { ...data, id: editEmp.id } : e));
     } else {
       data.createdAt = new Date().toISOString();
       const ref = await addDoc(collection(db, 'hr_employees'), data);
+      clearDoctorsCache();
       setEmployees(prev => [...prev, { ...data, id: ref.id }]);
     }
   };
@@ -512,6 +515,7 @@ const HRPayrollModule = ({ userRole, currentUser }) => {
   const deleteEmployee = async (id) => {
     if (!window.confirm('Remove this employee record?')) return;
     await deleteDoc(doc(db, 'hr_employees', id));
+    clearDoctorsCache();
     setEmployees(prev => prev.filter(e => e.id !== id));
   };
 
