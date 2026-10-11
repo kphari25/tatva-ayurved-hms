@@ -9,6 +9,7 @@ import {
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, where, addDoc, updateDoc } from 'firebase/firestore';
 import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
+import { openWhatsAppChat, appointmentMessage } from '../lib/whatsapp';
 import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
@@ -1095,6 +1096,14 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                   </div>
 
                   <div className="flex justify-end gap-3 pt-2">
+                    {appointmentPatient.phone && (
+                      <button
+                        onClick={() => openWhatsAppChat(appointmentPatient.phone, appointmentMessage(appointmentPatient.first_name, { appointmentType: savedAppt.appointment_type, doctorName: withDrPrefix(savedAppt.doctor_name), date: savedAppt.date, time: savedAppt.time }))}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                      >
+                        <MessageSquare className="w-4 h-4" /> WhatsApp patient
+                      </button>
+                    )}
                     <button
                       onClick={() => { setSavedAppt(null); setApptSMSStatus({ patient: null, doctor: null }); }}
                       className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"

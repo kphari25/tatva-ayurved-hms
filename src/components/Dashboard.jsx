@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Search } from 'lucide-react';
+import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Search, MessageCircle } from 'lucide-react';
+import { openWhatsAppChat, appointmentMessage } from '../lib/whatsapp';
 import { collection, getDocs, getDoc, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString, daysSince } from '../lib/formatDate';
@@ -1527,6 +1528,15 @@ const Dashboard = () => {
                               <div className="flex items-start justify-between gap-2">
                                 <p className={`text-sm font-bold ${color.time}`}>{apt.time}</p>
                                 <div className="flex items-center gap-0.5">
+                                  {apt.phone && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); openWhatsAppChat(apt.phone, appointmentMessage(apt.patient, { appointmentType: apt.type, doctorName: apt.doctorName ? withDrPrefix(apt.doctorName) : '', date: apt.date || toDateStr(new Date()), time: apt.time })); }}
+                                      className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                      title="Send appointment details on WhatsApp"
+                                    >
+                                      <MessageCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setEditingAppointment(apt); }}
                                     className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1630,6 +1640,15 @@ const Dashboard = () => {
                             <div className="flex items-start justify-between gap-2">
                               <p className={`text-base font-bold ${color.time}`}>{apt.time}</p>
                               <div className="flex items-center gap-0.5">
+                                {apt.phone && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openWhatsAppChat(apt.phone, appointmentMessage(apt.patient, { appointmentType: apt.type, doctorName: apt.doctorName ? withDrPrefix(apt.doctorName) : '', date: apt.date || toDateStr(new Date()), time: apt.time })); }}
+                                    className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                    title="Send appointment details on WhatsApp"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setEditingAppointment(apt); }}
                                   className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

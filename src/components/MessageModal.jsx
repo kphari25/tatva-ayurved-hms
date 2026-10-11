@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, MessageSquare, Clock, CheckCircle } from 'lucide-react';
+import { sendWhatsAppText } from '../lib/whatsapp';
 
 const MessageModal = ({ patient, onClose }) => {
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -61,7 +62,7 @@ const MessageModal = ({ patient, onClose }) => {
     return customMessage || 'Please select a template or write a custom message';
   };
 
-  const sendWhatsAppMessage = () => {
+  const sendWhatsAppMessage = async () => {
     const message = getMessage();
     if (!message || message.trim() === '') {
       alert('Please enter a message');
@@ -75,6 +76,21 @@ const MessageModal = ({ patient, onClose }) => {
     if (!phone.startsWith('91') && phone.length === 10) {
       phone = '91' + phone;
     }
+
+    // Try automatic sending through the WhatsApp Business API first. Free-form
+    // text only delivers inside the 24-hour window after the patient last
+    // messaged the clinic; otherwise (or if not configured) fall back to wa.me.
+    // Off by default: set VITE_WHATSAPP_API_ENABLED=true once the Cloud API is configured.
+    const auto = import.meta.env.VITE_WHATSAPP_API_ENABLED === 'true'
+      ? await sendWhatsAppText(phone, message)
+      : { success: false, error: 'WhatsApp API disabled' };
+    if (auto.success) {
+      saveMessageHistory(message, 'whatsapp');
+      alert('WhatsApp message sent.');
+      onClose();
+      return;
+    }
+    console.warn('Automatic WhatsApp failed, falling back to wa.me:', auto.error);
 
     // Encode message for URL
     const encodedMessage = encodeURIComponent(message);

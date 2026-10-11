@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, FileText, MessageSquare, Plus } from 'lucide-react';
+import { X, Printer, Save, FileText, MessageSquare, MessageCircle, Plus } from 'lucide-react';
+import { openWhatsAppChat, invoiceMessage } from '../lib/whatsapp';
 import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
@@ -413,6 +414,21 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     } finally {
       setSendingSMS(false);
     }
+  };
+
+  const handleSendWhatsApp = () => {
+    if (!patient.phone) {
+      alert('No phone number on file for this patient.');
+      return;
+    }
+    const data = savedInvoiceData || {
+      invoice_type: invoiceType,
+      invoice_date: formData.invoice_date,
+      total_amount: calculateTotal(),
+      payment_mode: formData.payment_mode,
+      patient_number: patient.patient_number
+    };
+    openWhatsAppChat(patient.phone, invoiceMessage(`${patient.first_name} ${patient.last_name}`, data));
   };
 
   const handlePrint = async (invoiceData = null) => {
@@ -1149,6 +1165,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                   Send SMS
                 </>
               )}
+            </button>
+            <button
+              onClick={handleSendWhatsApp}
+              className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+              title={patient.phone ? `Open WhatsApp to ${patient.phone}` : 'No phone number on file'}
+            >
+              <MessageCircle className="w-5 h-5" />
+              WhatsApp
             </button>
           </div>
           {smsStatus && (

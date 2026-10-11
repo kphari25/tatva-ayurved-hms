@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { UserPlus, Save, X, Receipt, CheckCircle, FileText, UserCheck } from 'lucide-react';
+import { UserPlus, Save, X, Receipt, CheckCircle, FileText, UserCheck, MessageCircle } from 'lucide-react';
+import { openWhatsAppChat, welcomeMessage } from '../lib/whatsapp';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
@@ -31,7 +32,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
   const lastVisitDaysAgo = returningCheckIn ? daysSince(estimateLastVisit(patient)) : null;
   const consultationFeeApplies = returningCheckIn && (lastVisitDaysAgo === null || lastVisitDaysAgo >= 30);
   const [loading, setLoading] = useState(false);
-  const [sendWelcomeSMS, setSendWelcomeSMS] = useState(false);
+  const [welcomeSmsEnabled, setWelcomeSmsEnabled] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [savedPatient, setSavedPatient] = useState(null);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
@@ -202,7 +203,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
 
       // Send Welcome SMS if enabled
       let smsSent = false;
-      if (sendWelcomeSMS && formData.phone) {
+      if (welcomeSmsEnabled && formData.phone) {
         try {
           const patientName = `${formData.first_name} ${formData.last_name}`;
           const result = await sendWelcomeSMS(formData.phone, patientName, patientNumber);
@@ -289,6 +290,15 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
                 >
                   <Receipt className="w-5 h-5" />
                   {returningCheckIn ? 'Generate Consultation Invoice' : 'Generate Registration Invoice'}
+                </button>
+              )}
+              {!returningCheckIn && savedPatient.phone && (
+                <button
+                  onClick={() => openWhatsAppChat(savedPatient.phone, welcomeMessage(`${savedPatient.first_name} ${savedPatient.last_name}`, savedPatient.patient_number || savedPatient.mrd_number))}
+                  className="w-full py-3 px-6 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  Send Welcome on WhatsApp
                 </button>
               )}
               <button
@@ -768,8 +778,8 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
                 <input
                   type="checkbox"
                   id="sendWelcomeSMS"
-                  checked={sendWelcomeSMS}
-                  onChange={(e) => setSendWelcomeSMS(e.target.checked)}
+                  checked={welcomeSmsEnabled}
+                  onChange={(e) => setWelcomeSmsEnabled(e.target.checked)}
                   className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
                 />
                 <label htmlFor="sendWelcomeSMS" className="text-sm text-gray-700 flex items-center gap-2">
