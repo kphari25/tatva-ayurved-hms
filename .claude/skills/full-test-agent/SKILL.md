@@ -1,17 +1,18 @@
 ---
 name: full-test-agent
-description: Full test agent for the Tatva Ayurved HMS — drives the live app in the Browser pane with disposable "ZZ" data and reports pass/fail. Suite A tests the OP → IP conversion field by field (OP Case Sheet → IP Case Sheet import). Suite B tests internal liquid (ml) usage tracking — bottle size in the Manual Entry grid and Add Medicine, the Used (ml) deduction from the IP Daily Log and OP Visit Log, edit/delete reversal, restocking and Usage History. Suite C tests Patient Category (General/PNC) — registration field, Patient Portal column, filter and inline dropdown, persistence. Suite D tests the Reports — patient counts (OP/IP/New/Return/PNC), the 1 Month / 3 / 6 / custom ranges, clickable drill-downs, and the Patients by Doctor report. Suite E tests the spelling/grammar writing check (the Check writing button and suggestion panel in the IP/OP logs and case sheets, plus the daily-log pencil edit). Use when the user says "run the full test agent", "test the OP to IP conversion", "test the liquid/ml usage", "test the reports", "test patient category / PNC", "test the writing check / grammar check", or asks whether report counts reconcile. With no suite named, run all five.
+description: Full test agent for the Tatva Ayurved HMS — drives the live app in the Browser pane with disposable "ZZ" data and reports pass/fail. Suite A tests the OP → IP conversion field by field (OP Case Sheet → IP Case Sheet import). Suite B tests internal liquid (ml) usage tracking — bottle size in the Manual Entry grid and Add Medicine, the Used (ml) deduction from the IP Daily Log and OP Visit Log, edit/delete reversal, restocking and Usage History. Suite C tests Patient Category (General/PNC) — registration field, Patient Portal column, filter and inline dropdown, persistence. Suite D tests the Reports — patient counts (OP/IP/New/Return/PNC), the 1 Month / 3 / 6 / custom ranges, clickable drill-downs, and the Patients by Doctor report. Suite E tests the spelling/grammar writing check (the Check writing button and suggestion panel in the IP/OP logs and case sheets, plus the daily-log pencil edit). Suite F tests the printed prescription (OP/IP) — it must not show Presenting Complaints. Use when the user says "run the full test agent", "test the OP to IP conversion", "test the liquid/ml usage", "test the reports", "test patient category / PNC", "test the writing check / grammar check", "test the prescription print", or asks whether report counts reconcile or the prescription shows the right fields. With no suite named, run all six.
 ---
 
 # Full Test Agent
 
-Drives the live app (https://tatva-ayurved-hms.vercel.app, or `preview_start dev` only if `vercel dev` is available — plain `vite` dev cannot log in for real, and Firestore then rejects every write) using disposable `ZZ ...` data, and reports a pass/fail summary. Five suites:
+Drives the live app (https://tatva-ayurved-hms.vercel.app, or `preview_start dev` only if `vercel dev` is available — plain `vite` dev cannot log in for real, and Firestore then rejects every write) using disposable `ZZ ...` data, and reports a pass/fail summary. Six suites:
 
 - **Suite A — OP → IP conversion** (all OP Case Sheet details carried into the IP Case Sheet)
 - **Suite B — Liquid (ml) usage tracking** (internal stock tracking, never billed or printed)
 - **Suite C — Patient Category** (General / PNC on registration, the Patient Portal list, filter, inline dropdown)
 - **Suite D — Reports** (patient counts, date ranges, drill-downs, Patients by Doctor)
 - **Suite E — Writing check** (Check writing button / suggestion panel on the log text boxes; daily-log editing)
+- **Suite F — Prescription print** (what the printed prescription shows — and must not show)
 
 ## Rules (all suites)
 - The user must sign in themselves in the Browser pane (never type their password). Ask, wait for "logged in". If a navigation opens a fresh tab, the session usually persists; if the login page shows, ask again.
@@ -176,5 +177,30 @@ Not covered unless asked: the native red underlines themselves (only the `spellc
 
 ---
 
+# Suite F — Prescription print (no Presenting Complaints)
+
+What it checks: the printed Prescription (OP and IP share one window, `PrescriptionModal.jsx`) shows the patient header, the medicines table and the physician signature — and **must not show "Presenting Complaints"** (removed on request; the complaints stay on the case sheets and their own prints, and on the Discharge Summary).
+
+**Printing freezes the pane.** The Prescription window opens a print preview that calls print on load. Before opening it, run this once (a page reload clears it):
+```js
+Object.defineProperty(HTMLIFrameElement.prototype,'contentWindow',{configurable:true,get(){return {focus(){},print(){window.__printBlocked=true}}}});window.print=()=>{window.__printBlocked=true};
+```
+Then read the preview with `document.querySelectorAll('iframe')` → last one → `contentDocument.body.innerText`. Never click a real print dialog.
+
+Disposable data: OP patient `ZZ Test RxCheck` (Female, 33, fee 0). Optionally an IP patient `ZZ Test RxCheckIP` (type IP) for the IP variant.
+
+1. **Set up an OP patient who has complaints and a medicine.** Register `ZZ Test RxCheck` → **Open OP Case Sheet** → **Initial Assessment**: put a recognisable marker in *Presenting Complaints with Duration*, e.g. `ZZ SENTINEL complaint: lower back pain for 3 weeks`, click **Save** (alert "✅ Case sheet saved!"). **Visit Log** tab → pick a real medicine from the autocomplete by *typing* (e.g. `ANU THYLAM` → click the suggestion; typing is needed or no suggestions appear), set Dose `1-0-1`, click **Add Entry**; the entry card must show the medicine.
+2. **Open the Prescription.** Install the print blocker (above). Close the case sheet (icon-only X, top right) and click the patient row's `button[title="Prescription"]`. The window lists the compiled medicines ("OP Visit Log" section with the medicine and dose).
+3. **Preview the print.** Click **Print** inside the Prescription window (the A4/A5 toggles sit next to it). A "Print Preview" appears; `window.__printBlocked` becomes `true`. Read the iframe text and check:
+   - **present:** `PRESCRIPTION`, the patient name, `Age & Sex`, `MRD No`, `Date`, the medicine row (name + dose), `Signature of Physician`, and the hospital footer;
+   - **absent:** the marker text (`SENTINEL`) and the words **`Presenting Complaints`** anywhere.
+4. **Nothing was lost.** Close the preview and the Prescription window, reopen the OP Case Sheet → Initial Assessment: the marker complaint is still saved there (only the prescription stopped showing it).
+5. **IP variant (optional).** Register an IP patient, open **IP Case Sheet** → **History & Examination**, put a marker in *History of Presenting Complaints*, Save; in **Vitals & Daily Log** add a daily entry with a medicine; open **Prescription**, preview as above — marker and heading must be absent, medicine present.
+6. **Cleanup.** Delete the visit/daily entry with **its own bin icon** (take a screenshot and click the bin on the entry's header row; do NOT click the last button in the card by script — it can be the case sheet's *Print Case Sheet* chooser; if a "Print OP Case Sheet / Choose what to print" menu appears it is only a menu — close its X). Confirm the entry count drops to 0, then delete the patient(s) and **reload the page** to clear the print blocker.
+
+Not covered unless asked: A5 layout, the Discharge Summary print (it still includes presenting complaints on purpose), the on-paper appearance (only the preview text is checked).
+
+---
+
 ## Report
-Per step pass/fail. Suite E: for each check the text typed, the suggestion returned, and what Accept / Keep mine did, any 403 / token problem, and the number of API checks used. Suite C: the category value at each step (form → list → filter → inline → after reload → in Reports). Suite D: the numbers read at each range, the invariant checks (✓/✗ with the actual figures), drill-down count vs card count, the doctor table with its sum check, and any near-duplicate doctor rows. Suite A: a table of every mapped field (OP value → IP value → ✓/✗), the unmatched list, anything unexpected. Suite B: the stock line (sealed + open · total ml) after each step against the expected value, Usage History rows, and any step that needed a retry because of pane timing (say so — don't count it as an app failure unless it reproduces). Finish with what was cleaned up and the final Total Items count. Any mapped field missing/different after save, or any stock figure that doesn't match, is a failure.
+Per step pass/fail. Suite F: the text found in the prescription preview (present/absent checklist), and confirmation the case-sheet data was untouched. Suite E: for each check the text typed, the suggestion returned, and what Accept / Keep mine did, any 403 / token problem, and the number of API checks used. Suite C: the category value at each step (form → list → filter → inline → after reload → in Reports). Suite D: the numbers read at each range, the invariant checks (✓/✗ with the actual figures), drill-down count vs card count, the doctor table with its sum check, and any near-duplicate doctor rows. Suite A: a table of every mapped field (OP value → IP value → ✓/✗), the unmatched list, anything unexpected. Suite B: the stock line (sealed + open · total ml) after each step against the expected value, Usage History rows, and any step that needed a retry because of pane timing (say so — don't count it as an app failure unless it reproduces). Finish with what was cleaned up and the final Total Items count. Any mapped field missing/different after save, or any stock figure that doesn't match, is a failure.
