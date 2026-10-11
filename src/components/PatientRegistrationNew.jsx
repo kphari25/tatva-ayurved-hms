@@ -49,6 +49,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
       patient_type: patient?.patient_type || 'OP',
       patient_category: patient?.patient_category || 'General',
       phone: patient?.phone || lead?.phone || '',
+      whatsapp_consent: patient?.whatsapp_consent || false,
       email: patient?.email || lead?.email || '',
       address: patient?.address || '',
       city: patient?.city || '',
@@ -132,6 +133,9 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
           updateData.admission_status = null;
           updateData.last_visit_date = todayLocalDateStr();
         }
+        if (formData.whatsapp_consent && !patient.whatsapp_consent_at) {
+          updateData.whatsapp_consent_at = new Date().toISOString();
+        }
         await updateDoc(doc(db, 'patients', patient.id), updateData);
 
         if (returningCheckIn) {
@@ -169,6 +173,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         status: 'active',
+        ...(formData.whatsapp_consent ? { whatsapp_consent_at: new Date().toISOString() } : {}),
         created_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email || 'admin'
       };
 
@@ -292,7 +297,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
                   {returningCheckIn ? 'Generate Consultation Invoice' : 'Generate Registration Invoice'}
                 </button>
               )}
-              {!returningCheckIn && savedPatient.phone && (
+              {!returningCheckIn && savedPatient.phone && savedPatient.whatsapp_consent && (
                 <button
                   onClick={() => openWhatsAppChat(savedPatient.phone, welcomeMessage(`${savedPatient.first_name} ${savedPatient.last_name}`, savedPatient.patient_number || savedPatient.mrd_number))}
                   className="w-full py-3 px-6 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 flex items-center justify-center gap-2 transition-colors"
@@ -612,6 +617,19 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
                   ref={setFieldRef('email')}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="flex items-start gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    name="whatsapp_consent"
+                    checked={!!formData.whatsapp_consent}
+                    onChange={(e) => setFormData(prev => ({ ...prev, whatsapp_consent: e.target.checked }))}
+                    className="mt-0.5 w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                  />
+                  <span>Patient agrees to receive WhatsApp messages from Tatva Ayurved (appointments, invoices, reminders) on this phone number</span>
+                </label>
               </div>
 
               <div className="md:col-span-2">
