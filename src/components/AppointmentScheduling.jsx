@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User, LayoutGrid, List, BarChart3, Search } from 'lucide-react';
+import { Calendar, Plus, X, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, User, LayoutGrid, List, BarChart3, Search, Activity } from 'lucide-react';
 import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
@@ -9,6 +9,8 @@ import { loadDoctorsList } from '../lib/doctors';
 import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms } from '../lib/roomAvailability';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
+import TherapistLiveBoard from './TherapistLiveBoard';
+import { DURATION_OPTIONS, durationOf } from '../lib/appointmentDuration';
 
 const STATUS_OPTIONS = ['scheduled', 'in-progress', 'completed', 'cancelled'];
 
@@ -281,6 +283,19 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
 
           <TherapistMultiSelect therapists={therapists} selectedIds={formData.therapistIds} onToggle={handleToggleTherapist} />
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+            <select
+              value={formData.duration_minutes || durationOf(formData)}
+              onChange={(e) => setFormData({ ...formData, duration_minutes: Number(e.target.value) })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {DURATION_OPTIONS.map(m => (
+                <option key={m} value={m}>{m >= 60 ? `${m / 60 === Math.floor(m / 60) ? m / 60 : (m / 60).toFixed(1)} hour${m > 60 ? 's' : ''}` : `${m} min`}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Used by the Live board to show when the therapist is busy and when they are free.</p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
@@ -716,7 +731,7 @@ const MonthlyCalendarView = ({ therapists, allAppointments, calendarMonth, setCa
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const AppointmentScheduling = () => {
-  const [view, setView] = useState('daily'); // 'daily' | 'weekly' | 'monthly' | 'outcomes'
+  const [view, setView] = useState('daily'); // 'daily' | 'live' | 'weekly' | 'monthly' | 'outcomes'
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [weekBase, setWeekBase] = useState(todayISO());
@@ -811,6 +826,7 @@ const AppointmentScheduling = () => {
         called_in_date: formData.called_in_date || '',
         called_in_time: formData.called_in_time || '',
         time: formData.time,
+        duration_minutes: formData.duration_minutes || durationOf(formData),
         type: formData.type,
         date: formData.date,
         status: formData.status,
@@ -951,6 +967,12 @@ const AppointmentScheduling = () => {
               <List className="w-4 h-4" /> Daily
             </button>
             <button
+              onClick={() => setView('live')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${view === 'live' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              <Activity className="w-4 h-4" /> Live
+            </button>
+            <button
               onClick={() => setView('weekly')}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${view === 'weekly' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
             >
@@ -977,6 +999,8 @@ const AppointmentScheduling = () => {
           </button>
         </div>
       </div>
+
+      {view === 'live' && <TherapistLiveBoard therapists={therapists} />}
 
       {/* ── Weekly Grid View ── */}
       {view === 'weekly' && (
