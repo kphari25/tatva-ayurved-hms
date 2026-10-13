@@ -135,6 +135,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
   // than the printable area, a one-page invoice's footer spills onto page 2.
   const paperMm = pageSize === 'A5' ? { w: 148, h: 210 } : { w: 210, h: 297 };
   const paperH = orientation === 'landscape' ? paperMm.w : paperMm.h;
+  const paperW = orientation === 'landscape' ? paperMm.h : paperMm.w;
   const marginVmm = parseFloat(pageMargin.v);
   const firstTopMm = letterhead ? 45 : marginVmm;
   const printableH = paperH - firstTopMm - marginVmm - 4; // 4mm safety so it can never tip over
@@ -381,7 +382,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
       Reg No: ${HOSPITAL.regNo}
     </div>
   </div>
-  ${fitToPageScript({ printableMm: printableH, printPadPx: 20 })}
+  ${fitToPageScript({ printableMm: printableH, measureWidthMm: paperW - 2 * parseFloat(pageMargin.h), printPadPx: 20 })}
 </body>
 </html>`;
 };

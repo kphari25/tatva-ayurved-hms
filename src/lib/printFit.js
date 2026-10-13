@@ -7,22 +7,26 @@
 // included — lands on page 1. Genuinely long bills (beyond that) are left to
 // break across pages normally.
 //
-// The measure runs against the preview iframe, whose width equals the paper
-// width (see previewIframeStyle), so the body's content box matches the
-// printed content width and line wrapping — hence height — is the same.
+// The preview iframe can be narrower than the paper (its flex container
+// squeezes it), which would wrap text more and overstate the height — so the
+// measure forces the body to the exact width it has when printed
+// (measureWidthMm) and restores it afterwards.
 export const fitToPageCss = (printableMm) =>
   `@media print { body { zoom: var(--fit, 1); min-height: calc(${printableMm}mm / var(--fit, 1)); } }`;
 
-export const fitToPageScript = ({ printableMm, printPadPx = 0, minScale = 0.7 }) => `<script>
+export const fitToPageScript = ({ printableMm, measureWidthMm, printPadPx = 0, minScale = 0.7 }) => `<script>
 (function () {
   function fit() {
     var pc = document.querySelector('.page-content');
     var pf = document.querySelector('.print-footer');
     if (!pc || !pf) return;
     var prevFlex = pc.style.flex;
+    var prevWidth = document.body.style.width;
     pc.style.flex = 'none';               // natural content height, not stretched
+    document.body.style.width = '${measureWidthMm}mm';
     var natural = pc.offsetHeight + pf.offsetHeight + parseFloat(getComputedStyle(pf).marginTop || 0) + ${printPadPx};
     pc.style.flex = prevFlex;
+    document.body.style.width = prevWidth;
     var avail = ${printableMm} * 96 / 25.4;
     var scale = avail / natural;
     if (scale < 1 && scale >= ${minScale}) {

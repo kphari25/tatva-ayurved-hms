@@ -77,6 +77,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
   // printable area, pushes a one-page bill's footer onto a second page.
   const paperMm = pageSize === 'A5' ? { w: 148, h: 210 } : { w: 210, h: 297 };
   const paperH = orientation === 'landscape' ? paperMm.w : paperMm.h;
+  const paperW = orientation === 'landscape' ? paperMm.h : paperMm.w;
   const marginVmm = parseFloat(pageMargin.v);
   const printableH = paperH - 2 * marginVmm - 4; // 4mm safety so it can never tip over
   const rowsHTML = saleData.items.map((r, i) => `
@@ -219,7 +220,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
       Reg No: ${HOSPITAL.regNo}
     </div>
   </div>
-  ${fitToPageScript({ printableMm: printableH })}
+  ${fitToPageScript({ printableMm: printableH, measureWidthMm: paperW })}
 </body>
 </html>`;
 };
