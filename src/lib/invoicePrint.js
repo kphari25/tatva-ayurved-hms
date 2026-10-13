@@ -1,4 +1,5 @@
 import { formatDateOnly } from './formatDate';
+import { fitToPageCss, fitToPageScript } from './printFit';
 
 export const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -127,20 +128,31 @@ const buildMedicineRows = (data) => {
 export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'portrait', letterhead = false) => {
   const pageMargin = pageMarginFor(pageSize);
   const pageSizeRule = orientation === 'landscape' ? `${pageSize} landscape` : pageSize;
+  // Printable height of page 1 in mm (paper minus the @page top/bottom
+  // margins; a letterhead's first page has a 45mm top margin). The sticky-
+  // footer body is sized to exactly this instead of 100vh, whose value in
+  // print differs between browsers — if it comes out even slightly taller
+  // than the printable area, a one-page invoice's footer spills onto page 2.
+  const paperMm = pageSize === 'A5' ? { w: 148, h: 210 } : { w: 210, h: 297 };
+  const paperH = orientation === 'landscape' ? paperMm.w : paperMm.h;
+  const marginVmm = parseFloat(pageMargin.v);
+  const firstTopMm = letterhead ? 45 : marginVmm;
+  const printableH = paperH - firstTopMm - marginVmm - 4; // 4mm safety so it can never tip over
   return `<!DOCTYPE html>
 <html>
 <head>
   <title>Invoice - ${data.invoice_number || data.patient_name || data.mrd_number || data.patient_number}</title>
   <style>
     * { box-sizing: border-box; }
-    html { height: 100%; }
+    @media print { html { height: auto; } }
     /* Sticky footer: body is a full-page-tall flex column, .page-content
        (flex:1) soaks up whatever's left so .print-footer always lands at
        the very bottom for a short invoice, but for a long one that already
        fills (or overflows) the page, .page-content simply can't grow any
        further and the footer follows right after it — no fixed positioning,
        no guessed reserved padding, so it never clips or overlaps either way. */
-    body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 14px; min-height: 100vh; margin: 0; display: flex; flex-direction: column; }
+    body { font-family: Arial, sans-serif; padding: 10px 20px; font-size: 14px; min-height: ${paperH}mm; margin: 0; display: flex; flex-direction: column; }
+    ${fitToPageCss(printableH)}
     .page-content { flex: 1 0 auto; }
     @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
@@ -163,7 +175,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     /* Doctor signature + thank-you note + hospital address are the last
        flex child, always pushed to the page's bottom edge by .page-content
        above soaking up the leftover space (see body/.page-content above). */
-    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; }
+    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; break-inside: avoid; page-break-inside: avoid; }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
@@ -369,6 +381,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
       Reg No: ${HOSPITAL.regNo}
     </div>
   </div>
+  ${fitToPageScript({ printableMm: printableH, printPadPx: 20 })}
 </body>
 </html>`;
 };

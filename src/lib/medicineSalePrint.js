@@ -1,4 +1,5 @@
 import { formatDateOnly } from './formatDate';
+import { fitToPageCss, fitToPageScript } from './printFit';
 
 export const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -70,6 +71,14 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
   // with the page's own margins once pinned to the bottom for print.
   const pageMargin = pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' };
   const pageSizeRule = orientation === 'landscape' ? `${pageSize} landscape` : pageSize;
+  // Printable height in mm (paper minus the @page top/bottom margins). The
+  // sticky-footer body is sized to exactly this — never to 100vh, whose value
+  // in print differs between browsers and, if even slightly taller than the
+  // printable area, pushes a one-page bill's footer onto a second page.
+  const paperMm = pageSize === 'A5' ? { w: 148, h: 210 } : { w: 210, h: 297 };
+  const paperH = orientation === 'landscape' ? paperMm.w : paperMm.h;
+  const marginVmm = parseFloat(pageMargin.v);
+  const printableH = paperH - 2 * marginVmm - 4; // 4mm safety so it can never tip over
   const rowsHTML = saleData.items.map((r, i) => `
       <tr>
         <td>${i + 1}</td>
@@ -87,14 +96,18 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
   <title>Medicine Sale - ${saleData.bill_number}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { height: 100%; }
+    @media print { html { height: auto; } }
     /* Sticky footer: body is a full-page-tall flex column, .page-content
        (flex:1) soaks up whatever's left so .print-footer always lands at
        the very bottom for a short bill, but for a long one that already
        fills (or overflows) the page, .page-content simply can't grow any
        further and the footer follows right after it — no fixed positioning,
        no guessed reserved padding, so it never clips or overlaps either way. */
-    body { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.4; padding: 24px; color: #1a1a1a; min-height: 100vh; display: flex; flex-direction: column; }
+    body { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.4; padding: ${pageMargin.v} ${pageMargin.h}; color: #1a1a1a; min-height: ${paperH}mm; display: flex; flex-direction: column; }
+    /* In print the @page margin already provides the margins, so the body
+       drops its own padding and is exactly the printable height. */
+    @media print { body { padding: 0; } }
+    ${fitToPageCss(printableH)}
     .page-content { flex: 1 0 auto; }
     @page { size: ${pageSizeRule}; margin: ${pageMargin.v} ${pageMargin.h}; }
     .header { text-align: center; border-bottom: 3px solid #0d9488; padding-bottom: 14px; margin-bottom: 18px; }
@@ -114,11 +127,15 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
     .totals { float: right; width: 280px; page-break-inside: avoid; }
     .totals table { margin: 0; }
     .totals td { border: none; border-bottom: 1px solid #eee; padding: 6px 8px; }
-    .totals .grand { background: #0d9488; color: #fff; font-size: 16px; font-weight: bold; }
+    /* The zebra stripe above (tr:nth-child(even) td) would otherwise paint the
+       TOTAL row's cells pale mint whenever it lands on an even row, leaving
+       its white text invisible — so the totals table opts out of it. */
+    .totals tr:nth-child(even) td { background: transparent; }
+    .totals .grand, .totals .grand td { background: #0d9488; color: #fff; font-size: 16px; font-weight: bold; }
     /* Signature/thank-you/address block — the last flex child, always
        pushed to the page's bottom edge by .page-content above soaking up
        the leftover space (see body/.page-content above). */
-    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; }
+    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; break-inside: avoid; page-break-inside: avoid; }
     .sig-block { text-align: right; margin-bottom: 18px; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
@@ -202,6 +219,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
       Reg No: ${HOSPITAL.regNo}
     </div>
   </div>
+  ${fitToPageScript({ printableMm: printableH })}
 </body>
 </html>`;
 };
