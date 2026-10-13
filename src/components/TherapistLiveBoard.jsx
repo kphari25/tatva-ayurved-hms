@@ -52,15 +52,17 @@ const TherapistLiveBoard = ({ therapists }) => {
     return map;
   }, [appointments]);
 
-  // Timeline window: working hours, widened if a session falls outside.
+  // Timeline window: fitted to the day's sessions (with an hour of margin) so
+  // blocks use the full width; falls back to working hours on an empty day.
   const { winStart, winEnd } = useMemo(() => {
-    let s = DEFAULT_START;
-    let e = DEFAULT_END;
-    Object.values(sessionsByTherapist).flat().forEach(x => {
-      s = Math.min(s, Math.floor(x.start / 60) * 60);
-      e = Math.max(e, Math.ceil(x.end / 60) * 60);
-    });
-    return { winStart: s, winEnd: Math.min(e, 24 * 60) };
+    const all = Object.values(sessionsByTherapist).flat();
+    if (all.length === 0) return { winStart: DEFAULT_START, winEnd: DEFAULT_END };
+    const first = Math.min(...all.map(x => x.start));
+    const last = Math.max(...all.map(x => x.end));
+    const s = Math.max(0, Math.floor((first - 30) / 60) * 60);
+    let e = Math.min(24 * 60, Math.ceil((last + 30) / 60) * 60);
+    if (e - s < 6 * 60) e = Math.min(24 * 60, s + 6 * 60);
+    return { winStart: s, winEnd: e };
   }, [sessionsByTherapist]);
 
   const span = winEnd - winStart;
@@ -145,10 +147,10 @@ const TherapistLiveBoard = ({ therapists }) => {
       </div>
 
       <div className="overflow-x-auto">
-        <div style={{ minWidth: 900 }}>
+        <div style={{ minWidth: 720 }}>
           {/* Hour header */}
           <div className="flex border-b border-gray-200 bg-gray-50">
-            <div className="w-64 shrink-0 px-4 py-2 text-xs font-semibold text-gray-500">Therapist</div>
+            <div className="w-52 shrink-0 px-4 py-2 text-xs font-semibold text-gray-500">Therapist</div>
             <div className="relative flex-1 h-8">
               {hours.map(h => (
                 <span key={h} className="absolute top-2 text-[11px] text-gray-500 -translate-x-1/2" style={{ left: pct(h) }}>
@@ -160,7 +162,7 @@ const TherapistLiveBoard = ({ therapists }) => {
 
           {rows.map(({ t, list, lanes, info, conflict }) => (
             <div key={t.id} className="flex border-b border-gray-100">
-              <div className="w-64 shrink-0 px-4 py-3 flex flex-col justify-center">
+              <div className="w-52 shrink-0 px-4 py-3 flex flex-col justify-center">
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${info.busy ? 'bg-orange-500 animate-pulse' : 'bg-green-500'}`} />
                   <span className="font-semibold text-gray-900 text-sm truncate">{t.name}</span>
