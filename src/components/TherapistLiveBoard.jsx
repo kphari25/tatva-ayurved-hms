@@ -11,7 +11,7 @@ const toLocalDate = (str) => { const [y, m, d] = str.split('-').map(Number); ret
 
 const DEFAULT_START = 8 * 60;
 const DEFAULT_END = 19 * 60;
-const ROW_LANE_H = 46;
+const ROW_LANE_H = 58;
 
 // Real-time "who is free right now" board for today. Reads today's
 // appointments live (onSnapshot) and ticks every 30 s so the NOW line, the
@@ -47,6 +47,8 @@ const TherapistLiveBoard = ({ therapists }) => {
   // entirely ahead — so the same logic dims or highlights correctly.
   const nowMin = isToday ? nowMinutes(now) : (selected < today ? 24 * 60 + 1 : -1);
 
+  const nameById = useMemo(() => Object.fromEntries(therapists.map(t => [t.id, t.name])), [therapists]);
+
   // Sessions per therapist (cancelled ones don't occupy anyone).
   const sessionsByTherapist = useMemo(() => {
     const map = {};
@@ -56,13 +58,14 @@ const TherapistLiveBoard = ({ therapists }) => {
       if (start === null) return;
       const ids = a.therapistIds?.length ? a.therapistIds : (a.therapistId ? [a.therapistId] : []);
       const end = start + durationOf(a);
+      const names = ids.map(id => nameById[id]).filter(Boolean);
       ids.forEach(id => {
-        (map[id] = map[id] || []).push({ ...a, start, end });
+        (map[id] = map[id] || []).push({ ...a, start, end, therapistList: names });
       });
     });
     Object.values(map).forEach(list => list.sort((x, y) => x.start - y.start));
     return map;
-  }, [appointments]);
+  }, [appointments, nameById]);
 
   // Timeline window: fitted to the day's sessions (with an hour of margin) so
   // blocks use the full width; falls back to working hours on an empty day.
@@ -251,10 +254,11 @@ const TherapistLiveBoard = ({ therapists }) => {
                       key={s.id}
                       className={`absolute rounded-md px-2 py-1 overflow-hidden text-[11px] leading-tight ${look}`}
                       style={style}
-                      title={`${fmtClock(s.start)} – ${fmtClock(s.end)} · ${s.patient || ''} · ${s.type || ''}${st === 'done' ? ' (done)' : ''}`}
+                      title={`${fmtClock(s.start)} – ${fmtClock(s.end)} · ${s.patient || ''} · ${s.type || ''} · ${s.therapistList.join(', ')}${st === 'done' ? ' (done)' : ''}`}
                     >
                       <div className="font-semibold truncate">{s.patient || 'Patient'}</div>
                       <div className="truncate opacity-90">{fmtClock(s.start).replace(' ', '')}–{fmtClock(s.end).replace(' ', '')} · {s.type || ''}</div>
+                      {s.therapistList.length > 0 && <div className="truncate font-medium">👤 {s.therapistList.join(', ')}</div>}
                     </div>
                   );
                 })}
