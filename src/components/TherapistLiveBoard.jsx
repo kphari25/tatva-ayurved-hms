@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { durationOf, toMinutes, fmtClock, fmtSpan } from '../lib/appointmentDuration';
@@ -6,6 +7,7 @@ import { durationOf, toMinutes, fmtClock, fmtSpan } from '../lib/appointmentDura
 const pad2 = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const nowMinutes = (d) => d.getHours() * 60 + d.getMinutes();
+const toLocalDate = (str) => { const [y, m, d] = str.split('-').map(Number); return new Date(y, m - 1, d); };
 
 const DEFAULT_START = 8 * 60;
 const DEFAULT_END = 19 * 60;
@@ -18,6 +20,14 @@ const TherapistLiveBoard = ({ therapists }) => {
   const [now, setNow] = useState(() => new Date());
   const [appointments, setAppointments] = useState([]);
   const today = toDateStr(now);
+  // null = follow today (rolls over at midnight); otherwise the date picked.
+  const [picked, setPicked] = useState(null);
+  const selected = picked || today;
+  const isToday = selected === today;
+  const shiftDay = (delta) => {
+    const [y, m, d] = selected.split('-').map(Number);
+    setPicked(toDateStr(new Date(y, m - 1, d + delta)));
+  };
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30000);
@@ -26,14 +36,16 @@ const TherapistLiveBoard = ({ therapists }) => {
 
   useEffect(() => {
     const unsub = onSnapshot(
-      query(collection(db, 'appointments'), where('date', '==', today)),
+      query(collection(db, 'appointments'), where('date', '==', selected)),
       (snap) => setAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       (err) => console.error('Live board listener error:', err)
     );
     return unsub;
-  }, [today]);
+  }, [selected]);
 
-  const nowMin = nowMinutes(now);
+  // Today uses the real clock; a past day is entirely behind us, a future day
+  // entirely ahead — so the same logic dims or highlights correctly.
+  const nowMin = isToday ? nowMinutes(now) : (selected < today ? 24 * 60 + 1 : -1);
 
   // Sessions per therapist (cancelled ones don't occupy anyone).
   const sessionsByTherapist = useMemo(() => {
@@ -80,6 +92,14 @@ const TherapistLiveBoard = ({ therapists }) => {
   };
 
   const describe = (list) => {
+    if (!isToday) {
+      if (!list.length) return { tone: 'free', headline: 'No sessions', detail: selected < today ? 'Nothing was scheduled' : 'Free all day' };
+      return {
+        tone: 'neutral',
+        headline: `${list.length} session${list.length !== 1 ? 's' : ''}`,
+        detail: `${fmtClock(list[0].start)} – ${fmtClock(Math.max(...list.map(x => x.end)))}`,
+      };
+    }
     const current = list.find(s => stateOf(s) === 'current');
     const upcoming = list.filter(s => stateOf(s) === 'upcoming');
     const next = upcoming[0];
@@ -90,6 +110,7 @@ const TherapistLiveBoard = ({ therapists }) => {
       const after = list.find(s => stateOf(s) === 'upcoming' && s.start > freeAt);
       return {
         busy: true,
+        tone: 'busy',
         headline: `Busy until ${fmtClock(freeAt)}`,
         detail: `With ${current.patient || 'patient'}${after ? ` · next ${fmtClock(after.start)}` : ' · nothing after'}`,
       };
@@ -97,6 +118,7 @@ const TherapistLiveBoard = ({ therapists }) => {
     if (next) {
       return {
         busy: false,
+        tone: 'free',
         headline: 'Free now',
         detail: `Next ${fmtClock(next.start)} (in ${fmtSpan(next.start - nowMin)}) · ${next.patient || 'patient'}`,
       };
@@ -123,6 +145,7 @@ const TherapistLiveBoard = ({ therapists }) => {
 
   const busyCount = rows.filter(r => r.info.busy).length;
   const freeCount = rows.length - busyCount;
+  const withSessions = rows.filter(r => r.list.length > 0).length;
 
   if (therapists.length === 0) {
     return <div className="bg-white rounded-xl shadow-md p-8 text-center text-gray-500">No therapists found. Add therapists via User Management.</div>;
@@ -136,13 +159,42 @@ const TherapistLiveBoard = ({ therapists }) => {
         <div>
           <h2 className="text-lg font-bold text-white">Therapist Live Board</h2>
           <p className="text-emerald-100 text-xs">
-            {now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · updates automatically
+            {toLocalDate(selected).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            {isToday ? ' · updates automatically' : selected < today ? ' · past day' : ' · upcoming day'}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <span className="bg-white/20 text-white px-3 py-1 rounded-full">🕒 {nowLabel}</span>
-          <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full">{busyCount} busy</span>
-          <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full">{freeCount} free</span>
+        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+          <div className="flex items-center bg-white/15 rounded-lg">
+            <button onClick={() => shiftDay(-1)} className="p-1.5 text-white hover:bg-white/20 rounded-l-lg" title="Previous day">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <input
+              type="date"
+              value={selected}
+              onChange={(e) => e.target.value && setPicked(e.target.value === today ? null : e.target.value)}
+              className="bg-transparent text-white text-sm px-2 py-1 focus:outline-none [color-scheme:dark]"
+            />
+            <button onClick={() => shiftDay(1)} className="p-1.5 text-white hover:bg-white/20 rounded-r-lg" title="Next day">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          {!isToday && (
+            <button onClick={() => setPicked(null)} className="bg-white text-emerald-700 px-3 py-1 rounded-full hover:bg-emerald-50">
+              Today
+            </button>
+          )}
+          {isToday ? (
+            <>
+              <span className="bg-white/20 text-white px-3 py-1 rounded-full">🕒 {nowLabel}</span>
+              <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full">{busyCount} busy</span>
+              <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full">{freeCount} free</span>
+            </>
+          ) : (
+            <>
+              <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full">{withSessions} with sessions</span>
+              <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full">{rows.length - withSessions} no sessions</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -164,10 +216,10 @@ const TherapistLiveBoard = ({ therapists }) => {
             <div key={t.id} className="flex border-b border-gray-100">
               <div className="w-52 shrink-0 px-4 py-3 flex flex-col justify-center">
                 <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${info.busy ? 'bg-orange-500 animate-pulse' : 'bg-green-500'}`} />
+                  <span className={`w-2.5 h-2.5 rounded-full ${info.busy ? 'bg-orange-500 animate-pulse' : info.tone === 'neutral' ? 'bg-blue-500' : 'bg-green-500'}`} />
                   <span className="font-semibold text-gray-900 text-sm truncate">{t.name}</span>
                 </div>
-                <p className={`text-xs font-semibold mt-1 ${info.busy ? 'text-orange-700' : 'text-green-700'}`}>{info.headline}</p>
+                <p className={`text-xs font-semibold mt-1 ${info.busy ? 'text-orange-700' : info.tone === 'neutral' ? 'text-blue-700' : 'text-green-700'}`}>{info.headline}</p>
                 <p className="text-[11px] text-gray-500 truncate" title={info.detail}>{info.detail}</p>
                 {conflict && <p className="text-[11px] text-red-600 font-semibold mt-0.5">⚠ Overlapping sessions</p>}
               </div>
