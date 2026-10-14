@@ -14,11 +14,11 @@
 export const fitToPageCss = (printableMm) =>
   `@media print { body { zoom: var(--fit, 1); min-height: calc(${printableMm}mm / var(--fit, 1)); } }`;
 
-export const fitToPageScript = ({ printableMm, measureWidthMm, printPadPx = 0, minScale = 0.7 }) => `<script>
+export const fitToPageScript = ({ printableMm, measureWidthMm, printPadPx = 0, minScale = 0.7, footerSelector = '.print-footer' }) => `<script>
 (function () {
   function fit() {
     var pc = document.querySelector('.page-content');
-    var pf = document.querySelector('.print-footer');
+    var pf = document.querySelector('${footerSelector}');
     if (!pc || !pf) return;
     var prevFlex = pc.style.flex;
     var prevWidth = document.body.style.width;

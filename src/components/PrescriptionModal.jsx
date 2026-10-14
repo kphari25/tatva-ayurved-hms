@@ -6,6 +6,7 @@ import PrintSectionModal from './PrintSectionModal';
 import { formatDateOnly } from '../lib/formatDate';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
+import { fitToPageCss, fitToPageScript } from '../lib/printFit';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -121,6 +122,13 @@ const PrescriptionModal = ({ patient, onClose }) => {
     // fixed bottom/left/right must track the same numbers so it still lines
     // up with the page's own margins once pinned to the bottom for print.
     const pageMargin = pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' };
+    // Printable height in mm. The sticky-footer body is sized to exactly this
+    // — never to 100vh, whose value in print differs between browsers — and
+    // shrunk to fit when the content is only slightly too tall (see
+    // lib/printFit.js), so the signature/address footer doesn't land alone
+    // on a second page.
+    const paperMm = pageSize === 'A5' ? { w: 148, h: 210 } : { w: 210, h: 297 };
+    const printableH = paperMm.h - 2 * parseFloat(pageMargin.v) - 4;
     // "Signed By" on the most recent entry that has one is who actually saw
     // the patient for this prescription — a closer match than the patient's
     // general assigned_doctor, which may be unset or belong to someone else.
@@ -164,7 +172,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
   <title>Prescription – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { height: 100%; }
+    @media print { html { height: auto; } }
     /* Sticky footer: body is a full-page-tall flex column, .page-content
        (flex:1) soaks up whatever's left so .print-footer (signature +
        address) always lands at the very bottom for a short prescription,
@@ -173,7 +181,8 @@ const PrescriptionModal = ({ patient, onClose }) => {
        right after it — no fixed positioning, no guessed reserved padding,
        so it never clips or overlaps either way, and the signature always
        gets a full, generous gap above it rather than a cramped one. */
-    body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #000; background: #fff; min-height: 100vh; display: flex; flex-direction: column; }
+    body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #000; background: #fff; min-height: ${paperMm.h}mm; display: flex; flex-direction: column; }
+    ${fitToPageCss(printableH)}
     .page-content { flex: 1 0 auto; }
     @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     @media print { body { -webkit-print-color-adjust: exact; } }
@@ -181,7 +190,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
        right-aligned doctor's name otherwise sits flush against the exact
        printable edge with zero slack, and print rendering can clip the
        last character or two there even though it looks fine on screen. */
-    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; }
+    .print-footer { flex-shrink: 0; margin-top: 40px; padding: 0 3mm; break-inside: avoid; page-break-inside: avoid; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a5f4e; padding-bottom: 10px; margin-bottom: 12px; }
     .logo-block { min-width: 190px; }
     .logo-block img { height: 64px; margin-bottom: 4px; }
@@ -283,6 +292,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
       Reg No: ${HOSPITAL.regNo}
     </div>
   </div>
+${fitToPageScript({ printableMm: printableH, measureWidthMm: paperMm.w - 2 * parseFloat(pageMargin.h) })}
 </body>
 </html>`;
   };

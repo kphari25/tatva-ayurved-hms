@@ -8,6 +8,7 @@ import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
 import { todayLocalDateStr, addDaysToDateString } from '../lib/formatDate';
 import MedicineTable from './MedicineTable';
 import { buildMedicineItemsTableHTML } from '../lib/medicineSummary';
+import { fitToPageCss, fitToPageScript } from '../lib/printFit';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -284,6 +285,14 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
   // long enough that it will likely still span multiple A5 pages; that's an
   // accepted tradeoff, same as the other print options in this app.
   const pageMargin = pageSize === 'A5' ? { v: '10mm', h: '8mm' } : { v: '15mm', h: '12mm' };
+  // Printable height of page 1 in mm (a letterhead's first page has a 45mm
+  // top margin). The sticky-footer body is sized to exactly this — never to
+  // 100vh, whose value in print differs between browsers — and shrunk to fit
+  // when the content is only slightly too tall (see lib/printFit.js), so the
+  // signature block doesn't land alone on a second page.
+  const paperMm = pageSize === 'A5' ? { w: 148, h: 210 } : { w: 210, h: 297 };
+  const marginVmm = parseFloat(pageMargin.v);
+  const printableH = paperMm.h - (letterhead ? 45 : marginVmm) - marginVmm - 4;
   const patientName = `${patient?.title || ''} ${patient?.first_name || ''} ${patient?.last_name || ''}`.trim().toUpperCase();
   const address = [patient?.address, patient?.city, patient?.state, patient?.pincode].filter(Boolean).join(', ').toUpperCase();
   const age = patient?.age || '';
@@ -302,7 +311,7 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
   <title>Discharge Summary – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { height: 100%; }
+    @media print { html { height: auto; } }
     /* Sticky footer: body is a full-page-tall flex column, .page-content
        (flex:1) soaks up whatever's left so .footer (signature block)
        always lands at the very bottom for a short summary, but for a long
@@ -310,7 +319,8 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
        can't grow any further and the footer follows right after it — no
        fixed positioning, no guessed reserved padding, so it never clips or
        overlaps either way. */
-    body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #000; background: #fff; min-height: 100vh; display: flex; flex-direction: column; }
+    body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #000; background: #fff; min-height: ${paperMm.h}mm; display: flex; flex-direction: column; }
+    ${fitToPageCss(printableH)}
     .page-content { flex: 1 0 auto; }
     @page { size: ${pageSize}; margin: ${pageMargin.v} ${pageMargin.h}; }
     ${letterhead ? '@page :first { margin-top: 45mm; }' : ''}
@@ -348,7 +358,7 @@ const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, page
     /* Signature block — the last flex child, always pushed to the page's
        bottom edge by .page-content above soaking up the leftover space
        (see body/.page-content above). */
-    .footer { flex-shrink: 0; margin-top: 40px; border-top: 2px solid #1a5f4e; padding-top: 10px; padding-left: 3mm; padding-right: 3mm; display: flex; justify-content: space-between; }
+    .footer { flex-shrink: 0; break-inside: avoid; page-break-inside: avoid; margin-top: 40px; border-top: 2px solid #1a5f4e; padding-top: 10px; padding-left: 3mm; padding-right: 3mm; display: flex; justify-content: space-between; }
     .sig-block { text-align: right; }
     .sig-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 14px; }
@@ -578,6 +588,7 @@ ${form.remarks ? `<div class="section-title">Remarks</div><p>${form.remarks}</p>
   </div>
 </div>
 
+${fitToPageScript({ printableMm: printableH, measureWidthMm: paperMm.w - 2 * parseFloat(pageMargin.h), footerSelector: '.footer' })}
 </body>
 </html>`;
 };
