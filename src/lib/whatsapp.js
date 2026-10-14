@@ -83,3 +83,18 @@ export const invoiceMessage = (patientName, d) =>
 
 export const appointmentMessage = (patientName, d) =>
   `Dear ${patientName}, Your ${d.appointmentType || 'appointment'} at Tatva Ayurved is scheduled on ${dateStr(d.date)} at ${d.time}${d.doctorName ? ` with ${d.doctorName}` : ''}. Please arrive 10 mins early. - Tatva Ayurved`;
+
+export const doctorAppointmentMessage = (doctorName, d) =>
+  `${doctorName}, Appointment scheduled: Patient ${d.patientName}${d.mrdNumber ? ` (${d.mrdNumber})` : ''} for ${d.appointmentType} on ${dateStr(d.date)} at ${d.time}.${d.notes ? ` Notes: ${d.notes}` : ''} - Tatva Ayurved`;
+
+// Template: doctor_appointment_notice — "{{1}}, appointment scheduled: patient {{2}} ({{3}}) for {{4}} on {{5}} at {{6}}. Notes: {{7}}"
+export const sendDoctorAppointmentWhatsApp = (phone, doctorName, d) =>
+  sendWhatsAppTemplate(phone, 'doctor_appointment_notice', [
+    doctorName,
+    d.patientName,
+    d.mrdNumber || '-',
+    d.appointmentType,
+    dateStr(d.date),
+    d.time,
+    d.notes || '-',
+  ]);

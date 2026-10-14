@@ -8,8 +8,7 @@ import {
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, where, addDoc, updateDoc } from 'firebase/firestore';
-import { sendAppointmentSMSToPatient, sendAppointmentSMSToDoctor } from '../lib/sms';
-import { openWhatsAppChat, appointmentMessage } from '../lib/whatsapp';
+import { openWhatsAppChat, appointmentMessage, doctorAppointmentMessage, sendAppointmentWhatsApp, sendDoctorAppointmentWhatsApp } from '../lib/whatsapp';
 import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
@@ -83,7 +82,9 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [appointmentPatient, setAppointmentPatient] = useState(null);
   const [doctors, setDoctors] = useState([]);
   const [apptSaving, setApptSaving] = useState(false);
-  const [apptSMSStatus, setApptSMSStatus] = useState({ patient: null, doctor: null });
+  // Per recipient: null | 'sent' | 'failed' | 'ready' (waiting for the one-click Open WhatsApp), plus the message to open
+  const [apptWAStatus, setApptWAStatus] = useState({ patient: null, doctor: null });
+  const [apptWAMessages, setApptWAMessages] = useState({ patient: null, doctor: null });
   const [apptForm, setApptForm] = useState({
     appointment_type: 'Consultation',
     doctor_id: '',
@@ -97,8 +98,8 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
     notes: '',
     room_number: '',
     room_type: '',
-    send_sms_patient: true,
-    send_sms_doctor: true,
+    send_whatsapp_patient: true,
+    send_whatsapp_doctor: true,
   });
   const [apptOccupiedRooms, setApptOccupiedRooms] = useState(new Set());
   const [savedAppt, setSavedAppt] = useState(null);
@@ -135,10 +136,11 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       duration_minutes: 30,
       notes: '',
       room_number: '',
-      send_sms_patient: true,
-      send_sms_doctor: true,
+      send_whatsapp_patient: true,
+      send_whatsapp_doctor: true,
     });
-    setApptSMSStatus({ patient: null, doctor: null });
+    setApptWAStatus({ patient: null, doctor: null });
+    setApptWAMessages({ patient: null, doctor: null });
     setSavedAppt(null);
     setApptReactivated(false);
     setShowAppointmentModal(true);
@@ -227,28 +229,36 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       }
       setApptReactivated(reactivated);
 
-      // Send SMS
-      const smsDetails = {
+      // WhatsApp confirmations. Sent automatically through the WhatsApp
+      // Business API once VITE_WHATSAPP_API_ENABLED is on and the templates
+      // are approved; otherwise (or if a send fails) each recipient gets a
+      // one-click "Open WhatsApp" row on the confirmation screen — a click is
+      // needed because browsers block a window opened after an async save.
+      const waDetails = {
         appointmentType: apptForm.appointment_type,
-        doctorName: apptForm.doctor_name,
+        doctorName: withDrPrefix(apptForm.doctor_name) || 'our team',
         date: apptForm.date,
         time: apptForm.time,
         notes: apptForm.notes,
         patientName: apptData.patient_name,
         mrdNumber: apptData.mrd_number,
       };
+      const apiOn = import.meta.env.VITE_WHATSAPP_API_ENABLED === 'true';
+      const newStatus = { patient: null, doctor: null };
+      const newMessages = { patient: null, doctor: null };
 
-      const newSMSStatus = { patient: null, doctor: null };
-
-      if (apptForm.send_sms_patient && appointmentPatient.phone) {
-        const res = await sendAppointmentSMSToPatient(appointmentPatient.phone, appointmentPatient.first_name, smsDetails);
-        newSMSStatus.patient = res.success ? 'sent' : 'failed';
+      if (apptForm.send_whatsapp_patient && appointmentPatient.phone) {
+        newMessages.patient = { phone: appointmentPatient.phone, message: appointmentMessage(appointmentPatient.first_name, waDetails) };
+        const res = apiOn ? await sendAppointmentWhatsApp(appointmentPatient.phone, appointmentPatient.first_name, waDetails) : null;
+        newStatus.patient = res?.success ? 'sent' : (res ? 'failed' : 'ready');
       }
-      if (apptForm.send_sms_doctor && apptForm.doctor_phone) {
-        const res = await sendAppointmentSMSToDoctor(apptForm.doctor_phone, apptForm.doctor_name, smsDetails);
-        newSMSStatus.doctor = res.success ? 'sent' : 'failed';
+      if (apptForm.send_whatsapp_doctor && apptForm.doctor_phone) {
+        newMessages.doctor = { phone: apptForm.doctor_phone, message: doctorAppointmentMessage(withDrPrefix(apptForm.doctor_name), waDetails) };
+        const res = apiOn ? await sendDoctorAppointmentWhatsApp(apptForm.doctor_phone, withDrPrefix(apptForm.doctor_name), waDetails) : null;
+        newStatus.doctor = res?.success ? 'sent' : (res ? 'failed' : 'ready');
       }
-      setApptSMSStatus(newSMSStatus);
+      setApptWAMessages(newMessages);
+      setApptWAStatus(newStatus);
     } catch (err) {
       alert('Error saving appointment: ' + err.message);
     } finally {
@@ -1079,33 +1089,39 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                     </div>
                   </div>
 
-                  {/* SMS Status */}
+                  {/* WhatsApp status — one row per requested recipient */}
                   <div className="space-y-2">
-                    {apptForm.send_sms_patient && (
-                      <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${apptSMSStatus.patient === 'sent' ? 'bg-green-50 text-green-700' : apptSMSStatus.patient === 'failed' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500'}`}>
-                        {apptSMSStatus.patient === 'sent' ? <CheckCircle className="w-4 h-4" /> : apptSMSStatus.patient === 'failed' ? <AlertCircle className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
-                        SMS to patient ({appointmentPatient.phone}): {apptSMSStatus.patient === 'sent' ? 'Sent' : apptSMSStatus.patient === 'failed' ? 'Failed (check MSG91 config)' : 'Not requested'}
-                      </div>
-                    )}
-                    {apptForm.send_sms_doctor && (
-                      <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${apptSMSStatus.doctor === 'sent' ? 'bg-green-50 text-green-700' : apptSMSStatus.doctor === 'failed' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500'}`}>
-                        {apptSMSStatus.doctor === 'sent' ? <CheckCircle className="w-4 h-4" /> : apptSMSStatus.doctor === 'failed' ? <AlertCircle className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
-                        SMS to {withDrPrefix(savedAppt.doctor_name)} ({savedAppt.doctor_phone || 'no phone'}): {apptSMSStatus.doctor === 'sent' ? 'Sent' : apptSMSStatus.doctor === 'failed' ? 'Failed (check MSG91 config)' : 'No phone number'}
-                      </div>
-                    )}
+                    {[
+                      { key: 'patient', requested: apptForm.send_whatsapp_patient, label: `WhatsApp to patient (${appointmentPatient.phone || 'no phone'})` },
+                      { key: 'doctor', requested: apptForm.send_whatsapp_doctor, label: `WhatsApp to ${withDrPrefix(savedAppt.doctor_name)} (${savedAppt.doctor_phone || 'no phone'})` },
+                    ].filter(row => row.requested).map(row => {
+                      const status = apptWAStatus[row.key];
+                      const msg = apptWAMessages[row.key];
+                      const tone = status === 'sent' ? 'bg-green-50 text-green-700' : status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600';
+                      return (
+                        <div key={row.key} className={`flex items-center justify-between gap-3 px-4 py-2 rounded-lg text-sm ${tone}`}>
+                          <span className="flex items-center gap-2 min-w-0">
+                            {status === 'sent' ? <CheckCircle className="w-4 h-4 shrink-0" /> : status === 'failed' ? <AlertCircle className="w-4 h-4 shrink-0" /> : <MessageSquare className="w-4 h-4 shrink-0" />}
+                            <span className="truncate">
+                              {row.label}: {status === 'sent' ? 'Sent' : status === 'failed' ? 'Auto-send failed — open WhatsApp instead' : msg ? 'Ready to send' : 'No phone number'}
+                            </span>
+                          </span>
+                          {msg && status !== 'sent' && (
+                            <button
+                              onClick={() => openWhatsAppChat(msg.phone, msg.message)}
+                              className="shrink-0 px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-xs font-medium"
+                            >
+                              Open WhatsApp
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div className="flex justify-end gap-3 pt-2">
-                    {appointmentPatient.phone && (
-                      <button
-                        onClick={() => openWhatsAppChat(appointmentPatient.phone, appointmentMessage(appointmentPatient.first_name, { appointmentType: savedAppt.appointment_type, doctorName: withDrPrefix(savedAppt.doctor_name), date: savedAppt.date, time: savedAppt.time }))}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                      >
-                        <MessageSquare className="w-4 h-4" /> WhatsApp patient
-                      </button>
-                    )}
                     <button
-                      onClick={() => { setSavedAppt(null); setApptSMSStatus({ patient: null, doctor: null }); }}
+                      onClick={() => { setSavedAppt(null); setApptWAStatus({ patient: null, doctor: null }); setApptWAMessages({ patient: null, doctor: null }); }}
                       className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
                     >
                       Schedule Another
@@ -1169,7 +1185,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                       <div>
                         <input
                           type="tel"
-                          placeholder="Doctor mobile (for SMS)"
+                          placeholder="Doctor mobile (for WhatsApp)"
                           value={apptForm.doctor_phone}
                           onChange={e => setApptForm(f => ({ ...f, doctor_phone: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm"
@@ -1283,33 +1299,33 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                     />
                   </div>
 
-                  {/* SMS Options */}
+                  {/* WhatsApp Options */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
                     <p className="text-sm font-semibold text-blue-800 flex items-center gap-2">
                       <MessageSquare className="w-4 h-4" />
-                      SMS Notifications
+                      WhatsApp Notifications
                     </p>
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={apptForm.send_sms_patient}
-                        onChange={e => setApptForm(f => ({ ...f, send_sms_patient: e.target.checked }))}
+                        checked={apptForm.send_whatsapp_patient}
+                        onChange={e => setApptForm(f => ({ ...f, send_whatsapp_patient: e.target.checked }))}
                         className="w-4 h-4 accent-teal-600"
                       />
                       <span className="text-sm text-gray-700">
-                        Send SMS to patient
+                        Send WhatsApp to patient
                         <span className="text-gray-400 ml-1">({appointmentPatient.phone || 'no phone on file'})</span>
                       </span>
                     </label>
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={apptForm.send_sms_doctor}
-                        onChange={e => setApptForm(f => ({ ...f, send_sms_doctor: e.target.checked }))}
+                        checked={apptForm.send_whatsapp_doctor}
+                        onChange={e => setApptForm(f => ({ ...f, send_whatsapp_doctor: e.target.checked }))}
                         className="w-4 h-4 accent-teal-600"
                       />
                       <span className="text-sm text-gray-700">
-                        Send SMS to doctor
+                        Send WhatsApp to doctor
                         <span className="text-gray-400 ml-1">{apptForm.doctor_phone ? `(${apptForm.doctor_phone})` : '(enter doctor phone above)'}</span>
                       </span>
                     </label>
@@ -1331,7 +1347,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                       {apptSaving ? (
                         <><span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving...</>
                       ) : (
-                        <><Send className="w-4 h-4" />Save &amp; Send SMS</>
+                        <><Send className="w-4 h-4" />Save &amp; Send WhatsApp</>
                       )}
                     </button>
                   </div>
