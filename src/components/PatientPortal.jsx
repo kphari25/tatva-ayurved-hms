@@ -1079,7 +1079,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                       <p className="font-semibold text-green-800">Appointment saved successfully!</p>
                       <p className="text-sm text-green-700 mt-1">
                         {savedAppt.appointment_type} with {savedAppt.doctor_name} on{' '}
-                        {new Date(savedAppt.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} at {savedAppt.time}
+                        {formatDateOnly(savedAppt.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} at {savedAppt.time}
                       </p>
                       {apptReactivated && (
                         <p className="text-sm text-green-700 mt-1 flex items-center gap-1">
