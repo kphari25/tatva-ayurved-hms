@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Search, MessageCircle } from 'lucide-react';
-import { openWhatsAppChat, appointmentMessage } from '../lib/whatsapp';
+import { openWhatsAppChat, appointmentMessage, sendAppointmentWhatsApp } from '../lib/whatsapp';
 import { collection, getDocs, getDoc, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString, daysSince } from '../lib/formatDate';
-import { sendAppointmentSMSToPatient } from '../lib/sms';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import { withDrPrefix } from '../lib/formatDoctorName';
@@ -95,7 +94,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     therapistNames: appointment?.therapistNames || (appointment?.therapistName ? [appointment.therapistName] : []),
     roomNumber: appointment?.room_number || '',
     roomType: appointment?.room_type || '',
-    sendSms: false,
+    sendWhatsApp: false,
   });
   const [error, setError] = useState('');
   const [occupiedRooms, setOccupiedRooms] = useState(new Set());
@@ -153,7 +152,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
         therapistNames: formData.therapistNames,
         roomNumber: formData.roomNumber,
         roomType: formData.roomType,
-        sendSms: formData.sendSms,
+        sendWhatsApp: formData.sendWhatsApp,
       });
     }
   };
@@ -179,8 +178,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
       setError('Called-in date and time are required.');
       return;
     }
-    if (formData.sendSms && !formData.phone.trim()) {
-      setError('Phone number is required to send an SMS confirmation.');
+    if (formData.sendWhatsApp && !formData.phone.trim()) {
+      setError('Phone number is required to send a WhatsApp confirmation.');
       return;
     }
     onSave(formData);
@@ -318,11 +317,11 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
-              checked={formData.sendSms}
-              onChange={(e) => setFormData({ ...formData, sendSms: e.target.checked })}
+              checked={formData.sendWhatsApp}
+              onChange={(e) => setFormData({ ...formData, sendWhatsApp: e.target.checked })}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            {isEditMode ? 'Send updated SMS to patient' : 'Send SMS confirmation to patient'}
+            {isEditMode ? 'Send updated WhatsApp message to patient' : 'Send WhatsApp confirmation to patient'}
           </label>
           <div className="flex gap-3 pt-2">
             <button
@@ -356,7 +355,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
 const normName = (s) => (s || '').trim().toLowerCase();
 
 // Second step of the "existing patient" appointment flow — collects Time /
-// Type / Doctor / SMS for the visit once the patient's own info has been
+// Type / Doctor / WhatsApp for the visit once the patient's own info has been
 // confirmed. Kept separate from AddAppointmentModal because those fields
 // live below the Patient Name search field there, so a front-desk user who
 // picks a match before touching them would otherwise book a blank-time
@@ -374,7 +373,7 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
     therapistNames: initialFields?.therapistNames || [],
     roomNumber: initialFields?.roomNumber || '',
     roomType: initialFields?.roomType || '',
-    sendSms: initialFields?.sendSms || false,
+    sendWhatsApp: initialFields?.sendWhatsApp || false,
   });
   const [error, setError] = useState('');
   const [occupiedRooms, setOccupiedRooms] = useState(new Set());
@@ -499,11 +498,11 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
-              checked={fields.sendSms}
-              onChange={(e) => setFields({ ...fields, sendSms: e.target.checked })}
+              checked={fields.sendWhatsApp}
+              onChange={(e) => setFields({ ...fields, sendWhatsApp: e.target.checked })}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            Send SMS confirmation to patient
+            Send WhatsApp confirmation to patient
           </label>
           <div className="flex gap-3 pt-2">
             <button
@@ -530,6 +529,28 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showAddAppointment, setShowAddAppointment] = useState(false);
+  // WhatsApp confirmation hand-off: { phone, message } — shown after an
+  // appointment is saved so staff can open the chat with one click (a click
+  // is needed because browsers block a window opened after an async save).
+  const [whatsappPrompt, setWhatsappPrompt] = useState(null);
+
+  // Tries the WhatsApp Business API (once VITE_WHATSAPP_API_ENABLED is on and
+  // the templates are approved); otherwise — or if that send fails — falls
+  // back to the one-click "Open WhatsApp" prompt.
+  const sendAppointmentConfirmation = async (phone, patientName, { type, doctorName, date, time }) => {
+    const details = {
+      appointmentType: type || 'appointment',
+      doctorName: doctorName ? withDrPrefix(doctorName) : 'our team',
+      date,
+      time,
+    };
+    if (import.meta.env.VITE_WHATSAPP_API_ENABLED === 'true') {
+      const auto = await sendAppointmentWhatsApp(phone, patientName, details);
+      if (auto.success) return;
+      console.warn('Automatic WhatsApp failed, falling back to wa.me:', auto.error);
+    }
+    setWhatsappPrompt({ phone, message: appointmentMessage(patientName, details) });
+  };
   const [editingAppointment, setEditingAppointment] = useState(null);
   const [showPendingAdmissions, setShowPendingAdmissions] = useState(false);
   // Picking an existing patient while adding an appointment hands off to
@@ -1083,17 +1104,11 @@ const Dashboard = () => {
         }
       }
 
-      if (formData.sendSms && formData.phone) {
+      if (formData.sendWhatsApp && formData.phone) {
         try {
-          const result = await sendAppointmentSMSToPatient(formData.phone, formData.patient, {
-            appointmentType: formData.type || 'appointment',
-            doctorName: formData.doctorName || 'our team',
-            date: formData.date,
-            time: formData.time,
-          });
-          if (!result.success) console.warn('Appointment SMS not sent:', result.error);
-        } catch (smsError) {
-          console.error('⚠️ Failed to send appointment SMS:', smsError);
+          await sendAppointmentConfirmation(formData.phone, formData.patient, formData);
+        } catch (waError) {
+          console.error('⚠️ Failed to send appointment WhatsApp:', waError);
         }
       }
 
@@ -1110,7 +1125,7 @@ const Dashboard = () => {
 
   // AddAppointmentModal's search matched an existing patient — swap it for
   // the full edit dialog (pre-filled), holding onto the appointment fields
-  // already typed in (time/type/doctor/SMS) until that dialog reports back.
+  // already typed in (time/type/doctor/WhatsApp) until that dialog reports back.
   const handlePickExistingPatientForAppt = (patient, apptFields) => {
     setShowAddAppointment(false);
     setExistingPatientForAppt(patient);
@@ -1193,17 +1208,11 @@ const Dashboard = () => {
         }
       }
 
-      if (fields.sendSms && p.phone) {
+      if (fields.sendWhatsApp && p.phone) {
         try {
-          const result = await sendAppointmentSMSToPatient(p.phone, patientName, {
-            appointmentType: fields.type || 'appointment',
-            doctorName: fields.doctorName || 'our team',
-            date: fields.date,
-            time: fields.time,
-          });
-          if (!result.success) console.warn('Appointment SMS not sent:', result.error);
-        } catch (smsError) {
-          console.error('⚠️ Failed to send appointment SMS:', smsError);
+          await sendAppointmentConfirmation(p.phone, patientName, fields);
+        } catch (waError) {
+          console.error('⚠️ Failed to send appointment WhatsApp:', waError);
         }
       }
 
@@ -1916,6 +1925,40 @@ const Dashboard = () => {
               <p className="text-sm text-yellow-700">
                 You have {dashboardData.stats.hotLeads} hot leads and {dashboardData.stats.pendingFollowups} pending follow-ups waiting for your attention.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {whatsappPrompt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-bold text-gray-900">Send confirmation on WhatsApp</h3>
+              <button onClick={() => setWhatsappPrompt(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-green-700 font-medium">✅ Appointment saved.</p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700 whitespace-pre-wrap">
+                {whatsappPrompt.message}
+              </div>
+              <p className="text-xs text-gray-500">To {whatsappPrompt.phone}. WhatsApp opens with this message ready — press Send there.</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setWhatsappPrompt(null)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Skip
+                </button>
+                <button
+                  onClick={() => { openWhatsAppChat(whatsappPrompt.phone, whatsappPrompt.message); setWhatsappPrompt(null); }}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
+                >
+                  <MessageCircle className="w-4 h-4" /> Open WhatsApp
+                </button>
+              </div>
             </div>
           </div>
         </div>
