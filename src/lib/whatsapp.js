@@ -37,9 +37,10 @@ const toLocalDate = (d) => {
 
 const dateStr = (d) => toLocalDate(d).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-// Template: welcome_patient — "Dear {{1}}, welcome to Tatva Ayurved! Your Patient ID is {{2}}."
+// Template: registration_confirmation — "Hello {{1}}, your registration at Tatva Ayurved has been recorded. Patient ID: {{2}}. Please quote this ID when you visit."
+// (Not named "welcome": Meta rejected welcome_patient as Marketing, not Utility.)
 export const sendWelcomeWhatsApp = (phone, patientName, patientNumber) =>
-  sendWhatsAppTemplate(phone, 'welcome_patient', [patientName, patientNumber]);
+  sendWhatsAppTemplate(phone, 'registration_confirmation', [patientName, patientNumber]);
 
 // Template: invoice_generated — "Dear {{1}}, your invoice dated {{2}} ({{3}}) is generated. Total: Rs.{{4}}. Payment mode: {{5}}. Patient ID: {{6}}."
 export const sendInvoiceWhatsApp = (phone, patientName, d) =>
