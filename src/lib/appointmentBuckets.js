@@ -14,7 +14,7 @@ export const APPOINTMENT_BUCKETS = ['Consultation', 'Ayurvedic Therapy', 'Follow
 // "Therapy"/"OP"/"IP" all still fall into the Ayurvedic Therapy bucket via
 // the keyword matching below — this list is only about what front desk is
 // allowed to pick when booking, not how it's later displayed.
-export const APPOINTMENT_TYPE_OPTIONS = ['Consultation', 'Therapy', 'Follow up', 'OP', 'IP'];
+export const APPOINTMENT_TYPE_OPTIONS = ['Consultation', 'Therapy', 'Follow up', 'OP', 'IP', 'PNC'];
 
 export const bucketForAppointment = (apt) => {
   const t = (apt.type || '').toLowerCase();
