@@ -292,9 +292,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     return gross - regPaid;
   };
 
-  const calculateGST = () => {
-    return (calculateSubtotal() * (parseFloat(formData.gst_percentage) || 0)) / 100;
-  };
+  // Treatment / patient invoices carry no GST — GST applies only to medicine
+  // sales (Medicine Sale bills, which compute it per item). Kept as a function
+  // returning 0 so the saved invoice fields (gst_percentage / gst_amount) stay
+  // in place, always zero.
+  const calculateGST = () => 0;
 
   const calculateTotal = () => {
     return calculateSubtotal() + calculateGST() - (parseFloat(formData.discount) || 0);
@@ -354,7 +356,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         is_consultation_invoice: isConsultationInvoice,
         gross_total: calculateGross(),
         subtotal: calculateSubtotal(),
-        gst_percentage: parseFloat(formData.gst_percentage) || 0,
+        gst_percentage: 0,
         gst_amount: calculateGST(),
         discount: parseFloat(formData.discount) || 0,
         total_amount: calculateTotal(),
@@ -462,7 +464,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       bystander_mess_per_day: calcMessTotal(formData.bystander_meals),
       gross_total: calculateGross(),
       subtotal: calculateSubtotal(),
-      gst_percentage: parseFloat(formData.gst_percentage) || 0,
+      gst_percentage: 0,
       gst_amount: calculateGST(),
       discount: parseFloat(formData.discount) || 0,
       total_amount: calculateTotal(),
@@ -1009,17 +1011,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
             </>
           )}
 
-          {/* GST & Discount */}
+          {/* Discount (no GST on treatment invoices) */}
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">GST (%)</label>
-              <input
-                type="number"
-                value={formData.gst_percentage}
-                onChange={(e) => setFormData({ ...formData, gst_percentage: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Discount (₹)</label>
               <input
@@ -1071,12 +1064,6 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                 <div className="flex justify-between text-sm text-teal-200">
                   <span>Less: Registration Fee (already paid):</span>
                   <span>-₹{parseFloat(formData.registration_fee).toFixed(2)}</span>
-                </div>
-              )}
-              {parseFloat(formData.gst_percentage) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span>GST ({formData.gst_percentage}%):</span>
-                  <span>₹{calculateGST().toFixed(2)}</span>
                 </div>
               )}
               {parseFloat(formData.discount) > 0 && (
