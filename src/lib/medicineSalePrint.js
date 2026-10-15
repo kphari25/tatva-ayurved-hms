@@ -60,6 +60,18 @@ export const basePriceFromMRP = (item) => {
   return Math.round((mrp - gstAmount) * 100) / 100;
 };
 
+// Splits a tax-inclusive MRP into the GST-exclusive price and the GST itself
+// so that price + GST equals the MRP exactly: price = MRP − MRP×g/(100+g),
+// rounded to 2 decimals, and GST is whatever remains. An item with no GST rate
+// (e.g. no inventory match) keeps its MRP as the price with zero GST.
+export const splitMrpGst = (mrp, gstPct) => {
+  const m = Number(mrp) || 0;
+  const g = Number(gstPct) || 0;
+  if (!(g > 0) || !(m > 0)) return { base: m, gst: 0 };
+  const base = Math.round((m - (m * g) / (100 + g)) * 100) / 100;
+  return { base, gst: Math.round((m - base) * 100) / 100 };
+};
+
 // Module-level (not a component closure) so a saved bill can be reprinted
 // from anywhere — e.g. clicking a bill number in Inventory's Sales History —
 // without reopening the full Medicine Sale form.

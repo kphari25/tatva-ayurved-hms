@@ -106,7 +106,9 @@ const buildMedicineRows = (data) => {
   if (items.length === 0) return '';
   const groups = {};
   items.forEach(it => {
-    const rate = Number(it.price) || 0;
+    // New invoices store the GST-exclusive price in base_price (price + GST =
+    // MRP); older ones only have the MRP in price and print as before.
+    const rate = Number(it.base_price ?? it.price) || 0;
     const batch = it.batch_number || '';
     const key = `${it.name}__${rate}__${batch}`;
     if (!groups[key]) groups[key] = { name: it.name, rate, qty: 0, batch, gst_percentage: it.gst_percentage ?? null };
@@ -343,6 +345,15 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
       <tr>
         <td>GST (${data.gst_percentage}%):</td>
         <td style="text-align: right;">₹${data.gst_amount.toFixed(2)}</td>
+      </tr>
+      ` : data.gst_amount > 0 ? `
+      <tr>
+        <td>CGST (medicines):</td>
+        <td style="text-align: right;">₹${(data.gst_amount / 2).toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td>SGST (medicines):</td>
+        <td style="text-align: right;">₹${(data.gst_amount / 2).toFixed(2)}</td>
       </tr>
       ` : ''}
       ${data.discount > 0 ? `

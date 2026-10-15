@@ -8,7 +8,7 @@ import { ROOMS, ROOM_TYPES, ROOM_RATES, getRoomRate } from '../lib/rooms';
 import { addDaysToDateString, todayLocalDateStr } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
 import { previewIframeStyle } from '../lib/printPreviewSize';
-import { gstPercentForItem, defaultBatchForItem } from '../lib/medicineSalePrint';
+import { gstPercentForItem, defaultBatchForItem, splitMrpGst } from '../lib/medicineSalePrint';
 
 const DOCTOR_FEE_PER_DAY = 200;
 const NURSE_FEE_PER_DAY = 150;
@@ -133,7 +133,15 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const removeMedicineItem = (idx) => setMedicineItems(prev => prev.filter((_, i) => i !== idx));
 
   const priceListTotal = priceListItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
-  const medicineItemsTotal = medicineItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  // Medicine prices come in as MRP (GST-inclusive). Each line is split into the
+  // GST-exclusive price and its GST — price + GST = MRP — exactly like a
+  // Medicine Sale bill. Only medicines carry GST; nothing else on the invoice does.
+  const medicineLines = medicineItems.map(it => ({ ...it, ...splitMrpGst(it.price, it.gst_percentage) }));
+  const medicineItemsTotal = medicineItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0); // MRP total
+  const medicineGstTotal = Math.round(medicineLines.reduce((sum, l) => sum + l.gst, 0) * 100) / 100;
+  const medicineBaseTotal = Math.round((medicineItemsTotal - medicineGstTotal) * 100) / 100;
+  // Saved with each medicine: the MRP (`price`, as before) plus the split.
+  const medicineItemsForSave = () => medicineLines.map(({ base, gst, ...it }) => ({ ...it, base_price: base, gst_amount: gst }));
 
   const calculateTreatmentCharges = () =>
     priceListTotal +
@@ -271,7 +279,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const calculateGross = () => {
     let gross = 0;
     gross += calculateTreatmentCharges();
-    gross += medicineItemsTotal;
+    gross += medicineBaseTotal; // GST-exclusive; the GST is added back via calculateGST()
     gross += parseFloat(formData.nursing_fees) || 0;
     gross += parseFloat(formData.doctor_fees) || 0;
     gross += parseFloat(formData.lab_test_charges) || 0;
@@ -292,11 +300,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     return gross - regPaid;
   };
 
-  // Treatment / patient invoices carry no GST — GST applies only to medicine
-  // sales (Medicine Sale bills, which compute it per item). Kept as a function
-  // returning 0 so the saved invoice fields (gst_percentage / gst_amount) stay
-  // in place, always zero.
-  const calculateGST = () => 0;
+  // GST applies only to medicines (treatment, room, mess and other charges
+  // carry none): the sum of each medicine's own GST, as split from its MRP.
+  const calculateGST = () => medicineGstTotal;
 
   const calculateTotal = () => {
     return calculateSubtotal() + calculateGST() - (parseFloat(formData.discount) || 0);
@@ -332,7 +338,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         treatment_charges: calculateTreatmentCharges(),
         treatment_items: priceListItems,
         treatment_display: treatmentDisplay,
-        medicine_items: medicineItems,
+        medicine_items: medicineItemsForSave(),
         additional_charges: additionalCharges,
         nursing_fees: parseFloat(formData.nursing_fees) || 0,
         doctor_fees: parseFloat(formData.doctor_fees) || 0,
@@ -445,7 +451,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       treatment_charges: calculateTreatmentCharges(),
       treatment_items: priceListItems,
       treatment_display: treatmentDisplay,
-      medicine_items: medicineItems,
+      medicine_items: medicineItemsForSave(),
       additional_charges: additionalCharges,
       nursing_fees: parseFloat(formData.nursing_fees) || 0,
       doctor_fees: parseFloat(formData.doctor_fees) || 0,
@@ -775,11 +781,11 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                     </span>
                   </div>
                   <div className="space-y-1 mb-2">
-                    {medicineItems.map((it, idx) => (
+                    {medicineLines.map((it, idx) => (
                       <div key={`mi-${idx}`} className="flex items-center justify-between text-sm">
                         <span className="text-gray-700">{it.name} <span className="text-xs text-gray-400">({it.source})</span></span>
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-800">₹{Number(it.price || 0).toLocaleString('en-IN')}</span>
+                          <span className="font-medium text-gray-800">₹{it.base.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           <button
                             type="button"
                             onClick={() => removeMedicineItem(idx)}
@@ -792,9 +798,19 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                       </div>
                     ))}
                   </div>
-                  <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-200 text-sm font-bold text-gray-800">
-                    <span>Total Medicine Charges</span>
-                    <span>₹{medicineItemsTotal.toLocaleString('en-IN')}</span>
+                  <div className="pt-2 mt-2 border-t border-gray-200 text-sm text-gray-700 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span>Medicine charges (before GST)</span>
+                      <span>₹{medicineBaseTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>GST on medicines (CGST + SGST)</span>
+                      <span>₹{medicineGstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between font-bold text-gray-800">
+                      <span>Total Medicine Charges</span>
+                      <span>₹{medicineItemsTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1065,6 +1081,18 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
                   <span>Less: Registration Fee (already paid):</span>
                   <span>-₹{parseFloat(formData.registration_fee).toFixed(2)}</span>
                 </div>
+              )}
+              {medicineGstTotal > 0 && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span>CGST (medicines):</span>
+                    <span>₹{(medicineGstTotal / 2).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>SGST (medicines):</span>
+                    <span>₹{(medicineGstTotal / 2).toFixed(2)}</span>
+                  </div>
+                </>
               )}
               {parseFloat(formData.discount) > 0 && (
                 <div className="flex justify-between text-sm">
