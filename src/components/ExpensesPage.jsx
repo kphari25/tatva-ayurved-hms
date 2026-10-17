@@ -3,7 +3,7 @@ import { Plus, List, ShieldCheck, Pencil, Lock, X, RefreshCw } from 'lucide-reac
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import ExpenseForm from './ExpenseForm';
-import { categoryLabel, paymentModeLabel, isSystemExpense } from '../lib/expenses';
+import { categoryLabel, paymentModeLabel, isSystemExpense, getCurrentUser } from '../lib/expenses';
 
 const firstOfMonth = () => {
   const n = new Date();
@@ -254,28 +254,100 @@ const LogTab = ({ refreshKey }) => {
   );
 };
 
+
+// ── Your recent expenses (everyone else) ───────────────────────────────────
+const MyRecentTab = ({ refreshKey }) => {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const email = getCurrentUser().email || '';
+        const snap = await getDocs(query(collection(db, 'expenses'), where('created_by', '==', email)));
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+        if (!cancelled) setRows(list.slice(0, 20));
+      } catch (e) {
+        console.error('Error loading your expenses:', e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6">
+      <h2 className="font-bold text-gray-800 mb-3">Expenses you added recently</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-600 border-b">
+              <th className="py-2 pr-3">Date</th>
+              <th className="py-2 pr-3">Category</th>
+              <th className="py-2 pr-3">Description</th>
+              <th className="py-2 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id} className="border-b last:border-0 align-top">
+                <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(r.date)}</td>
+                <td className="py-2 pr-3">{categoryLabel(r.category)}</td>
+                <td className="py-2 pr-3 max-w-xs whitespace-pre-line break-words">{r.description || '—'}</td>
+                <td className="py-2 text-right font-semibold whitespace-nowrap">{fmtMoney(r.amount)}</td>
+              </tr>
+            ))}
+            {!loading && rows.length === 0 && (
+              <tr><td colSpan={4} className="py-8 text-center text-gray-500">You haven't added any expenses yet — click "Add Expense" to record one</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // ── Page ────────────────────────────────────────────────────────────────────
 const ExpensesPage = ({ isAdmin }) => {
-  const [tab, setTab] = useState('add');
+  const [tab, setTab] = useState('all');
+  const [showAdd, setShowAdd] = useState(false);
+  const [notice, setNotice] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const bump = () => setRefreshKey(k => k + 1);
 
   const tabs = [
-    { id: 'add', label: 'Add Expense', icon: Plus },
-    ...(isAdmin ? [
-      { id: 'all', label: 'All Expenses', icon: List },
-      { id: 'log', label: 'Expense Log', icon: ShieldCheck },
-    ] : []),
+    { id: 'all', label: 'All Expenses', icon: List },
+    { id: 'log', label: 'Expense Log', icon: ShieldCheck },
   ];
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Expenses</h1>
-        <p className="text-gray-600 text-sm">Add expenses here — they are counted in the Profit &amp; Loss statement automatically</p>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">Expenses</h1>
+          <p className="text-gray-600 text-sm">Expenses added here are counted in the Profit &amp; Loss statement automatically</p>
+        </div>
+        <button
+          onClick={() => { setNotice(''); setShowAdd(true); }}
+          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2 shrink-0"
+        >
+          <Plus className="w-5 h-5" />
+          Add Expense
+        </button>
       </div>
 
-      {tabs.length > 1 && (
+      {notice && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between text-sm text-green-800">
+          <span>{notice}</span>
+          <button onClick={() => setNotice('')} className="p-1 hover:bg-green-100 rounded"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {isAdmin && (
         <div className="flex gap-2 mb-6 border-b border-gray-200">
           {tabs.map(t => (
             <button
@@ -292,13 +364,30 @@ const ExpensesPage = ({ isAdmin }) => {
         </div>
       )}
 
-      {tab === 'add' && (
-        <div className="bg-white rounded-xl shadow-md p-6 max-w-4xl">
-          <ExpenseForm onSaved={bump} />
-        </div>
-      )}
       {isAdmin && tab === 'all' && <AllExpensesTab refreshKey={refreshKey} onChanged={bump} />}
       {isAdmin && tab === 'log' && <LogTab refreshKey={refreshKey} />}
+      {!isAdmin && <MyRecentTab refreshKey={refreshKey} />}
+
+      {showAdd && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-orange-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
+              <h2 className="text-xl font-bold">Add Expense</h2>
+              <button onClick={() => setShowAdd(false)} className="hover:bg-orange-700 p-2 rounded"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6">
+              <ExpenseForm
+                onCancel={() => setShowAdd(false)}
+                onSaved={() => {
+                  setShowAdd(false);
+                  setNotice('Expense added successfully.');
+                  bump();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
