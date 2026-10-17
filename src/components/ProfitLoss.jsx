@@ -866,7 +866,7 @@ const ProfitLoss = () => {
       </div>
 
       {/* Daily Expenses */}
-      <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
+      <div className="bg-white text-gray-900 rounded-xl shadow-md overflow-hidden mb-6">
         <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">Daily Expenses</h2>
           <span className="text-orange-100 text-sm">{dailyExpenses.length} day{dailyExpenses.length === 1 ? '' : 's'} · {plData.expenseEntries.length} entr{plData.expenseEntries.length === 1 ? 'y' : 'ies'}</span>
