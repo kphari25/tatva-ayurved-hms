@@ -32,6 +32,7 @@ import PackageManagement from './components/PackageManagement';
 import TreatmentCharges from './components/TreatmentCharges';
 import Dashboard from './components/Dashboard';
 import ProfitLoss from './components/ProfitLoss';
+import ExpensesPage from './components/ExpensesPage';
 import Financials from './components/Financials';
 import AIAssist from './components/AIAssist';
 import PurchaseManagement from './components/PurchaseManagement';
@@ -353,6 +354,7 @@ function App() {
     { id: 'ai-assist', label: 'AI Assist', icon: TrendingUp, moduleId: 'ai-assist' },
     { id: 'prescriptions', label: 'Prescriptions', icon: FileText, moduleId: 'prescriptions' },
     { id: 'invoices', label: 'Invoices', icon: Receipt, moduleId: 'invoices' },
+    { id: 'expenses', label: 'Expenses', icon: Wallet, moduleId: 'expenses' },
     { id: 'discharge', label: 'Discharge', icon: FileText, moduleId: 'discharge' },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp, moduleId: 'analytics' },
     { id: 'reports', label: 'Reports', icon: FileBarChart, moduleId: 'reports' },
@@ -580,6 +582,7 @@ function App() {
         {currentView === 'room-management' && <RoomManagement />}
 
         {currentView === 'profit-loss' && <ProfitLoss />}
+        {currentView === 'expenses' && <ExpensesPage isAdmin={isAdminRole} />}
 
         {currentView === 'financials' && <Financials />}
 

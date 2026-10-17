@@ -79,6 +79,7 @@ const MODULES = {
   purchase: { label: 'Purchase Management', icon: ShoppingCart, description: 'Purchase requests, orders, and receipts' },
   prescriptions: { label: 'Prescriptions', icon: Stethoscope, description: 'Write and manage prescriptions' },
   invoices: { label: 'Invoices', icon: Receipt, description: 'Generate and manage invoices' },
+  expenses: { label: 'Expenses', icon: Wallet, description: 'Add expenses (admins can also edit them and view the expense log)' },
   discharge: { label: 'Discharge', icon: UserCheck, description: 'Patient discharge management' },
   analytics: { label: 'Analytics', icon: TrendingUp, description: 'Reports and analytics dashboards' },
   reports: { label: 'Reports', icon: FileText, description: 'Monthly patient intake and inventory movement reports' },
@@ -98,10 +99,10 @@ const DEFAULT_PERMISSIONS = {
   system_admin: Object.keys(MODULES), // All modules
   doctor: ['dashboard', 'patients', 'scheduling', 'room-management', 'prescriptions', 'packages', 'treatment-charges', 'discharge', 'ai-assist'],
   therapist: ['dashboard', 'patients', 'scheduling', 'room-management', 'treatment-charges'],
-  front_office: ['dashboard', 'patients', 'scheduling', 'room-management', 'leads', 'invoices', 'packages', 'treatment-charges', 'discharge', 'mess-management', 'reports'],
-  store_admin: ['dashboard', 'inventory', 'purchase', 'reports'],
+  front_office: ['dashboard', 'patients', 'scheduling', 'room-management', 'leads', 'invoices', 'expenses', 'packages', 'treatment-charges', 'discharge', 'mess-management', 'reports'],
+  store_admin: ['dashboard', 'inventory', 'purchase', 'expenses', 'reports'],
   kitchen_staff: ['dashboard', 'mess-management', 'mess-expense', 'diet-module'],
-  accountant: ['dashboard', 'invoices', 'profit-loss', 'financials', 'analytics', 'purchase', 'treatment-charges', 'reports']
+  accountant: ['dashboard', 'invoices', 'expenses', 'profit-loss', 'financials', 'analytics', 'purchase', 'treatment-charges', 'reports']
 };
 
 const UserManagement = () => {

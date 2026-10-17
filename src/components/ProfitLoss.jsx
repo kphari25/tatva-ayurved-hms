@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { IndianRupee, TrendingUp, TrendingDown, Calendar, Download, RefreshCw, Plus, Filter, Camera, Upload, CheckCircle } from 'lucide-react';
-import { collection, getDocs, query, where, orderBy, addDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { IndianRupee, TrendingUp, TrendingDown, Calendar, Download, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { categoryLabel, paymentModeLabel } from '../lib/expenses';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx';
 import { getPLStartDate, setPLStartDate } from '../lib/appSettings';
@@ -15,8 +16,8 @@ const ProfitLoss = () => {
   const [dateFilter, setDateFilter] = useState('month'); // today, week, month, year, custom
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
-  
+  const [expandedDay, setExpandedDay] = useState(null);
+
   const [plData, setPLData] = useState({
     // Revenue
     patientRevenue: 0,
@@ -59,6 +60,8 @@ const ProfitLoss = () => {
     expenseLines: [],
     messExpenseLines: [],
     inventoryLines: [],
+    // One entry per expense counted in Operating Expenses (for the daily view)
+    expenseEntries: [],
   });
 
   useEffect(() => {
@@ -235,11 +238,22 @@ const ProfitLoss = () => {
       // Mess Expenses
       let messExpense = 0;
       const messExpenseLines = [];
+      const expenseEntries = [];
+      const dayKey = (v) => (typeof v === 'string' ? v.split('T')[0] : '');
       messExpenses.docs.forEach(doc => {
         const expense = doc.data();
         if (!inRange(expense.date)) return;
         const amount = parseFloat(expense.total_amount) || 0;
         messExpense += amount;
+        expenseEntries.push({
+          date: dayKey(expense.date),
+          category: 'Mess',
+          description: (expense.items || []).map(it => `${it.name} (${it.quantity} ${it.unit})`).join(', '),
+          paymentMode: '',
+          amount,
+          addedBy: expense.created_by_name || expense.created_by || '',
+          source: 'Mess Expense tracker',
+        });
         messExpenseLines.push({
           Date: expense.date,
           Items: (expense.items || []).map(it => `${it.name} (${it.quantity} ${it.unit})`).join(', '),
@@ -272,6 +286,19 @@ const ProfitLoss = () => {
           Description: expense.description || '',
           'Payment Mode': expense.payment_mode || '',
         });
+
+        // Medicine purchases are counted under COGS, not Operating Expenses.
+        if (expense.category?.toLowerCase() !== 'medicine_purchase') {
+          expenseEntries.push({
+            date: dayKey(expense.date),
+            category: categoryLabel(expense.category),
+            description: expense.description || '',
+            paymentMode: paymentModeLabel(expense.payment_mode),
+            amount,
+            addedBy: expense.created_by_name || expense.created_by || '',
+            source: 'Expenses',
+          });
+        }
 
         switch (expense.category?.toLowerCase()) {
           case 'salary':
@@ -386,6 +413,7 @@ const ProfitLoss = () => {
         expenseLines,
         messExpenseLines,
         inventoryLines,
+        expenseEntries,
       });
 
       console.log('✅ P&L data loaded');
@@ -437,11 +465,38 @@ const ProfitLoss = () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), 'Summary');
     XLSX.utils.book_append_sheet(wb, sheet(plData.invoiceLines, 'No patient invoices in this period'), 'Patient Invoices');
     XLSX.utils.book_append_sheet(wb, sheet(plData.medicineSaleLines, 'No medicine sales in this period'), 'Medicine Sales');
+    XLSX.utils.book_append_sheet(wb, sheet(
+      [...plData.expenseEntries]
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(e => ({
+          Date: e.date,
+          Category: e.category,
+          Description: e.description,
+          'Payment Mode': e.paymentMode,
+          Amount: e.amount,
+          'Added By': e.addedBy,
+          Source: e.source,
+        })),
+      'No expenses in this period'
+    ), 'Daily Expenses');
     XLSX.utils.book_append_sheet(wb, sheet(plData.expenseLines, 'No expenses in this period'), 'Expenses');
     XLSX.utils.book_append_sheet(wb, sheet(plData.messExpenseLines, 'No mess expenses in this period'), 'Mess Expenses');
     XLSX.utils.book_append_sheet(wb, sheet(plData.inventoryLines, 'No medicine purchases in this period'), 'Medicine Purchases (COGS)');
     XLSX.writeFile(wb, `PL_Statement_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
+
+  // Operating expenses grouped by day, newest first (medicine purchases are
+  // in COGS, so they're not here — the days add up to Total Expenses).
+  const dailyExpenses = useMemo(() => {
+    const byDay = new Map();
+    plData.expenseEntries.forEach(e => {
+      if (!byDay.has(e.date)) byDay.set(e.date, { date: e.date, total: 0, entries: [] });
+      const day = byDay.get(e.date);
+      day.total += e.amount;
+      day.entries.push(e);
+    });
+    return [...byDay.values()].sort((a, b) => b.date.localeCompare(a.date));
+  }, [plData.expenseEntries]);
 
   const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }) => (
     <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: color }}>
@@ -477,13 +532,6 @@ const ProfitLoss = () => {
             </div>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={() => setShowAddExpenseModal(true)}
-              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              Add Expense
-            </button>
             <button
               onClick={loadPLData}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -817,356 +865,85 @@ const ProfitLoss = () => {
         </div>
       </div>
 
-      {/* Add Expense Modal */}
-      {showAddExpenseModal && (
-        <AddExpenseModal
-          onClose={() => setShowAddExpenseModal(false)}
-          onSave={() => {
-            setShowAddExpenseModal(false);
-            loadPLData();
-          }}
-        />
-      )}
-    </div>
-  );
-};
-
-// Add Expense Modal Component
-const AddExpenseModal = ({ onClose, onSave }) => {
-  const [saving, setSaving] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [scannedImage, setScannedImage] = useState(null);
-  const [extractedData, setExtractedData] = useState(null);
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    category: 'other',
-    amount: 0,
-    description: '',
-    payment_mode: 'cash',
-    invoice_image: null
-  });
-
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // Check file type
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
-    if (!validTypes.includes(file.type)) {
-      alert('Please upload an image (JPG, PNG, WEBP) or PDF file');
-      return;
-    }
-
-    // Check file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      alert('File size must be less than 10MB');
-      return;
-    }
-
-    try {
-      setScanning(true);
-
-      // Convert to base64
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64Image = e.target.result;
-        setScannedImage(base64Image);
-
-        // Extract data using OCR (simulated for now - ready for Tesseract.js or Claude Vision API)
-        await extractInvoiceData(base64Image, file.type);
-      };
-      reader.readAsDataURL(file);
-
-    } catch (error) {
-      console.error('Error processing file:', error);
-      alert('Failed to process file: ' + error.message);
-      setScanning(false);
-    }
-  };
-
-  const extractInvoiceData = async (imageData, fileType) => {
-    try {
-      // Simulate OCR extraction (In production, integrate with Tesseract.js or Claude Vision API)
-      // For now, showing a realistic simulation
-      
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Simulated extracted data (In production, this comes from OCR)
-      const mockExtractedData = {
-        vendor: 'ABC Supplies Pvt Ltd',
-        invoiceNumber: 'INV-2026-001234',
-        date: '2026-04-28',
-        amount: 15750.00,
-        items: [
-          { description: 'Office Supplies', amount: 5250 },
-          { description: 'Stationery Items', amount: 3500 },
-          { description: 'Printer Cartridges', amount: 7000 }
-        ],
-        gst: 2835.00,
-        total: 18585.00,
-        confidence: 0.92
-      };
-
-      setExtractedData(mockExtractedData);
-
-      // Auto-fill form with extracted data
-      setFormData(prev => ({
-        ...prev,
-        date: mockExtractedData.date,
-        amount: mockExtractedData.total,
-        description: `Invoice ${mockExtractedData.invoiceNumber} - ${mockExtractedData.vendor}\n${mockExtractedData.items.map(item => `• ${item.description}: ₹${item.amount}`).join('\n')}`,
-        invoice_image: imageData
-      }));
-
-      alert('✅ Invoice scanned successfully! Data extracted and filled automatically.');
-
-    } catch (error) {
-      console.error('Error extracting data:', error);
-      alert('Could not extract data automatically. Please fill manually.');
-    } finally {
-      setScanning(false);
-    }
-  };
-
-  const handleCameraCapture = () => {
-    // Trigger camera input
-    document.getElementById('camera-input').click();
-  };
-
-  const handleSave = async () => {
-    if (!formData.amount || formData.amount <= 0) {
-      alert('Please enter a valid amount');
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      const expenseData = {
-        ...formData,
-        created_at: new Date().toISOString(),
-        created_by: JSON.parse(localStorage.getItem('currentUser') || '{}').email
-      };
-
-      // If there's extracted data, save it too
-      if (extractedData) {
-        expenseData.extracted_data = extractedData;
-        expenseData.ocr_confidence = extractedData.confidence;
-      }
-
-      await addDoc(collection(db, 'expenses'), expenseData);
-
-      alert('✅ Expense added successfully!');
-      if (onSave) onSave();
-
-    } catch (error) {
-      console.error('Error adding expense:', error);
-      alert('Failed to add expense: ' + error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-orange-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
-          <h2 className="text-xl font-bold">Add Expense</h2>
-          <button onClick={onClose} className="hover:bg-orange-700 p-2 rounded">
-            <Plus className="w-6 h-6 rotate-45" />
-          </button>
+      {/* Daily Expenses */}
+      <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white">Daily Expenses</h2>
+          <span className="text-orange-100 text-sm">{dailyExpenses.length} day{dailyExpenses.length === 1 ? '' : 's'} · {plData.expenseEntries.length} entr{plData.expenseEntries.length === 1 ? 'y' : 'ies'}</span>
         </div>
-
         <div className="p-6">
-          {/* Invoice Scanning Section */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-2 mb-3">
-              <Camera className="w-5 h-5 text-blue-600" />
-              <h3 className="font-bold text-gray-800">Scan Invoice / Receipt</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Upload Document</label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="file-upload"
-                />
-                <button
-                  onClick={() => document.getElementById('file-upload').click()}
-                  disabled={scanning}
-                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <Upload className="w-5 h-5" />
-                  {scanning ? 'Processing...' : 'Upload Invoice/Receipt'}
-                </button>
-                <p className="text-xs text-gray-500 mt-1">JPG, PNG, PDF (max 10MB)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Take Photo</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="camera-input"
-                />
-                <button
-                  onClick={handleCameraCapture}
-                  disabled={scanning}
-                  className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <Camera className="w-5 h-5" />
-                  Use Camera
-                </button>
-                <p className="text-xs text-gray-500 mt-1">Scan with phone camera</p>
-              </div>
-            </div>
-
-            {scanning && (
-              <div className="mt-3 p-3 bg-blue-100 rounded-lg flex items-center gap-3">
-                <div className="w-5 h-5 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-sm text-blue-800 font-medium">Scanning invoice and extracting data...</span>
-              </div>
-            )}
-
-            {extractedData && (
-              <div className="mt-3 p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <span className="font-semibold text-green-800">Data Extracted Successfully!</span>
-                  <span className="text-xs text-green-600">({(extractedData.confidence * 100).toFixed(0)}% confidence)</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-600">Vendor:</span>
-                    <span className="ml-2 font-semibold">{extractedData.vendor}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Invoice #:</span>
-                    <span className="ml-2 font-semibold">{extractedData.invoiceNumber}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Date:</span>
-                    <span className="ml-2 font-semibold">{new Date(extractedData.date).toLocaleDateString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Total:</span>
-                    <span className="ml-2 font-semibold text-green-700">₹{extractedData.total.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {scannedImage && (
-              <div className="mt-3">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Scanned Image</label>
-                <img 
-                  src={scannedImage} 
-                  alt="Scanned invoice" 
-                  className="max-h-48 rounded-lg border border-gray-300 object-contain"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Manual Entry Section */}
-          <div className="space-y-4">
-            <h3 className="font-bold text-gray-800 border-b pb-2">Expense Details</h3>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-            <input
-              type="date"
-              value={formData.date}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-            <select
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-            >
-              <option value="other">Other</option>
-              <option value="electricity">Electricity</option>
-              <option value="mess">Mess</option>
-              <option value="medicine_purchase">Medicine_purchase</option>
-              <option value="utilities">Utilities</option>
-              <option value="maintenance">Maintenance</option>
-              <option value="supplies">Supplies</option>
-              <option value="equipment">Equipment</option>
-              <option value="grocery">Grocery</option>
-              <option value="rent">Rent</option>
-              <option value="misc">Misc</option>
-              <option value="salary">Salary</option>
-              <option value="marketing">Marketing</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Amount (₹)</label>
-            <input
-              type="number"
-              value={formData.amount}
-              onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              placeholder="0.00"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows="2"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              placeholder="Optional notes..."
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Payment Mode</label>
-            <select
-              value={formData.payment_mode}
-              onChange={(e) => setFormData({ ...formData, payment_mode: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-            >
-              <option value="cash">Cash</option>
-              <option value="card">Card</option>
-              <option value="upi">UPI</option>
-              <option value="bank">Bank Transfer</option>
-              <option value="cheque">Cheque</option>
-            </select>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              onClick={onClose}
-              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save Expense'}
-            </button>
-          </div>
-          </div>
+          {dailyExpenses.length === 0 ? (
+            <p className="text-center text-gray-500 py-6">No operating expenses in this period</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-600 border-b">
+                  <th className="py-2 pr-3">Date</th>
+                  <th className="py-2 pr-3">Entries</th>
+                  <th className="py-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyExpenses.map(day => {
+                  const open = expandedDay === day.date;
+                  return (
+                    <React.Fragment key={day.date}>
+                      <tr
+                        onClick={() => setExpandedDay(open ? null : day.date)}
+                        className="border-b cursor-pointer hover:bg-gray-50"
+                      >
+                        <td className="py-2 pr-3 font-medium">
+                          <span className="inline-flex items-center gap-1">
+                            {open ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                            {new Date(day.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-gray-600">{day.entries.length}</td>
+                        <td className="py-2 text-right font-semibold">₹{day.total.toLocaleString('en-IN')}</td>
+                      </tr>
+                      {open && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={3} className="px-4 py-3">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-gray-500">
+                                  <th className="py-1 pr-3">Category</th>
+                                  <th className="py-1 pr-3">Description</th>
+                                  <th className="py-1 pr-3">Mode</th>
+                                  <th className="py-1 pr-3">Added by</th>
+                                  <th className="py-1 text-right">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {day.entries.map((e, i) => (
+                                  <tr key={i} className="border-t border-gray-200 align-top">
+                                    <td className="py-1 pr-3 whitespace-nowrap">{e.category}</td>
+                                    <td className="py-1 pr-3 whitespace-pre-line break-words">{e.description || '—'}</td>
+                                    <td className="py-1 pr-3">{e.paymentMode || '—'}</td>
+                                    <td className="py-1 pr-3">{e.addedBy || '—'}</td>
+                                    <td className="py-1 text-right font-semibold whitespace-nowrap">₹{e.amount.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2">
+                  <td className="py-2 pr-3 font-bold" colSpan={2}>Total Operating Expenses</td>
+                  <td className="py-2 text-right font-bold text-red-600">₹{plData.totalExpenses.toLocaleString('en-IN')}</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
       </div>
+
     </div>
   );
 };
