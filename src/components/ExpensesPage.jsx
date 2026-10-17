@@ -66,11 +66,11 @@ const AllExpensesTab = ({ refreshKey, onChanged, focusDate }) => {
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" />
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" />
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white" />
         </div>
         <button onClick={load} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -189,7 +189,7 @@ const LogTab = ({ refreshKey }) => {
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Action</label>
-          <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg">
+          <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white">
             <option value="all">All</option>
             <option value="created">Added</option>
             <option value="edited">Edited</option>
@@ -197,7 +197,7 @@ const LogTab = ({ refreshKey }) => {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">User</label>
-          <input type="text" value={userFilter} onChange={(e) => setUserFilter(e.target.value)} placeholder="Name or email" className="px-3 py-2 border border-gray-300 rounded-lg" />
+          <input type="text" value={userFilter} onChange={(e) => setUserFilter(e.target.value)} placeholder="Name or email" className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white" />
         </div>
         <button onClick={load} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh

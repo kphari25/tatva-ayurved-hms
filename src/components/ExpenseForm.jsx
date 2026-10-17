@@ -156,7 +156,7 @@ const ExpenseForm = ({ expense, onSaved, onCancel }) => {
     }
   };
 
-  const inputCls = 'w-full px-4 py-2 border border-gray-300 rounded-lg';
+  const inputCls = 'w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white';
 
   return (
     <div>
