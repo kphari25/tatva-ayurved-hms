@@ -362,6 +362,47 @@ const InventoryManagement = () => {
     }
   };
 
+  // Blank import template — column names match what handleFileUpload reads.
+  const handleDownloadTemplate = () => {
+    const headers = [
+      'Item Code', 'Item Name', 'Company Name', 'Batch Number', 'Stock Quantity',
+      'Purchase Rate', 'MRP', 'Discount %', 'GST Category',
+      'Purchase Date', 'Expiry Date', 'Invoice Number', 'Vendor Name',
+    ];
+    const sampleRows = [
+      ['MED001', 'Ashwagandha Churna 100g', 'Sample Pharma Ltd', 'B2026-01', 50, 80, 120, 0, 'Standard', '2026-07-01', '2028-06-30', 'INV-1001', 'Sample Vendor'],
+      ['MED002', 'Dhanwantharam Kuzhambu 200ml', 'Sample Pharma Ltd', 'B2026-02', 20, 150, 220, 5, 'Traditional', '2026-07-01', '2028-12-31', 'INV-1001', 'Sample Vendor'],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+    ws['!cols'] = headers.map(h => ({ wch: Math.max(14, h.length + 4) }));
+
+    const instructions = [
+      ['Column', 'Required?', 'Notes'],
+      ['Item Code', 'Optional', 'Your code for the item. If blank, Batch Number is used.'],
+      ['Item Name', 'REQUIRED', 'Rows with no Item Name (or named "Total"/"Grand Total") are skipped.'],
+      ['Company Name', 'Optional', 'Manufacturer.'],
+      ['Batch Number', 'Optional', 'Batch / lot number.'],
+      ['Stock Quantity', 'REQUIRED', 'Whole number of units in stock.'],
+      ['Purchase Rate', 'REQUIRED', 'Cost price per unit (Rs).'],
+      ['MRP', 'Recommended', 'Selling price per unit (Rs). Do not put line totals here.'],
+      ['Discount %', 'Optional', 'Number only, e.g. 5 for 5%.'],
+      ['GST Category', 'Optional', 'Standard (12%), Traditional (5%) or Cosmetics (18%). Overrides SGST/CGST columns.'],
+      ['Purchase Date', 'Optional', 'Format YYYY-MM-DD, e.g. 2026-07-01.'],
+      ['Expiry Date', 'Optional', 'Format YYYY-MM-DD, e.g. 2028-06-30.'],
+      ['Invoice Number', 'Optional', 'Vendor invoice number; shows in Purchase History.'],
+      ['Vendor Name', 'Optional', 'Supplier name.'],
+      [],
+      ['IMPORTANT', '', 'Only the FIRST sheet ("Inventory") is imported. Delete the 2 sample rows before uploading. Each import ADDS new items - importing the same file twice creates duplicates.'],
+    ];
+    const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
+    wsInstructions['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 100 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+    XLSX.utils.book_append_sheet(wb, wsInstructions, 'Instructions');
+    XLSX.writeFile(wb, 'Inventory_Import_Template.xlsx');
+  };
+
   // Export to Excel — a deliberate, occasional action, so a full-collection
   // read here (unlike on every page load) is a reasonable cost for completeness.
   const handleExport = async () => {
@@ -684,6 +725,15 @@ const InventoryManagement = () => {
                 disabled={uploading}
               />
             </label>
+
+            <button
+              onClick={handleDownloadTemplate}
+              className="px-4 py-2 bg-white text-teal-700 border border-teal-600 rounded-lg hover:bg-teal-50 flex items-center gap-2 font-medium"
+              title="Download a blank Excel template for Import Excel"
+            >
+              <Download className="w-5 h-5" />
+              Template
+            </button>
 
             <button
               onClick={handleExport}
