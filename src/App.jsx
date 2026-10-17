@@ -44,6 +44,7 @@ import UserActivityReport from './components/UserActivityReport';
 import Reports from './components/Reports';
 import DatabaseBackupRestore from './components/DatabaseBackupRestore';
 import { subscribeAdminSectionHidden, setAdminSectionHidden } from './lib/appSettings';
+import { useIdleLogout, markActivity, clearActivity, getLastActivity, isSessionIdleExpired, IDLE_TIMEOUT_MS } from './lib/useIdleLogout';
 
 // Gates only *showing* the Administration menu again — hiding it needs no
 // gate, since that only narrows what a shared login can reach. This is a
@@ -72,6 +73,8 @@ function App() {
   // rules now require request.auth, so a saved localStorage session is only
   // trusted once we know there's a real Firebase Auth session behind it too.
   const [checkingSession, setCheckingSession] = useState(true);
+  // Shown on the Login screen after an automatic (inactivity) logout.
+  const [logoutNotice, setLogoutNotice] = useState('');
   const sessionIdRef = useRef(localStorage.getItem('currentSessionId') || null);
 
   // Restores a saved session only once Firebase Auth confirms it has a real
@@ -91,8 +94,19 @@ function App() {
   // real Firebase user is confirmed present, and torn down on sign-out.
   useEffect(() => {
     let unsubscribeSettings = null;
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      const savedUser = localStorage.getItem('currentUser');
+    const unsubscribeAuth = onAuthStateChanged(auth, (restoredFirebaseUser) => {
+      let firebaseUser = restoredFirebaseUser;
+      const savedUser = localStorage.getItem('currentUser');      if (savedUser && firebaseUser && isSessionIdleExpired()) {
+        // The saved login sat idle past the limit (browser closed or the
+        // computer asleep) — treat it as logged out and require a fresh login.
+        endSession(getLastActivity());
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('sessionToken');
+        clearActivity();
+        signOut(auth).catch(err => console.error('Firebase sign-out failed:', err));
+        setLogoutNotice('You were signed out after being inactive. Please log in again.');
+        firebaseUser = null;
+      }
       if (savedUser) {
         if (firebaseUser) {
           try {
@@ -231,10 +245,12 @@ function App() {
     }
   };
 
-  const endSession = async () => {
+  // loggedOutAtMs: for an automatic logout, the time of the user's last
+  // activity — so "time in system" doesn't include the idle wait.
+  const endSession = async (loggedOutAtMs) => {
     if (!sessionIdRef.current) return;
     try {
-      const now = new Date().toISOString();
+      const now = new Date(loggedOutAtMs || Date.now()).toISOString();
       await updateDoc(doc(db, 'user_sessions', sessionIdRef.current), {
         logged_out_at: now,
         last_seen: now,
@@ -248,23 +264,37 @@ function App() {
   };
 
   const handleLogin = (user) => {
+    setLogoutNotice('');
+    markActivity();
     setCurrentUser(user);
     setCurrentView('dashboard');
     startSession(user);
   };
 
+  const performLogout = (loggedOutAtMs) => {
+    endSession(loggedOutAtMs);
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('sessionToken');
+    clearActivity();
+    // Best-effort — ends the app's Firebase Auth session too, if one was
+    // ever established (see Login.jsx); harmless no-op otherwise.
+    signOut(auth).catch(err => console.error('Firebase sign-out failed:', err));
+    setCurrentUser(null);
+    setCurrentView('dashboard');
+  };
+
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
-      endSession();
-      localStorage.removeItem('currentUser');
-      localStorage.removeItem('sessionToken');
-      // Best-effort — ends the app's Firebase Auth session too, if one was
-      // ever established (see Login.jsx); harmless no-op otherwise.
-      signOut(auth).catch(err => console.error('Firebase sign-out failed:', err));
-      setCurrentUser(null);
-      setCurrentView('dashboard');
+      performLogout();
     }
   };
+
+  // Automatic logout after IDLE_TIMEOUT_MS with no activity (any open tab).
+  const handleIdleTimeout = (lastActivityMs) => {
+    setLogoutNotice(`You were signed out after ${IDLE_TIMEOUT_MS / 60000} minutes of inactivity. Please log in again.`);
+    performLogout(lastActivityMs);
+  };
+  const { secondsLeft: idleSecondsLeft, stayActive } = useIdleLogout(Boolean(currentUser), handleIdleTimeout);
 
   // Hiding needs no gate — it only narrows access. Showing the section
   // again is what needs the passcode, so a passcode prompt opens instead
@@ -325,7 +355,7 @@ function App() {
 
   // If not logged in, show login
   if (!currentUser) {
-    return <Login onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} notice={logoutNotice} />;
   }
 
   // An admin-chosen password (new account or reset — see
@@ -382,6 +412,24 @@ function App() {
 
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Inactivity warning — final minute before automatic logout */}
+      {idleSecondsLeft !== null && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white text-gray-900 rounded-xl shadow-2xl max-w-md w-full p-6 text-center">
+            <h2 className="text-xl font-bold mb-2">Still there?</h2>
+            <p className="text-gray-600 mb-4">
+              You'll be signed out in <strong className="text-red-600">{idleSecondsLeft}</strong> second{idleSecondsLeft === 1 ? '' : 's'} because there has been no activity. Any unsaved changes will be lost.
+            </p>
+            <button
+              onClick={stayActive}
+              className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium"
+            >
+              Stay signed in
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div

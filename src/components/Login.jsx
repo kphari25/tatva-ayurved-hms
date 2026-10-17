@@ -13,7 +13,7 @@ const BUILT_IN_FALLBACK = {
   'admin123': { password: 'admin123', name: 'System Administrator', role: 'system_admin', permissions: ['all'] },
 };
 
-const Login = ({ onLogin }) => {
+const Login = ({ onLogin, notice }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -102,6 +102,13 @@ const Login = ({ onLogin }) => {
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome</h2>
             <p className="text-gray-600">Sign in to manage your Ayurvedic hospital efficiently</p>
           </div>
+
+          {/* Notice (e.g. signed out for inactivity) */}
+          {notice && !error && (
+            <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+              {notice}
+            </div>
+          )}
 
           {/* Error Message */}
           {error && (
