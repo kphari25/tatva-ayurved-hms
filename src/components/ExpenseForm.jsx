@@ -4,10 +4,10 @@ import { collection, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
   EXPENSE_CATEGORIES, PAYMENT_MODES, getCurrentUser,
-  diffExpense, expenseSnapshot, scanExpenseDocument,
+  diffExpense, expenseSnapshot, scanExpenseDocument, localDateString,
 } from '../lib/expenses';
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => localDateString();
 const emptyForm = () => ({
   date: today(),
   category: 'other',

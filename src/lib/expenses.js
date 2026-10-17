@@ -26,6 +26,11 @@ export const PAYMENT_MODES = [
   { value: 'cheque', label: 'Cheque' },
 ];
 
+// Today's date in the user's own time zone as YYYY-MM-DD. toISOString() is UTC,
+// which for India is still "yesterday" between midnight and 5:30 AM.
+export const localDateString = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 export const categoryLabel = (value) =>
   EXPENSE_CATEGORIES.find(c => c.value === String(value || '').toLowerCase())?.label
   || (value ? String(value).charAt(0).toUpperCase() + String(value).slice(1) : '—');

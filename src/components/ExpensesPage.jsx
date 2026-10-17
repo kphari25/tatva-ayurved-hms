@@ -3,13 +3,13 @@ import { Plus, List, ShieldCheck, Pencil, Lock, X, RefreshCw } from 'lucide-reac
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import ExpenseForm from './ExpenseForm';
-import { categoryLabel, paymentModeLabel, isSystemExpense, getCurrentUser } from '../lib/expenses';
+import { categoryLabel, paymentModeLabel, isSystemExpense, getCurrentUser, localDateString } from '../lib/expenses';
 
 const firstOfMonth = () => {
   const n = new Date();
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-01`;
 };
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => localDateString();
 
 const fmtMoney = (n) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
 const fmtDateTime = (iso) => {
@@ -23,9 +23,17 @@ const fmtDate = (s) => {
 };
 
 // ── All Expenses (admin) ────────────────────────────────────────────────────
-const AllExpensesTab = ({ refreshKey, onChanged }) => {
+const AllExpensesTab = ({ refreshKey, onChanged, focusDate }) => {
   const [from, setFrom] = useState(firstOfMonth());
   const [to, setTo] = useState(todayStr());
+
+  // An expense just added with a date outside the visible range would look like
+  // it vanished — widen the range to include it.
+  useEffect(() => {
+    if (!focusDate) return;
+    setFrom(prev => (focusDate < prev ? focusDate : prev));
+    setTo(prev => (focusDate > prev ? focusDate : prev));
+  }, [focusDate]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -316,6 +324,7 @@ const ExpensesPage = ({ isAdmin }) => {
   const [tab, setTab] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
   const [notice, setNotice] = useState('');
+  const [lastSavedDate, setLastSavedDate] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const bump = () => setRefreshKey(k => k + 1);
 
@@ -364,7 +373,7 @@ const ExpensesPage = ({ isAdmin }) => {
         </div>
       )}
 
-      {isAdmin && tab === 'all' && <AllExpensesTab refreshKey={refreshKey} onChanged={bump} />}
+      {isAdmin && tab === 'all' && <AllExpensesTab refreshKey={refreshKey} onChanged={bump} focusDate={lastSavedDate} />}
       {isAdmin && tab === 'log' && <LogTab refreshKey={refreshKey} />}
       {!isAdmin && <MyRecentTab refreshKey={refreshKey} />}
 
@@ -378,9 +387,10 @@ const ExpensesPage = ({ isAdmin }) => {
             <div className="p-6">
               <ExpenseForm
                 onCancel={() => setShowAdd(false)}
-                onSaved={() => {
+                onSaved={(saved) => {
                   setShowAdd(false);
                   setNotice('Expense added successfully.');
+                  setLastSavedDate(saved?.date ? String(saved.date).split('T')[0] : '');
                   bump();
                 }}
               />
