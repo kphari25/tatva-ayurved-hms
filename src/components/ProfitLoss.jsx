@@ -4,9 +4,14 @@ import { collection, getDocs, query, where, orderBy, addDoc } from 'firebase/fir
 import { db } from '../lib/firebase';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx';
+import { getPLStartDate, setPLStartDate } from '../lib/appSettings';
 
 const ProfitLoss = () => {
   const [loading, setLoading] = useState(true);
+  // P&L "books start" date (YYYY-MM-DD, '' = no cut-off); undefined until loaded.
+  const [plStartDate, setPlStartDateState] = useState(undefined);
+  const [startDateDraft, setStartDateDraft] = useState('');
+  const [savingStartDate, setSavingStartDate] = useState(false);
   const [dateFilter, setDateFilter] = useState('month'); // today, week, month, year, custom
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
@@ -35,6 +40,7 @@ const ProfitLoss = () => {
     utilitiesExpense: 0,
     suppliesExpense: 0,
     equipmentExpense: 0,
+    groceryExpense: 0,
     miscExpense: 0,
     otherExpense: 0,
     totalExpenses: 0,
@@ -56,8 +62,27 @@ const ProfitLoss = () => {
   });
 
   useEffect(() => {
+    getPLStartDate().then(d => { setPlStartDateState(d); setStartDateDraft(d); });
+  }, []);
+
+  useEffect(() => {
+    if (plStartDate === undefined) return; // wait for the start date to load
     loadPLData();
-  }, [dateFilter, customStartDate, customEndDate]);
+  }, [dateFilter, customStartDate, customEndDate, plStartDate]);
+
+  const saveStartDate = async (value) => {
+    try {
+      setSavingStartDate(true);
+      await setPLStartDate(value);
+      setPlStartDateState(value);
+      setStartDateDraft(value);
+    } catch (error) {
+      console.error('Error saving P&L start date:', error);
+      alert('Could not save the start date: ' + error.message);
+    } finally {
+      setSavingStartDate(false);
+    }
+  };
 
   const getDateRange = () => {
     const now = new Date();
@@ -87,6 +112,13 @@ const ProfitLoss = () => {
       default:
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         endDate = now;
+    }
+
+    // Entries dated before the P&L start date are left out (not deleted). Compared
+    // as UTC midnight, the same way the stored YYYY-MM-DD dates are parsed.
+    if (plStartDate) {
+      const floor = new Date(plStartDate);
+      if (!isNaN(floor) && startDate < floor) startDate = floor;
     }
 
     return { startDate, endDate };
@@ -161,29 +193,43 @@ const ProfitLoss = () => {
         });
       });
 
-      // Medicine Purchase Cost (COGS) — current stock valuation. This app has no
-      // per-period stock-out log, so this reflects value on hand as of now, not
-      // purchases made within the selected date range.
+      // Medicine Purchase Cost (COGS) — medicines purchased within the selected
+      // period (and on/after the P&L start date). Every receipt path (Goods
+      // Receipt, PDF invoice import, Manual Entry / restock, Add Medicine)
+      // records a dated batch on the inventory item with its quantity and
+      // purchase price, so the cost is the sum of quantity × purchase price over
+      // the batches whose purchase date falls in range (GST-exclusive, as before).
+      // A batch with no date of its own takes its item's purchase / creation date;
+      // an item with no batches at all counts its stock on hand on that date.
       let medicinePurchaseCost = 0;
       const inventoryLines = [];
       inventory.docs.forEach(doc => {
         const item = doc.data();
-        // purchase_price is the canonical field (set via Add/Edit Medicine);
-        // purchase_rate is what bulk Excel imports write instead — most of
-        // the current inventory only has the latter, so without this
-        // fallback this sum was reading ~0 for nearly every item.
-        const purchasePrice = parseFloat(item.purchase_price ?? item.purchase_rate) || 0;
-        const quantity = parseFloat(item.stock_quantity) || 0;
-        const value = purchasePrice * quantity;
-        medicinePurchaseCost += value;
-        if (value > 0) {
+        const itemDate = item.purchase_date || item.created_at || item.last_purchase_date || '';
+        const itemPrice = parseFloat(item.purchase_price ?? item.purchase_rate) || 0;
+        const batches = Array.isArray(item.batches) ? item.batches : [];
+        const purchases = batches.length > 0
+          ? batches.map(b => ({
+              batch: b.batch_number || '',
+              date: b.purchase_date || itemDate,
+              qty: parseFloat(b.quantity) || 0,
+              price: parseFloat(b.purchase_price ?? itemPrice) || 0,
+            }))
+          : [{ batch: item.batch_number || '', date: itemDate, qty: parseFloat(item.stock_quantity) || 0, price: itemPrice }];
+        purchases.forEach(pu => {
+          if (!inRange(pu.date)) return;
+          const value = pu.qty * pu.price;
+          if (!(value > 0)) return;
+          medicinePurchaseCost += value;
           inventoryLines.push({
             Item: item.item_name || '',
-            'Stock Qty': quantity,
-            'Purchase Price': purchasePrice,
-            'Stock Value': value,
+            Batch: pu.batch,
+            'Purchase Date': typeof pu.date === 'string' ? pu.date.split('T')[0] : '',
+            Qty: pu.qty,
+            'Purchase Price': pu.price,
+            'Purchase Value': value,
           });
-        }
+        });
       });
 
       // Mess Expenses
@@ -210,6 +256,7 @@ const ProfitLoss = () => {
       let utilitiesExpense = 0;
       let suppliesExpense = 0;
       let equipmentExpense = 0;
+      let groceryExpense = 0;
       let miscExpense = 0;
       let otherExpense = 0;
       const expenseLines = [];
@@ -254,6 +301,10 @@ const ProfitLoss = () => {
           case 'equipment':
             equipmentExpense += amount;
             break;
+          case 'grocery':
+          case 'groceries':
+            groceryExpense += amount;
+            break;
           case 'misc':
           case 'miscellaneous':
             miscExpense += amount;
@@ -267,7 +318,7 @@ const ProfitLoss = () => {
             messExpense += amount;
             break;
           case 'medicine_purchase':
-            // Already reflected in COGS via inventory stock valuation above —
+            // Already reflected in COGS via the dated purchase batches above —
             // counting it again here would double-count the same purchase.
             break;
           default:
@@ -282,7 +333,7 @@ const ProfitLoss = () => {
 
       const totalExpenses = messExpense + salaryExpense + electricityExpense +
                            rentExpense + maintenanceExpense + marketingExpense +
-                           utilitiesExpense + suppliesExpense + equipmentExpense +
+                           utilitiesExpense + suppliesExpense + equipmentExpense + groceryExpense +
                            miscExpense + otherExpense;
 
       const netProfit = grossProfit - totalExpenses;
@@ -302,6 +353,7 @@ const ProfitLoss = () => {
         { name: 'Rent', value: rentExpense, color: '#6366f1' },
         { name: 'Maintenance', value: maintenanceExpense, color: '#f97316' },
         { name: 'Marketing', value: marketingExpense, color: '#06b6d4' },
+        { name: 'Grocery', value: groceryExpense, color: '#22c55e' },
         { name: 'Miscellaneous', value: miscExpense, color: '#84cc16' }
       ].filter(item => item.value > 0);
 
@@ -321,6 +373,7 @@ const ProfitLoss = () => {
         utilitiesExpense,
         suppliesExpense,
         equipmentExpense,
+        groceryExpense,
         miscExpense,
         otherExpense,
         totalExpenses,
@@ -353,7 +406,7 @@ const ProfitLoss = () => {
       { Category: '', Description: 'Total Revenue', Amount: plData.totalRevenue },
       { Category: '', Description: '', Amount: '' },
       { Category: 'COST OF GOODS SOLD', Description: '', Amount: '' },
-      { Category: '', Description: 'Medicine Purchase (current stock value)', Amount: plData.medicinePurchaseCost },
+      { Category: '', Description: 'Medicine Purchase (purchased in period)', Amount: plData.medicinePurchaseCost },
       { Category: '', Description: '', Amount: '' },
       { Category: 'GROSS PROFIT', Description: '', Amount: plData.grossProfit },
       { Category: '', Description: `Gross Margin: ${plData.grossProfitMargin.toFixed(1)}%`, Amount: '' },
@@ -367,6 +420,7 @@ const ProfitLoss = () => {
       { Category: '', Description: 'Maintenance', Amount: plData.maintenanceExpense },
       { Category: '', Description: 'Supplies', Amount: plData.suppliesExpense },
       { Category: '', Description: 'Equipment', Amount: plData.equipmentExpense },
+      { Category: '', Description: 'Grocery', Amount: plData.groceryExpense },
       { Category: '', Description: 'Marketing', Amount: plData.marketingExpense },
       { Category: '', Description: 'Miscellaneous', Amount: plData.miscExpense },
       { Category: '', Description: 'Other', Amount: plData.otherExpense },
@@ -385,7 +439,7 @@ const ProfitLoss = () => {
     XLSX.utils.book_append_sheet(wb, sheet(plData.medicineSaleLines, 'No medicine sales in this period'), 'Medicine Sales');
     XLSX.utils.book_append_sheet(wb, sheet(plData.expenseLines, 'No expenses in this period'), 'Expenses');
     XLSX.utils.book_append_sheet(wb, sheet(plData.messExpenseLines, 'No mess expenses in this period'), 'Mess Expenses');
-    XLSX.utils.book_append_sheet(wb, sheet(plData.inventoryLines, 'No inventory in stock'), 'Inventory (COGS)');
+    XLSX.utils.book_append_sheet(wb, sheet(plData.inventoryLines, 'No medicine purchases in this period'), 'Medicine Purchases (COGS)');
     XLSX.writeFile(wb, `PL_Statement_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
@@ -445,6 +499,40 @@ const ProfitLoss = () => {
               Export
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* P&L start date — books start from this date; earlier entries are not deleted */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex flex-wrap items-center gap-3 text-sm text-blue-900">
+        <Calendar className="w-5 h-5 text-blue-600 shrink-0" />
+        <span className="flex-1 min-w-[16rem]">
+          {plStartDate
+            ? <>Profit &amp; Loss counts invoices, medicine sales and expenses from <strong>{new Date(plStartDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong> onwards. Earlier entries are not deleted — they are only left out of this page.</>
+            : <>Profit &amp; Loss is counting <strong>all dates</strong> (no start date set).</>}
+        </span>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={startDateDraft}
+            onChange={(e) => setStartDateDraft(e.target.value)}
+            className="px-3 py-1.5 border border-blue-300 rounded-lg bg-white text-gray-800"
+          />
+          <button
+            onClick={() => saveStartDate(startDateDraft)}
+            disabled={savingStartDate || startDateDraft === plStartDate}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            Save start date
+          </button>
+          {plStartDate && (
+            <button
+              onClick={() => saveStartDate('')}
+              disabled={savingStartDate}
+              className="px-3 py-1.5 border border-blue-300 text-blue-800 rounded-lg hover:bg-blue-100 disabled:opacity-50"
+            >
+              Show all dates
+            </button>
+          )}
         </div>
       </div>
 
@@ -618,6 +706,12 @@ const ProfitLoss = () => {
                   <div className="flex justify-between">
                     <span className="text-gray-700">Equipment</span>
                     <span className="font-semibold text-gray-900">₹{plData.equipmentExpense.toLocaleString()}</span>
+                  </div>
+                )}
+                {plData.groceryExpense > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Grocery</span>
+                    <span className="font-semibold text-gray-900">₹{plData.groceryExpense.toLocaleString()}</span>
                   </div>
                 )}
                 {plData.marketingExpense > 0 && (
@@ -1010,6 +1104,7 @@ const AddExpenseModal = ({ onClose, onSave }) => {
               <option value="maintenance">Maintenance</option>
               <option value="supplies">Supplies</option>
               <option value="equipment">Equipment</option>
+              <option value="grocery">Grocery</option>
               <option value="rent">Rent</option>
               <option value="misc">Misc</option>
               <option value="salary">Salary</option>

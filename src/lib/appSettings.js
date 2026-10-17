@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 
 // A single shared toggle so the Administration section (P&L, Financials, HR
 // & Payroll, User Activity, User Management, Database Backup) can be hidden
@@ -26,3 +26,23 @@ export const subscribeAdminSectionHidden = (callback) => {
 
 export const setAdminSectionHidden = (hidden) =>
   setDoc(doc(db, 'settings', 'app_config'), { hide_admin_section: hidden }, { merge: true });
+
+// Profit & Loss "books start" date. Entries (invoices, medicine sales, expenses,
+// mess expenses) dated before it are left out of the P&L only — nothing is
+// deleted, they stay on their own pages. An empty string means "no cut-off".
+// Until a value has been saved, the P&L starts from the default below.
+export const DEFAULT_PL_START_DATE = '2026-10-16';
+
+export const getPLStartDate = async () => {
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'app_config'));
+    const v = snap.data()?.pl_start_date;
+    return typeof v === 'string' ? v : DEFAULT_PL_START_DATE;
+  } catch (error) {
+    console.error('Error loading P&L start date:', error);
+    return DEFAULT_PL_START_DATE;
+  }
+};
+
+export const setPLStartDate = (dateStr) =>
+  setDoc(doc(db, 'settings', 'app_config'), { pl_start_date: dateStr || '' }, { merge: true });
