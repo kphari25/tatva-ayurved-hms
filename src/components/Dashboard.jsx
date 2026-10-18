@@ -187,14 +187,14 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[calc(100vh-2rem)] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <h3 className="text-lg font-bold text-gray-900">{isEditMode ? 'Edit Appointment' : 'Add Appointment'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto min-h-0">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
               {error}
@@ -408,15 +408,15 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="px-6 py-4 border-b">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[calc(100vh-2rem)] flex flex-col">
+        <div className="px-6 py-4 border-b shrink-0">
           <h3 className="text-lg font-bold text-gray-900">Schedule Visit</h3>
           <p className="text-sm text-gray-500 mt-0.5">
             Booking for <span className="font-medium text-gray-700">{patientName}</span>
             {patient?.mrd_number && <span className="text-gray-400"> · {patient.mrd_number}</span>}
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto min-h-0">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
               {error}

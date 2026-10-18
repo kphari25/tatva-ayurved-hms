@@ -143,8 +143,8 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[calc(100vh-2rem)] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <h3 className="text-lg font-bold text-gray-900">
             {initialData ? 'Edit Appointment' : 'Add Appointment'}
           </h3>
@@ -152,7 +152,7 @@ const AppointmentModal = ({ initialData, onClose, onSave, saving, therapists, do
             <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto min-h-0">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
               {error}
