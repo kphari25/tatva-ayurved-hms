@@ -79,7 +79,7 @@ const MODULES = {
   purchase: { label: 'Purchase Management', icon: ShoppingCart, description: 'Purchase requests, orders, and receipts' },
   prescriptions: { label: 'Prescriptions', icon: Stethoscope, description: 'Write and manage prescriptions' },
   invoices: { label: 'Invoices', icon: Receipt, description: 'Generate and manage invoices' },
-  expenses: { label: 'Expenses', icon: Wallet, description: 'Add expenses (admins can also edit them and view the expense log)' },
+  expenses: { label: 'Expenses', icon: Wallet, description: 'Add and edit expenses (admins can also view the expense log)' },
   discharge: { label: 'Discharge', icon: UserCheck, description: 'Patient discharge management' },
   analytics: { label: 'Analytics', icon: TrendingUp, description: 'Reports and analytics dashboards' },
   reports: { label: 'Reports', icon: FileText, description: 'Monthly patient intake and inventory movement reports' },

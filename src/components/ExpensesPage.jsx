@@ -3,7 +3,7 @@ import { Plus, List, ShieldCheck, Pencil, Lock, X, RefreshCw } from 'lucide-reac
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import ExpenseForm from './ExpenseForm';
-import { categoryLabel, paymentModeLabel, isSystemExpense, getCurrentUser, localDateString } from '../lib/expenses';
+import { categoryLabel, paymentModeLabel, isSystemExpense, localDateString } from '../lib/expenses';
 
 const firstOfMonth = () => {
   const n = new Date();
@@ -262,63 +262,6 @@ const LogTab = ({ refreshKey }) => {
   );
 };
 
-
-// ── Your recent expenses (everyone else) ───────────────────────────────────
-const MyRecentTab = ({ refreshKey }) => {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const email = getCurrentUser().email || '';
-        const snap = await getDocs(query(collection(db, 'expenses'), where('created_by', '==', email)));
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        list.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
-        if (!cancelled) setRows(list.slice(0, 20));
-      } catch (e) {
-        console.error('Error loading your expenses:', e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [refreshKey]);
-
-  return (
-    <div className="bg-white rounded-xl shadow-md p-6">
-      <h2 className="font-bold text-gray-800 mb-3">Expenses you added recently</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-gray-600 border-b">
-              <th className="py-2 pr-3">Date</th>
-              <th className="py-2 pr-3">Category</th>
-              <th className="py-2 pr-3">Description</th>
-              <th className="py-2 text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.id} className="border-b last:border-0 align-top">
-                <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(r.date)}</td>
-                <td className="py-2 pr-3">{categoryLabel(r.category)}</td>
-                <td className="py-2 pr-3 max-w-xs whitespace-pre-line break-words">{r.description || '—'}</td>
-                <td className="py-2 text-right font-semibold whitespace-nowrap">{fmtMoney(r.amount)}</td>
-              </tr>
-            ))}
-            {!loading && rows.length === 0 && (
-              <tr><td colSpan={4} className="py-8 text-center text-gray-500">You haven't added any expenses yet — click "Add Expense" to record one</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
 // ── Page ────────────────────────────────────────────────────────────────────
 const ExpensesPage = ({ isAdmin }) => {
   const [tab, setTab] = useState('all');
@@ -373,9 +316,8 @@ const ExpensesPage = ({ isAdmin }) => {
         </div>
       )}
 
-      {isAdmin && tab === 'all' && <AllExpensesTab refreshKey={refreshKey} onChanged={bump} focusDate={lastSavedDate} />}
+      {(!isAdmin || tab === 'all') && <AllExpensesTab refreshKey={refreshKey} onChanged={bump} focusDate={lastSavedDate} />}
       {isAdmin && tab === 'log' && <LogTab refreshKey={refreshKey} />}
-      {!isAdmin && <MyRecentTab refreshKey={refreshKey} />}
 
       {showAdd && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
