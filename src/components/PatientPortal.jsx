@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, deleteDoc, query, orderBy, where, addDoc, updateDoc } from 'firebase/firestore';
-import { openWhatsAppChat, appointmentMessage, doctorAppointmentMessage, sendAppointmentWhatsApp, sendDoctorAppointmentWhatsApp } from '../lib/whatsapp';
+import { appointmentMessage, doctorAppointmentMessage, appointmentTemplate, doctorAppointmentTemplate, whatsappApiEnabled } from '../lib/whatsapp';
+import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { withDrPrefix } from '../lib/formatDoctorName';
 import { loadDoctorsList } from '../lib/doctors';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
@@ -84,7 +85,8 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
   const [apptSaving, setApptSaving] = useState(false);
   // Per recipient: null | 'sent' | 'failed' | 'ready' (waiting for the one-click Open WhatsApp), plus the message to open
   const [apptWAStatus, setApptWAStatus] = useState({ patient: null, doctor: null });
-  const [apptWAMessages, setApptWAMessages] = useState({ patient: null, doctor: null });
+  const [apptWAMessages, setApptWAMessages] = useState({ patient: null, doctor: null }); // { phone, template, chatMessage } per recipient
+  const [waDialog, setWaDialog] = useState(null); // { key, phone, template, chatMessage } — confirm-before-send dialog
   const [apptForm, setApptForm] = useState({
     appointment_type: 'Consultation',
     doctor_id: '',
@@ -229,11 +231,11 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
       }
       setApptReactivated(reactivated);
 
-      // WhatsApp confirmations. Sent automatically through the WhatsApp
-      // Business API once VITE_WHATSAPP_API_ENABLED is on and the templates
-      // are approved; otherwise (or if a send fails) each recipient gets a
-      // one-click "Open WhatsApp" row on the confirmation screen — a click is
-      // needed because browsers block a window opened after an async save.
+      // WhatsApp confirmations. Nothing is sent here: each requested recipient
+      // gets a row on the confirmation screen, and pressing it opens the
+      // confirm-before-send dialog (the API send once VITE_WHATSAPP_API_ENABLED
+      // is on, otherwise the one-click chat — a click is needed because
+      // browsers block a window opened after an async save).
       const waDetails = {
         appointmentType: apptForm.appointment_type,
         doctorName: withDrPrefix(apptForm.doctor_name) || 'our team',
@@ -243,19 +245,24 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
         patientName: apptData.patient_name,
         mrdNumber: apptData.mrd_number,
       };
-      const apiOn = import.meta.env.VITE_WHATSAPP_API_ENABLED === 'true';
       const newStatus = { patient: null, doctor: null };
       const newMessages = { patient: null, doctor: null };
 
       if (apptForm.send_whatsapp_patient && appointmentPatient.phone) {
-        newMessages.patient = { phone: appointmentPatient.phone, message: appointmentMessage(appointmentPatient.first_name, waDetails) };
-        const res = apiOn ? await sendAppointmentWhatsApp(appointmentPatient.phone, appointmentPatient.first_name, waDetails) : null;
-        newStatus.patient = res?.success ? 'sent' : (res ? 'failed' : 'ready');
+        newMessages.patient = {
+          phone: appointmentPatient.phone,
+          template: appointmentTemplate(appointmentPatient.first_name, waDetails),
+          chatMessage: appointmentMessage(appointmentPatient.first_name, waDetails),
+        };
+        newStatus.patient = 'ready';
       }
       if (apptForm.send_whatsapp_doctor && apptForm.doctor_phone) {
-        newMessages.doctor = { phone: apptForm.doctor_phone, message: doctorAppointmentMessage(withDrPrefix(apptForm.doctor_name), waDetails) };
-        const res = apiOn ? await sendDoctorAppointmentWhatsApp(apptForm.doctor_phone, withDrPrefix(apptForm.doctor_name), waDetails) : null;
-        newStatus.doctor = res?.success ? 'sent' : (res ? 'failed' : 'ready');
+        newMessages.doctor = {
+          phone: apptForm.doctor_phone,
+          template: doctorAppointmentTemplate(withDrPrefix(apptForm.doctor_name), waDetails),
+          chatMessage: doctorAppointmentMessage(withDrPrefix(apptForm.doctor_name), waDetails),
+        };
+        newStatus.doctor = 'ready';
       }
       setApptWAMessages(newMessages);
       setApptWAStatus(newStatus);
@@ -1103,15 +1110,15 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                           <span className="flex items-center gap-2 min-w-0">
                             {status === 'sent' ? <CheckCircle className="w-4 h-4 shrink-0" /> : status === 'failed' ? <AlertCircle className="w-4 h-4 shrink-0" /> : <MessageSquare className="w-4 h-4 shrink-0" />}
                             <span className="truncate">
-                              {row.label}: {status === 'sent' ? 'Sent' : status === 'failed' ? 'Auto-send failed — open WhatsApp instead' : msg ? 'Ready to send' : 'No phone number'}
+                              {row.label}: {status === 'sent' ? 'Sent' : msg ? 'Ready to send' : 'No phone number'}
                             </span>
                           </span>
                           {msg && status !== 'sent' && (
                             <button
-                              onClick={() => openWhatsAppChat(msg.phone, msg.message)}
+                              onClick={() => setWaDialog({ key: row.key, ...msg })}
                               className="shrink-0 px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-xs font-medium"
                             >
-                              Open WhatsApp
+                              {whatsappApiEnabled ? 'Send WhatsApp' : 'Open WhatsApp'}
                             </button>
                           )}
                         </div>
@@ -1897,6 +1904,16 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
             </div>
           </div>
         </div>
+      )}
+
+      {waDialog && (
+        <WhatsAppSendDialog
+          phone={waDialog.phone}
+          template={waDialog.template}
+          chatMessage={waDialog.chatMessage}
+          onClose={() => setWaDialog(null)}
+          onSent={() => setApptWAStatus(prev => ({ ...prev, [waDialog.key]: 'sent' }))}
+        />
       )}
     </div>
   );

@@ -37,31 +37,56 @@ const toLocalDate = (d) => {
 
 const dateStr = (d) => toLocalDate(d).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-// Template: registration_confirmation — "Hello {{1}}, your registration at Tatva Ayurved has been recorded. Patient ID: {{2}}. Please quote this ID when you visit."
-// (Not named "welcome": Meta rejected welcome_patient as Marketing, not Utility.)
-export const sendWelcomeWhatsApp = (phone, patientName, patientNumber) =>
-  sendWhatsAppTemplate(phone, 'registration_confirmation', [patientName, patientNumber]);
+// ---- Approved templates ----------------------------------------------------
+// Each builder returns { name, params } in the exact variable order of the
+// template approved in WhatsApp Manager; TEMPLATE_BODIES holds the approved
+// wording so the confirmation dialog can show precisely what will be sent.
+const TEMPLATE_BODIES = {
+  registration_confirmation: 'Hello {{1}}, your registration at Tatva Ayurved has been recorded under patient record number {{2}}. Our front desk team will assist you with your visit.',
+  invoice_generated: 'Dear {{1}}, your invoice dated {{2}} ({{3}}) has been generated. Total amount: Rs.{{4}}. Payment mode: {{5}}. Patient ID: {{6}}. For any queries, please contact Tatva Ayurved.',
+  appointment_confirmation: 'Dear {{1}}, your {{2}} at Tatva Ayurved is scheduled on {{3}} at {{4}} with {{5}}. Please arrive 10 minutes early.',
+  doctor_appointment_notice: 'Hello {{1}}, an appointment is scheduled. Patient: {{2}} ({{3}}). Type: {{4}}. Date: {{5}} at {{6}}. Notes: {{7}}. Please check the schedule for details.',
+};
 
-// Template: invoice_generated — "Dear {{1}}, your invoice dated {{2}} ({{3}}) is generated. Total: Rs.{{4}}. Payment mode: {{5}}. Patient ID: {{6}}."
-export const sendInvoiceWhatsApp = (phone, patientName, d) =>
-  sendWhatsAppTemplate(phone, 'invoice_generated', [
+export const previewTemplate = ({ name, params }) =>
+  (TEMPLATE_BODIES[name] || '').replace(/\{\{(\d+)\}\}/g, (_, i) => params[Number(i) - 1] ?? '');
+
+export const registrationTemplate = (patientName, patientNumber) => ({
+  name: 'registration_confirmation',
+  params: [patientName, patientNumber],
+});
+
+export const invoiceTemplate = (patientName, d) => ({
+  name: 'invoice_generated',
+  params: [
     patientName,
     toLocalDate(d.invoice_date).toLocaleDateString('en-IN'),
     d.invoice_type,
     Number(d.total_amount).toFixed(2),
     d.payment_mode,
     d.patient_number,
-  ]);
+  ],
+});
 
-// Template: appointment_confirmation — "Dear {{1}}, your {{2}} at Tatva Ayurved is on {{3}} at {{4}} with {{5}}. Please arrive 10 mins early."
-export const sendAppointmentWhatsApp = (phone, patientName, d) =>
-  sendWhatsAppTemplate(phone, 'appointment_confirmation', [
-    patientName,
-    d.appointmentType,
-    dateStr(d.date),
-    d.time,
-    d.doctorName,
-  ]);
+export const appointmentTemplate = (patientName, d) => ({
+  name: 'appointment_confirmation',
+  params: [patientName, d.appointmentType, dateStr(d.date), d.time, d.doctorName],
+});
+
+export const doctorAppointmentTemplate = (doctorName, d) => ({
+  name: 'doctor_appointment_notice',
+  params: [doctorName, d.patientName, d.mrdNumber || '-', d.appointmentType, dateStr(d.date), d.time, d.notes || '-'],
+});
+
+export const sendTemplate = (phone, tpl) => sendWhatsAppTemplate(phone, tpl.name, tpl.params);
+
+export const sendWelcomeWhatsApp = (phone, patientName, patientNumber) => sendTemplate(phone, registrationTemplate(patientName, patientNumber));
+export const sendInvoiceWhatsApp = (phone, patientName, d) => sendTemplate(phone, invoiceTemplate(patientName, d));
+export const sendAppointmentWhatsApp = (phone, patientName, d) => sendTemplate(phone, appointmentTemplate(patientName, d));
+
+// Automatic (API) sending is on only once VITE_WHATSAPP_API_ENABLED=true; until
+// then every WhatsApp action stays the one-click wa.me chat.
+export const whatsappApiEnabled = import.meta.env.VITE_WHATSAPP_API_ENABLED === 'true';
 
 // ---- wa.me click-to-chat (no API needed) ----------------------------------
 // Opens WhatsApp with the message pre-filled; staff press Send. Must be called
@@ -103,14 +128,5 @@ export const appointmentMessage = (patientName, d) =>
 export const doctorAppointmentMessage = (doctorName, d) =>
   `${doctorName}, Appointment scheduled: Patient ${d.patientName}${d.mrdNumber ? ` (${d.mrdNumber})` : ''} for ${d.appointmentType} on ${dateStr(d.date)} at ${d.time}.${d.notes ? ` Notes: ${d.notes}` : ''} - Tatva Ayurved`;
 
-// Template: doctor_appointment_notice — "{{1}}, appointment scheduled: patient {{2}} ({{3}}) for {{4}} on {{5}} at {{6}}. Notes: {{7}}"
-export const sendDoctorAppointmentWhatsApp = (phone, doctorName, d) =>
-  sendWhatsAppTemplate(phone, 'doctor_appointment_notice', [
-    doctorName,
-    d.patientName,
-    d.mrdNumber || '-',
-    d.appointmentType,
-    dateStr(d.date),
-    d.time,
-    d.notes || '-',
-  ]);
+export const sendDoctorAppointmentWhatsApp = (phone, doctorName, d) => sendTemplate(phone, doctorAppointmentTemplate(doctorName, d));
+

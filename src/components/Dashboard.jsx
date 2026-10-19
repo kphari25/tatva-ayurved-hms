@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Search, MessageCircle } from 'lucide-react';
-import { openWhatsAppChat, appointmentMessage, sendAppointmentWhatsApp } from '../lib/whatsapp';
+import { appointmentMessage, appointmentTemplate } from '../lib/whatsapp';
+import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { collection, getDocs, getDoc, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatDateOnly, addDaysToDateString, daysSince } from '../lib/formatDate';
@@ -529,14 +530,13 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showAddAppointment, setShowAddAppointment] = useState(false);
-  // WhatsApp confirmation hand-off: { phone, message } — shown after an
-  // appointment is saved so staff can open the chat with one click (a click
-  // is needed because browsers block a window opened after an async save).
+  // WhatsApp confirmation hand-off — shown after an appointment is saved so
+  // staff can confirm the number and the exact message before anything is sent
+  // (the shared dialog sends through the WhatsApp Business API when enabled,
+  // otherwise opens the one-click chat; a click is needed either way because
+  // browsers block a window opened after an async save).
   const [whatsappPrompt, setWhatsappPrompt] = useState(null);
 
-  // Tries the WhatsApp Business API (once VITE_WHATSAPP_API_ENABLED is on and
-  // the templates are approved); otherwise — or if that send fails — falls
-  // back to the one-click "Open WhatsApp" prompt.
   const sendAppointmentConfirmation = async (phone, patientName, { type, doctorName, date, time }) => {
     const details = {
       appointmentType: type || 'appointment',
@@ -544,12 +544,11 @@ const Dashboard = () => {
       date,
       time,
     };
-    if (import.meta.env.VITE_WHATSAPP_API_ENABLED === 'true') {
-      const auto = await sendAppointmentWhatsApp(phone, patientName, details);
-      if (auto.success) return;
-      console.warn('Automatic WhatsApp failed, falling back to wa.me:', auto.error);
-    }
-    setWhatsappPrompt({ phone, message: appointmentMessage(patientName, details) });
+    setWhatsappPrompt({
+      phone,
+      template: appointmentTemplate(patientName, details),
+      chatMessage: appointmentMessage(patientName, details),
+    });
   };
   const [editingAppointment, setEditingAppointment] = useState(null);
   const [showPendingAdmissions, setShowPendingAdmissions] = useState(false);
@@ -1539,7 +1538,7 @@ const Dashboard = () => {
                                 <div className="flex items-center gap-0.5">
                                   {(apt.phone || apt.patient_phone) && (
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); openWhatsAppChat(apt.phone || apt.patient_phone, appointmentMessage(apt.patient, { appointmentType: apt.type, doctorName: apt.doctorName ? withDrPrefix(apt.doctorName) : '', date: apt.date || toDateStr(new Date()), time: apt.time })); }}
+                                      onClick={(e) => { e.stopPropagation(); sendAppointmentConfirmation(apt.phone || apt.patient_phone, apt.patient, { type: apt.type, doctorName: apt.doctorName, date: apt.date || toDateStr(new Date()), time: apt.time }); }}
                                       className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                       title="Send appointment details on WhatsApp"
                                     >
@@ -1651,7 +1650,7 @@ const Dashboard = () => {
                               <div className="flex items-center gap-0.5">
                                 {(apt.phone || apt.patient_phone) && (
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); openWhatsAppChat(apt.phone || apt.patient_phone, appointmentMessage(apt.patient, { appointmentType: apt.type, doctorName: apt.doctorName ? withDrPrefix(apt.doctorName) : '', date: apt.date || toDateStr(new Date()), time: apt.time })); }}
+                                    onClick={(e) => { e.stopPropagation(); sendAppointmentConfirmation(apt.phone || apt.patient_phone, apt.patient, { type: apt.type, doctorName: apt.doctorName, date: apt.date || toDateStr(new Date()), time: apt.time }); }}
                                     className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                     title="Send appointment details on WhatsApp"
                                   >
@@ -1931,37 +1930,12 @@ const Dashboard = () => {
       )}
 
       {whatsappPrompt && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b">
-              <h3 className="text-lg font-bold text-gray-900">Send confirmation on WhatsApp</h3>
-              <button onClick={() => setWhatsappPrompt(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-green-700 font-medium">✅ Appointment saved.</p>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700 whitespace-pre-wrap">
-                {whatsappPrompt.message}
-              </div>
-              <p className="text-xs text-gray-500">To {whatsappPrompt.phone}. WhatsApp opens with this message ready — press Send there.</p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setWhatsappPrompt(null)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                >
-                  Skip
-                </button>
-                <button
-                  onClick={() => { openWhatsAppChat(whatsappPrompt.phone, whatsappPrompt.message); setWhatsappPrompt(null); }}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
-                >
-                  <MessageCircle className="w-4 h-4" /> Open WhatsApp
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <WhatsAppSendDialog
+          phone={whatsappPrompt.phone}
+          template={whatsappPrompt.template}
+          chatMessage={whatsappPrompt.chatMessage}
+          onClose={() => setWhatsappPrompt(null)}
+        />
       )}
 
       {(showAddAppointment || editingAppointment) && (

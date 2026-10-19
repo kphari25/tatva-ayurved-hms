@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, FileText, MessageSquare, MessageCircle, Plus } from 'lucide-react';
-import { openWhatsAppChat, invoiceMessage } from '../lib/whatsapp';
+import { invoiceMessage, invoiceTemplate } from '../lib/whatsapp';
+import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendInvoiceSMS } from '../lib/sms';
@@ -18,6 +19,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
   const isConsultationInvoice = consultationFee > 0;
   const [invoiceType, setInvoiceType] = useState(patient?.patient_type === 'IP' ? 'IP' : 'OP');
   const [saving, setSaving] = useState(false);
+  const [waDialog, setWaDialog] = useState(null); // confirm-before-send WhatsApp dialog
   // Guards against a double-submit creating two invoices: a second click
   // landing before React re-renders the disabled button (setSaving(true)
   // is state, not synchronous) would otherwise slip through — this ref
@@ -436,7 +438,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       payment_mode: formData.payment_mode,
       patient_number: patient.patient_number
     };
-    openWhatsAppChat(patient.phone, invoiceMessage(`${patient.first_name} ${patient.last_name}`, data));
+    const fullName = `${patient.first_name} ${patient.last_name}`;
+    setWaDialog({ phone: patient.phone, template: invoiceTemplate(fullName, data), chatMessage: invoiceMessage(fullName, data) });
   };
 
   const handlePrint = async (invoiceData = null) => {
@@ -1271,6 +1274,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
           </div>
         </div>
       </div>
+    )}
+    {waDialog && (
+      <WhatsAppSendDialog
+        phone={waDialog.phone}
+        template={waDialog.template}
+        chatMessage={waDialog.chatMessage}
+        onClose={() => setWaDialog(null)}
+      />
     )}
     </>
   );

@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { UserPlus, Save, X, Receipt, CheckCircle, FileText, UserCheck, MessageCircle } from 'lucide-react';
-import { openWhatsAppChat, welcomeMessage } from '../lib/whatsapp';
+import { welcomeMessage, registrationTemplate } from '../lib/whatsapp';
+import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sendWelcomeSMS } from '../lib/sms';
@@ -36,6 +37,7 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
   const [showInvoice, setShowInvoice] = useState(false);
   const [savedPatient, setSavedPatient] = useState(null);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [waDialog, setWaDialog] = useState(null); // confirm-before-send WhatsApp dialog
   const [formData, setFormData] = useState(() => {
     // Pre-fill from a lead being converted — only applies to a brand-new
     // registration, never alongside editing an existing patient.
@@ -299,7 +301,11 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
               )}
               {!returningCheckIn && savedPatient.phone && savedPatient.whatsapp_consent && (
                 <button
-                  onClick={() => openWhatsAppChat(savedPatient.phone, welcomeMessage(`${savedPatient.first_name} ${savedPatient.last_name}`, savedPatient.patient_number || savedPatient.mrd_number))}
+                  onClick={() => {
+                    const fullName = `${savedPatient.first_name} ${savedPatient.last_name}`;
+                    const recordNo = savedPatient.patient_number || savedPatient.mrd_number;
+                    setWaDialog({ phone: savedPatient.phone, template: registrationTemplate(fullName, recordNo), chatMessage: welcomeMessage(fullName, recordNo) });
+                  }}
                   className="w-full py-3 px-6 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 flex items-center justify-center gap-2 transition-colors"
                 >
                   <MessageCircle className="w-5 h-5" />
@@ -320,6 +326,15 @@ const PatientRegistrationNew = ({ patient, prefillData, onClose, onSuccess, retu
             </div>
           </div>
         </div>
+
+        {waDialog && (
+          <WhatsAppSendDialog
+            phone={waDialog.phone}
+            template={waDialog.template}
+            chatMessage={waDialog.chatMessage}
+            onClose={() => setWaDialog(null)}
+          />
+        )}
 
         {showInvoice && (
           <InvoiceModal
