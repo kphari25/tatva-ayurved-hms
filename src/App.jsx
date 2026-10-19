@@ -3,7 +3,7 @@ import {
   Home, Users, Package, FileText, Receipt, TrendingUp,
   Calendar, IndianRupee, UserCog, Database, LogOut,
   ShoppingCart, Utensils, BarChart3, Wallet, History, FileBarChart,
-  Menu, X, BedDouble
+  Menu, X, BedDouble, BookOpen
 } from 'lucide-react';
 import { db, auth } from './lib/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
@@ -33,6 +33,7 @@ import TreatmentCharges from './components/TreatmentCharges';
 import Dashboard from './components/Dashboard';
 import ProfitLoss from './components/ProfitLoss';
 import ExpensesPage from './components/ExpensesPage';
+import CashBankBook from './components/CashBankBook';
 import Financials from './components/Financials';
 import AIAssist from './components/AIAssist';
 import PurchaseManagement from './components/PurchaseManagement';
@@ -404,6 +405,7 @@ function App() {
     { id: 'admin-section', label: 'Administration', icon: null, isSectionHeader: true, adminOnly: true, section: 'administration' },
     { id: 'profit-loss', label: 'P&L Statement', icon: IndianRupee, moduleId: 'profit-loss', section: 'administration' },
     { id: 'financials', label: 'Financials', icon: Wallet, moduleId: 'financials', section: 'administration' },
+    { id: 'cash-bank-book', label: 'Cash & Bank Book', icon: BookOpen, moduleId: 'cash-bank-book', section: 'administration' },
     { id: 'hr-payroll', label: 'HR & Payroll', icon: UserCog, moduleId: 'hr-payroll', badge: 'Admin', section: 'administration' },
     { id: 'user-activity', label: 'User Activity', icon: History, moduleId: 'user-activity', badge: 'Admin', section: 'administration' },
     { id: 'user-management', label: 'User Management', icon: UserCog, moduleId: 'user-management', badge: 'Admin', section: 'administration' },
@@ -631,6 +633,7 @@ function App() {
 
         {currentView === 'profit-loss' && <ProfitLoss />}
         {currentView === 'expenses' && <ExpensesPage isAdmin={isAdminRole} />}
+        {currentView === 'cash-bank-book' && <CashBankBook />}
 
         {currentView === 'financials' && <Financials />}
 

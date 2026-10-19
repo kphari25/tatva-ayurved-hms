@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Plus, List, ShieldCheck, Pencil, Lock, X, RefreshCw } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -23,9 +23,11 @@ const fmtDate = (s) => {
 };
 
 // ── All Expenses (admin) ────────────────────────────────────────────────────
-const AllExpensesTab = ({ refreshKey, onChanged, focusDate }) => {
-  const [from, setFrom] = useState(firstOfMonth());
-  const [to, setTo] = useState(todayStr());
+const AllExpensesTab = ({ refreshKey, onChanged, focusDate, openFocus }) => {
+  // Arriving from the Cash & Bank Book: show just that expense's day and open it for editing.
+  const [from, setFrom] = useState(openFocus?.date || firstOfMonth());
+  const [to, setTo] = useState(openFocus?.date || todayStr());
+  const pendingOpenRef = useRef(openFocus?.id || null);
 
   // An expense just added with a date outside the visible range would look like
   // it vanished — widen the range to include it.
@@ -50,6 +52,11 @@ const AllExpensesTab = ({ refreshKey, onChanged, focusDate }) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       list.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
       setRows(list);
+      if (pendingOpenRef.current) {
+        const target = list.find(r => r.id === pendingOpenRef.current);
+        pendingOpenRef.current = null;
+        if (target && !isSystemExpense(target)) setEditing(target);
+      }
     } catch (e) {
       setError('Failed to load expenses: ' + e.message);
     } finally {
@@ -265,6 +272,18 @@ const LogTab = ({ refreshKey }) => {
 // ── Page ────────────────────────────────────────────────────────────────────
 const ExpensesPage = ({ isAdmin }) => {
   const [tab, setTab] = useState('all');
+  // Set by the Cash & Bank Book's "Edit" link: which expense to open. Read once, then cleared.
+  const [openFocus] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem('expenses_open');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try { sessionStorage.removeItem('expenses_open'); } catch { /* storage unavailable */ }
+  }, []);
   const [showAdd, setShowAdd] = useState(false);
   const [notice, setNotice] = useState('');
   const [lastSavedDate, setLastSavedDate] = useState('');
@@ -316,7 +335,7 @@ const ExpensesPage = ({ isAdmin }) => {
         </div>
       )}
 
-      {(!isAdmin || tab === 'all') && <AllExpensesTab refreshKey={refreshKey} onChanged={bump} focusDate={lastSavedDate} />}
+      {(!isAdmin || tab === 'all') && <AllExpensesTab refreshKey={refreshKey} onChanged={bump} focusDate={lastSavedDate} openFocus={openFocus} />}
       {isAdmin && tab === 'log' && <LogTab refreshKey={refreshKey} />}
 
       {showAdd && (

@@ -89,6 +89,7 @@ const MODULES = {
   'diet-module': { label: 'Diet Plans', icon: Utensils, description: 'Patient diet plan management' },
   'profit-loss': { label: 'P&L Statement', icon: Receipt, description: 'Profit and loss reporting' },
   financials: { label: 'Financials', icon: Wallet, description: 'Consolidated financial ledger: revenue, medicine sales, and expenses' },
+  'cash-bank-book': { label: 'Cash & Bank Book', icon: Wallet, description: 'Daily cash and bank book: receipts, payments (live from Expenses) and running balances' },
   'user-management': { label: 'User Management', icon: UserCog, description: 'Manage users and roles' },
   'hr-payroll': { label: 'HR & Payroll', icon: UserCog, description: 'HR and payroll management' },
   'user-activity': { label: 'User Activity', icon: History, description: 'Login/logout history and time spent in the system' }
@@ -102,7 +103,7 @@ const DEFAULT_PERMISSIONS = {
   front_office: ['dashboard', 'patients', 'scheduling', 'room-management', 'leads', 'invoices', 'expenses', 'packages', 'treatment-charges', 'discharge', 'mess-management', 'reports'],
   store_admin: ['dashboard', 'inventory', 'purchase', 'expenses', 'reports'],
   kitchen_staff: ['dashboard', 'mess-management', 'mess-expense', 'diet-module'],
-  accountant: ['dashboard', 'invoices', 'expenses', 'profit-loss', 'financials', 'analytics', 'purchase', 'treatment-charges', 'reports']
+  accountant: ['dashboard', 'invoices', 'expenses', 'profit-loss', 'financials', 'cash-bank-book', 'analytics', 'purchase', 'treatment-charges', 'reports']
 };
 
 const UserManagement = () => {
