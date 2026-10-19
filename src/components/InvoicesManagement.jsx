@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Receipt, Search, Download, Printer, Eye, Filter, Calendar, IndianRupee, TrendingUp, Plus, UserRound, ShoppingBag, X } from 'lucide-react';
+import { Receipt, Search, Download, Printer, Eye, Filter, Calendar, IndianRupee, TrendingUp, Plus, UserRound, ShoppingBag, X, MessageCircle } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import * as XLSX from 'xlsx';
@@ -9,6 +9,8 @@ import MedicineSaleModal from './MedicineSaleModal';
 import { previewIframeStyle } from '../lib/printPreviewSize';
 import { formatDateOnly } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
+import { invoiceMessage, invoiceTemplate } from '../lib/whatsapp';
+import WhatsAppSendDialog from './WhatsAppSendDialog';
 
 const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   const [invoices, setInvoices] = useState([]);
@@ -42,6 +44,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   // letterhead all matter there). Viewing needs none of that, just the
   // rendered invoice and a way to jump into printing afterward if wanted.
   const [viewInvoice, setViewInvoice] = useState(null);
+  const [waDialog, setWaDialog] = useState(null); // confirm-before-send WhatsApp dialog
   const [stats, setStats] = useState({
     totalRevenue: 0,
     opRevenue: 0,
@@ -223,6 +226,27 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
   };
 
   const COLORS = ['#3b82f6', '#8b5cf6']; // Blue for OP, Purple for IP
+
+  // Sends a saved invoice's amount to the patient on WhatsApp (confirmation
+  // dialog first). Older invoices saved without a phone number can't be sent.
+  const handleWhatsAppInvoice = (invoice) => {
+    if (!invoice.patient_phone) {
+      alert('This invoice has no phone number saved. Send it from the patient\'s own invoice window, or add the number to the patient first.');
+      return;
+    }
+    const data = {
+      invoice_date: invoice.invoice_date || invoice.created_at,
+      invoice_type: invoice.invoice_type,
+      total_amount: invoice.total_amount,
+      payment_mode: invoice.payment_mode,
+      patient_number: invoice.patient_number || invoice.mrd_number || '',
+    };
+    setWaDialog({
+      phone: invoice.patient_phone,
+      template: invoiceTemplate(invoice.patient_name, data),
+      chatMessage: invoiceMessage(invoice.patient_name, data),
+    });
+  };
 
   const handlePrintInvoice = (invoice) => {
     setPrintPreviewPageSize('A4');
@@ -536,6 +560,14 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                           <Printer className="w-4 h-4" />
                           Print
                         </button>
+                        <button
+                          onClick={() => handleWhatsAppInvoice(invoice)}
+                          className={`inline-flex items-center gap-1 px-3 py-1 text-white text-sm rounded ${invoice.patient_phone ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}
+                          title={invoice.patient_phone ? `Send the invoice amount on WhatsApp to ${invoice.patient_phone}` : 'No phone number saved on this invoice'}
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          WhatsApp
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -773,6 +805,13 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
                 >
                   <Printer className="w-4 h-4" /> Print
                 </button>
+                <button
+                  onClick={() => handleWhatsAppInvoice(viewInvoice)}
+                  disabled={!viewInvoice.patient_phone}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-50"
+                >
+                  <MessageCircle className="w-4 h-4" /> WhatsApp
+                </button>
                 <button onClick={() => setViewInvoice(null)} className="hover:bg-teal-700 p-2 rounded">
                   <X className="w-6 h-6" />
                 </button>
@@ -792,6 +831,15 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
       )}
 
       {/* Medicine Sale Modal */}
+      {waDialog && (
+        <WhatsAppSendDialog
+          phone={waDialog.phone}
+          template={waDialog.template}
+          chatMessage={waDialog.chatMessage}
+          onClose={() => setWaDialog(null)}
+        />
+      )}
+
       {showMedicineSale && (
         <MedicineSaleModal
           // MedicineSaleModal shows its own print preview after saving and
