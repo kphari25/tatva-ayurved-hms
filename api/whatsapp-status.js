@@ -49,6 +49,18 @@ export default async function handler(req, res) {
     }
   };
 
+  // action "templates": the account's message templates (name, status, body text) —
+  // used to keep the app's previews and variable counts in line with what Meta approved.
+  if ((req.body || {}).action === 'templates') {
+    if (!wabaId) {
+      res.status(400).json({ success: false, error: 'wabaId required' });
+      return;
+    }
+    const t = await query(wabaId, 'message_templates.limit(50){name,status,language,category,components}');
+    res.status(200).json({ success: true, templates: t?.message_templates?.data || t });
+    return;
+  }
+
   const phone = await Promise.all(PHONE_FIELD_SETS.map(f => query(phoneNumberId, f)));
   const waba = wabaId ? await Promise.all(WABA_FIELD_SETS.map(f => query(wabaId, f))) : null;
   res.status(200).json({ success: true, phone, waba });
