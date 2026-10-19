@@ -3,15 +3,10 @@ import { Eye, EyeOff } from 'lucide-react';
 import { signInWithCustomToken } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 
-// Built-in admin fallback so local `vite dev` (no serverless functions running)
-// can still log in without needing `vercel dev` — this password is already
-// public in the source either way, so keeping it client-side loses nothing.
-// Every other account's password check now happens only server-side, in
-// api/login.js, which also issues the signed session token.
-const BUILT_IN_FALLBACK = {
-  'admin@tatvaayurved.com': { password: 'admin123', name: 'System Administrator', role: 'system_admin', permissions: ['all'] },
-  'admin123': { password: 'admin123', name: 'System Administrator', role: 'system_admin', permissions: ['all'] },
-};
+// Every account's password check happens only server-side, in api/login.js,
+// which also issues the signed session token. There is deliberately no
+// password in this file: the repository is public, so anything written here
+// is readable by anyone.
 
 const Login = ({ onLogin, notice }) => {
   const [email, setEmail] = useState('');
@@ -57,17 +52,8 @@ const Login = ({ onLogin, notice }) => {
       setError(result.error || 'Invalid email or password');
       setLoading(false);
     } catch (err) {
-      // /api/login unreachable (e.g. local `vite dev` without Vercel functions)
-      // — fall back to the built-in admin account only, with no session token.
-      const builtIn = BUILT_IN_FALLBACK[inputEmail];
-      if (builtIn && builtIn.password === password) {
-        const loggedInUser = { email: inputEmail, name: builtIn.name, role: builtIn.role, permissions: builtIn.permissions };
-        localStorage.setItem('currentUser', JSON.stringify(loggedInUser));
-        localStorage.removeItem('sessionToken');
-        console.log('✅ Login via built-in admin (offline fallback)');
-        if (onLogin) onLogin(loggedInUser);
-        return;
-      }
+      // /api/login unreachable (e.g. local `vite dev` without Vercel functions —
+      // use `vercel dev` instead).
       console.error('Login request failed:', err);
       setError('Could not reach the login service. Please try again.');
       setLoading(false);

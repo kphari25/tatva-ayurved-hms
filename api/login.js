@@ -15,26 +15,11 @@ import { createSessionToken } from './_lib/session.js';
 import { verifyPassword, hashPassword, isLegacyPlaintext } from './_lib/password.js';
 import { mintFirebaseToken } from './_lib/firebaseAdminAuth.js';
 
-// Matches Login.jsx's BUILT_IN_USERS — kept in sync manually since this
-// endpoint now owns the actual check (Login.jsx just calls this).
-const BUILT_IN_USERS = {
-  'admin@tatvaayurved.com': {
-    password: 'admin123',
-    name: 'System Administrator',
-    role: 'system_admin',
-    permissions: ['all'],
-  },
-  'admin123': {
-    password: 'admin123',
-    name: 'System Administrator',
-    role: 'system_admin',
-    permissions: ['all'],
-  },
-};
-
-// Fixed synthetic UID for both BUILT_IN_USERS entries — they're the same
-// identity (System Administrator) under two different login strings.
-const BUILT_IN_ADMIN_UID = 'builtin-system-admin';
+// Every account — including the System Administrator — is checked against its
+// record in the users collection. There is deliberately no built-in account
+// with a password written in this file: the repository is public, and a
+// hard-coded password here kept working after the admin changed it in User
+// Management, because it was checked before the database.
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -50,14 +35,6 @@ export default async function handler(req, res) {
   const normalized = String(email).toLowerCase().trim();
 
   try {
-    const builtIn = BUILT_IN_USERS[normalized];
-    if (builtIn && builtIn.password === password) {
-      const user = { email: normalized, name: builtIn.name, role: builtIn.role, permissions: builtIn.permissions };
-      const firebaseToken = await mintFirebaseToken(BUILT_IN_ADMIN_UID, { role: user.role });
-      res.status(200).json({ success: true, token: createSessionToken(user), firebaseToken, user });
-      return;
-    }
-
     const snap = await getAdminDb().collection('users').get();
     const match = snap.docs.find(d => (d.data().email || '').toLowerCase() === normalized);
 
