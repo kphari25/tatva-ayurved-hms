@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Calendar, Users, Bed, LogOut, IndianRupee, Clock, Phone, AlertCircle, TrendingUp, Activity, CheckCircle, XCircle, Trash2, Plus, X, Pencil, Search, MessageCircle } from 'lucide-react';
-import { appointmentMessage, appointmentTemplate } from '../lib/whatsapp';
+import { appointmentMessage, appointmentTemplate, doctorAppointmentMessage, doctorAppointmentTemplate } from '../lib/whatsapp';
 import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { collection, getDocs, getDoc, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -79,6 +79,9 @@ const formatGroupDate = (dateStr) => {
   return new Date(y, m - 1, day).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 };
 
+// Phone number on file for the doctor picked in a booking form ('' if none).
+const doctorPhoneFor = (doctors, doctorId) => ((doctors || []).find(d => d.id === doctorId)?.phone || '').trim();
+
 const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [], therapists = [], patients = [], onPickExistingPatient }) => {
   const isEditMode = !!appointment;
   const [formData, setFormData] = useState({
@@ -96,6 +99,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     roomNumber: appointment?.room_number || '',
     roomType: appointment?.room_type || '',
     sendWhatsApp: false,
+    sendDoctorWhatsApp: false,
   });
   const [error, setError] = useState('');
   const [occupiedRooms, setOccupiedRooms] = useState(new Set());
@@ -154,6 +158,7 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
         roomNumber: formData.roomNumber,
         roomType: formData.roomType,
         sendWhatsApp: formData.sendWhatsApp,
+        sendDoctorWhatsApp: formData.sendDoctorWhatsApp,
       });
     }
   };
@@ -181,6 +186,10 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     }
     if (formData.sendWhatsApp && !formData.phone.trim()) {
       setError('Phone number is required to send a WhatsApp confirmation.');
+      return;
+    }
+    if (formData.sendDoctorWhatsApp && !doctorPhoneFor(doctors, formData.doctorId)) {
+      setError('Choose a doctor who has a phone number on file to send them a WhatsApp.');
       return;
     }
     onSave(formData);
@@ -324,6 +333,20 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
             />
             {isEditMode ? 'Send updated WhatsApp message to patient' : 'Send WhatsApp confirmation to patient'}
           </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={formData.sendDoctorWhatsApp}
+              onChange={(e) => setFormData({ ...formData, sendDoctorWhatsApp: e.target.checked })}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>
+              {isEditMode ? 'Send updated WhatsApp to doctor' : 'Send WhatsApp to doctor'}{' '}
+              <span className="text-gray-400">
+                {formData.doctorId ? (doctorPhoneFor(doctors, formData.doctorId) ? `(${doctorPhoneFor(doctors, formData.doctorId)})` : '(no number on file)') : '(choose a doctor first)'}
+              </span>
+            </span>
+          </label>
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -375,6 +398,7 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
     roomNumber: initialFields?.roomNumber || '',
     roomType: initialFields?.roomType || '',
     sendWhatsApp: initialFields?.sendWhatsApp || false,
+    sendDoctorWhatsApp: initialFields?.sendDoctorWhatsApp || false,
   });
   const [error, setError] = useState('');
   const [occupiedRooms, setOccupiedRooms] = useState(new Set());
@@ -396,6 +420,10 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
     e.preventDefault();
     if (!fields.date || !fields.time) {
       setError('Date and time are required.');
+      return;
+    }
+    if (fields.sendDoctorWhatsApp && !doctorPhoneFor(doctors, fields.doctorId)) {
+      setError('Choose a doctor who has a phone number on file to send them a WhatsApp.');
       return;
     }
     if (!fields.calledInDate || !fields.calledInTime) {
@@ -505,6 +533,20 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
             />
             Send WhatsApp confirmation to patient
           </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={fields.sendDoctorWhatsApp}
+              onChange={(e) => setFields({ ...fields, sendDoctorWhatsApp: e.target.checked })}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>
+              Send WhatsApp to doctor{' '}
+              <span className="text-gray-400">
+                {fields.doctorId ? (doctorPhoneFor(doctors, fields.doctorId) ? `(${doctorPhoneFor(doctors, fields.doctorId)})` : '(no number on file)') : '(choose a doctor first)'}
+              </span>
+            </span>
+          </label>
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -535,7 +577,8 @@ const Dashboard = () => {
   // (the shared dialog sends through the WhatsApp Business API when enabled,
   // otherwise opens the one-click chat; a click is needed either way because
   // browsers block a window opened after an async save).
-  const [whatsappPrompt, setWhatsappPrompt] = useState(null);
+  const [whatsappQueue, setWhatsappQueue] = useState([]);
+  const enqueueWhatsApp = (item) => setWhatsappQueue(q => [...q, item]);
 
   const sendAppointmentConfirmation = async (phone, patientName, { type, doctorName, date, time }) => {
     const details = {
@@ -544,10 +587,26 @@ const Dashboard = () => {
       date,
       time,
     };
-    setWhatsappPrompt({
+    enqueueWhatsApp({
+      heading: 'WhatsApp to patient',
       phone,
       template: appointmentTemplate(patientName, details),
       chatMessage: appointmentMessage(patientName, details),
+    });
+  };
+
+  // Notice to the booked doctor, using the number on file for them; shown after
+  // the patient's confirmation (if any), each with its own confirm-before-send.
+  const sendDoctorNotice = (doctorId, doctorName, patientName, mrdNumber, { type, date, time }) => {
+    const phone = doctorPhoneFor(doctors, doctorId);
+    if (!phone) return;
+    const doctor = withDrPrefix(doctorName);
+    const details = { patientName, mrdNumber, appointmentType: type || 'appointment', date, time, notes: '' };
+    enqueueWhatsApp({
+      heading: `WhatsApp to ${doctor}`,
+      phone,
+      template: doctorAppointmentTemplate(doctor, details),
+      chatMessage: doctorAppointmentMessage(doctor, details),
     });
   };
   const [editingAppointment, setEditingAppointment] = useState(null);
@@ -1110,6 +1169,9 @@ const Dashboard = () => {
           console.error('⚠️ Failed to send appointment WhatsApp:', waError);
         }
       }
+      if (formData.sendDoctorWhatsApp) {
+        sendDoctorNotice(formData.doctorId, formData.doctorName, formData.patient, '', formData);
+      }
 
       setShowAddAppointment(false);
       setEditingAppointment(null);
@@ -1213,6 +1275,9 @@ const Dashboard = () => {
         } catch (waError) {
           console.error('⚠️ Failed to send appointment WhatsApp:', waError);
         }
+      }
+      if (fields.sendDoctorWhatsApp) {
+        sendDoctorNotice(fields.doctorId, fields.doctorName, patientName, p.mrd_number || p.patient_number || '', fields);
       }
 
       await loadDashboardData();
@@ -1929,12 +1994,14 @@ const Dashboard = () => {
         </div>
       )}
 
-      {whatsappPrompt && (
+      {whatsappQueue.length > 0 && (
         <WhatsAppSendDialog
-          phone={whatsappPrompt.phone}
-          template={whatsappPrompt.template}
-          chatMessage={whatsappPrompt.chatMessage}
-          onClose={() => setWhatsappPrompt(null)}
+          key={`${whatsappQueue[0].heading}-${whatsappQueue[0].phone}`}
+          heading={whatsappQueue[0].heading}
+          phone={whatsappQueue[0].phone}
+          template={whatsappQueue[0].template}
+          chatMessage={whatsappQueue[0].chatMessage}
+          onClose={() => setWhatsappQueue(q => q.slice(1))}
         />
       )}
 

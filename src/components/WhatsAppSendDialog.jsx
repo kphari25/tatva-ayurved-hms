@@ -10,7 +10,7 @@ import { openWhatsAppChat, previewTemplate, sendTemplate, toWhatsAppNumber, what
 //  - API off: the button opens the pre-filled WhatsApp chat, as before.
 // `template` is { name, params } (see lib/whatsapp.js); `chatMessage` is the
 // free text used for the one-click chat.
-const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent }) => {
+const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent, heading = 'Send on WhatsApp' }) => {
   const [state, setState] = useState('confirm'); // confirm | sending | sent | failed
   const [error, setError] = useState('');
   const number = toWhatsAppNumber(phone);
@@ -37,7 +37,7 @@ const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent }) =
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <MessageCircle className="w-5 h-5 text-green-600" /> Send on WhatsApp
+            <MessageCircle className="w-5 h-5 text-green-600" /> {heading}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
