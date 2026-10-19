@@ -10,10 +10,20 @@
 
 import { verifySessionToken } from './_lib/session.js';
 
+// Digits for the WhatsApp API: numbers written with a country code are used as
+// given (+1 732 207 9036, 001…, 966506163596); a plain 10-digit number — or one
+// with a leading 0 — is treated as Indian (+91), as staff have always entered them.
 const normalizePhone = (raw) => {
-  const digits = String(raw || '').replace(/\D/g, '');
-  if (digits.length < 10) return '';
-  return `91${digits.slice(-10)}`;
+  const s = String(raw || '').trim();
+  const digits = s.replace(/\D/g, '');
+  if (!digits) return '';
+  let out = '';
+  if (s.startsWith('+')) out = digits;
+  else if (digits.startsWith('00')) out = digits.slice(2);
+  else if (digits.length === 10) out = `91${digits}`;
+  else if (digits.length === 11 && digits.startsWith('0')) out = `91${digits.slice(1)}`;
+  else if (digits.length >= 11) out = digits;
+  return out.length >= 8 && out.length <= 15 ? out : '';
 };
 
 export default async function handler(req, res) {

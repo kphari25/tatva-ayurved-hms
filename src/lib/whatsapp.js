@@ -66,13 +66,28 @@ export const sendAppointmentWhatsApp = (phone, patientName, d) =>
 // ---- wa.me click-to-chat (no API needed) ----------------------------------
 // Opens WhatsApp with the message pre-filled; staff press Send. Must be called
 // directly from a click handler (no await before it) or browsers block the tab.
+// Same rule as api/send-whatsapp.js: a number written with a country code is
+// used as given; a plain 10-digit number (or one with a leading 0) is Indian.
+export const toWhatsAppNumber = (raw) => {
+  const str = String(raw || '').trim();
+  const digits = str.replace(/\D/g, '');
+  if (!digits) return '';
+  let out = '';
+  if (str.startsWith('+')) out = digits;
+  else if (digits.startsWith('00')) out = digits.slice(2);
+  else if (digits.length === 10) out = `91${digits}`;
+  else if (digits.length === 11 && digits.startsWith('0')) out = `91${digits.slice(1)}`;
+  else if (digits.length >= 11) out = digits;
+  return out.length >= 8 && out.length <= 15 ? out : '';
+};
+
 export const openWhatsAppChat = (phone, message) => {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (digits.length < 10) {
+  const number = toWhatsAppNumber(phone);
+  if (!number) {
     alert('No valid phone number on file.');
     return false;
   }
-  window.open(`https://wa.me/91${digits.slice(-10)}?text=${encodeURIComponent(message)}`, '_blank');
+  window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, '_blank');
   return true;
 };
 
