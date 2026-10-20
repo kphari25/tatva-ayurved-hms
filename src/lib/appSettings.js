@@ -27,17 +27,30 @@ export const subscribeAdminSectionHidden = (callback) => {
 export const setAdminSectionHidden = (hidden) =>
   setDoc(doc(db, 'settings', 'app_config'), { hide_admin_section: hidden }, { merge: true });
 
-// Profit & Loss "books start" date. Entries (invoices, medicine sales, expenses,
-// mess expenses) dated before it are left out of the P&L only — nothing is
-// deleted, they stay on their own pages. An empty string means "no cut-off".
-// Until a value has been saved, the P&L starts from the default below.
+// "Books start" dates for Profit & Loss and Financials. Entries (invoices, medicine
+// sales, expenses, mess expenses, payroll) dated before a start date are left out of
+// that report only — nothing is deleted, everything stays on its own page. An empty
+// string means "no cut-off". Stored in settings/books_config, which Firestore rules
+// let only admin roles write (see firestore.rules); everyone signed in can read it.
 export const DEFAULT_PL_START_DATE = '2026-10-16';
+export const DEFAULT_FINANCIALS_START_DATE = '2026-11-01';
+
+const BOOKS_REF = () => doc(db, 'settings', 'books_config');
+
+const readBooksConfig = async () => {
+  const [books, legacy] = await Promise.all([
+    getDoc(BOOKS_REF()),
+    getDoc(doc(db, 'settings', 'app_config')), // older location of the P&L date
+  ]);
+  return { books: books.data() || {}, legacy: legacy.data() || {} };
+};
 
 export const getPLStartDate = async () => {
   try {
-    const snap = await getDoc(doc(db, 'settings', 'app_config'));
-    const v = snap.data()?.pl_start_date;
-    return typeof v === 'string' ? v : DEFAULT_PL_START_DATE;
+    const { books, legacy } = await readBooksConfig();
+    if (typeof books.pl_start_date === 'string') return books.pl_start_date;
+    if (typeof legacy.pl_start_date === 'string') return legacy.pl_start_date;
+    return DEFAULT_PL_START_DATE;
   } catch (error) {
     console.error('Error loading P&L start date:', error);
     return DEFAULT_PL_START_DATE;
@@ -45,4 +58,17 @@ export const getPLStartDate = async () => {
 };
 
 export const setPLStartDate = (dateStr) =>
-  setDoc(doc(db, 'settings', 'app_config'), { pl_start_date: dateStr || '' }, { merge: true });
+  setDoc(BOOKS_REF(), { pl_start_date: dateStr || '' }, { merge: true });
+
+export const getFinancialsStartDate = async () => {
+  try {
+    const { books } = await readBooksConfig();
+    return typeof books.financials_start_date === 'string' ? books.financials_start_date : DEFAULT_FINANCIALS_START_DATE;
+  } catch (error) {
+    console.error('Error loading Financials start date:', error);
+    return DEFAULT_FINANCIALS_START_DATE;
+  }
+};
+
+export const setFinancialsStartDate = (dateStr) =>
+  setDoc(BOOKS_REF(), { financials_start_date: dateStr || '' }, { merge: true });

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { IndianRupee, Printer, RefreshCw, ChevronDown, ChevronRight, Calendar } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { getFinancialsStartDate, setFinancialsStartDate } from '../lib/appSettings';
 
 const fmt = (n) => `₹${(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 
@@ -100,17 +101,41 @@ const quickRanges = {
   }
 };
 
-const Financials = () => {
+const Financials = ({ isAdmin = false }) => {
   const [loading, setLoading] = useState(true);
   const [rawData, setRawData] = useState(null);
+  // Financials "books start" date (YYYY-MM-DD, '' = no cut-off); undefined until loaded.
+  // Entries dated before it are left out of every figure on this page — not deleted.
+  const [startDate, setStartDateState] = useState(undefined);
+  const [startDateDraft, setStartDateDraft] = useState('');
+  const [savingStartDate, setSavingStartDate] = useState(false);
   const [rangeMode, setRangeMode] = useState('this-month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [expandedMonth, setExpandedMonth] = useState(null);
 
   useEffect(() => {
-    loadData();
+    getFinancialsStartDate().then((d) => { setStartDateState(d); setStartDateDraft(d); });
   }, []);
+
+  useEffect(() => {
+    if (startDate === undefined) return; // wait for the start date to load
+    loadData();
+  }, [startDate]);
+
+  const saveStartDate = async (value) => {
+    try {
+      setSavingStartDate(true);
+      await setFinancialsStartDate(value);
+      setStartDateState(value);
+      setStartDateDraft(value);
+    } catch (error) {
+      console.error('Error saving Financials start date:', error);
+      alert('Could not save the start date: ' + error.message);
+    } finally {
+      setSavingStartDate(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -123,12 +148,28 @@ const Financials = () => {
         getDocs(collection(db, 'hr_payroll'))
       ]);
 
+      // Leave out anything dated before the start date (compared as UTC midnight, the
+      // way stored YYYY-MM-DD dates parse). Payroll is per month, so a month counts
+      // if its last day is on or after the start date.
+      const floor = startDate ? new Date(startDate) : null;
+      const onOrAfter = (value) => {
+        if (!floor || isNaN(floor)) return true;
+        const d = new Date(value);
+        return !isNaN(d) && d >= floor;
+      };
+      const payrollOnOrAfter = (p) => {
+        if (!floor || isNaN(floor)) return true;
+        if (!p.month) return false;
+        const [y, m] = p.month.split('-').map(Number);
+        return new Date(Date.UTC(y, m || 1, 0)) >= floor; // last day of that month
+      };
+
       setRawData({
-        invoices: invoicesSnap.docs.map((d) => d.data()),
-        medicineSales: medicineSalesSnap.docs.map((d) => d.data()),
-        expenses: expensesSnap.docs.map((d) => d.data()),
-        messExpenses: messExpensesSnap.docs.map((d) => d.data()),
-        hrPayroll: hrPayrollSnap.docs.map((d) => d.data())
+        invoices: invoicesSnap.docs.map((d) => d.data()).filter((i) => onOrAfter(i.invoice_date || i.created_at)),
+        medicineSales: medicineSalesSnap.docs.map((d) => d.data()).filter((x) => onOrAfter(x.sale_date || x.created_at)),
+        expenses: expensesSnap.docs.map((d) => d.data()).filter((x) => onOrAfter(x.date || x.created_at)),
+        messExpenses: messExpensesSnap.docs.map((d) => d.data()).filter((x) => onOrAfter(x.date || x.created_at)),
+        hrPayroll: hrPayrollSnap.docs.map((d) => d.data()).filter(payrollOnOrAfter)
       });
     } catch (error) {
       console.error('Error loading financials data:', error);
@@ -341,6 +382,42 @@ const Financials = () => {
         <div className="flex items-center gap-2">
           <IndianRupee className="w-7 h-7 text-teal-600" />
           <h1 className="text-2xl font-bold text-gray-800">Financials</h1>
+        </div>
+        <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-wrap items-center gap-3 text-sm text-blue-900 order-last">
+          <Calendar className="w-5 h-5 text-blue-600 shrink-0" />
+          <span className="flex-1 min-w-[16rem]">
+            {startDate
+              ? <>Financials counts invoices, medicine sales, expenses and payroll from <strong>{new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong> onwards. Earlier entries are not deleted — they are only left out of this page.{new Date(startDate + 'T00:00:00') > new Date() ? ' Nothing will show here until that date.' : ''}</>
+              : <>Financials is counting <strong>all dates</strong> (no start date set).</>}
+          </span>
+          {isAdmin ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={startDateDraft}
+                onChange={(e) => setStartDateDraft(e.target.value)}
+                className="px-3 py-1.5 border border-blue-300 rounded-lg bg-white text-gray-800"
+              />
+              <button
+                onClick={() => saveStartDate(startDateDraft)}
+                disabled={savingStartDate || startDateDraft === startDate}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                Save start date
+              </button>
+              {startDate && (
+                <button
+                  onClick={() => saveStartDate('')}
+                  disabled={savingStartDate}
+                  className="px-3 py-1.5 border border-blue-300 text-blue-800 rounded-lg hover:bg-blue-100 disabled:opacity-50"
+                >
+                  Show all dates
+                </button>
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-blue-700">Only an admin can change this date.</span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {[

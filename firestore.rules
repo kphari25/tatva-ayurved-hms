@@ -19,11 +19,26 @@ rules_version = '2';
 // entries can never be changed or deleted. The role comes from the custom
 // token's `role` claim (set in api/login.js). Because Firestore rules are
 // additive, the general rule below explicitly skips this collection —
-// otherwise it would grant everyone read access to it.
+// otherwise it would grant everyone read access to it. The same applies to the
+// settings collection, whose books_config document is admin-write-only (below).
 service cloud.firestore {
   match /databases/{database}/documents {
+    // settings/books_config holds the Profit & Loss / Financials "books start"
+    // dates. Everyone signed in can read it (the reports need it), but only admin
+    // roles can change it — checked here, not just hidden in the UI. Every other
+    // settings document keeps the general rule (any signed-in user), so this is
+    // handled by its own match and the general rule below skips 'settings'.
+    match /settings/{settingDoc} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && (settingDoc != 'books_config'
+            || request.auth.token.role in ['system_admin', 'admin', 'Admin']);
+    }
+
     match /{collection}/{document=**} {
-      allow read, write: if request.auth != null && collection != 'expense_audit_log';
+      allow read, write: if request.auth != null
+        && collection != 'expense_audit_log'
+        && collection != 'settings';
     }
 
     match /expense_audit_log/{entry} {

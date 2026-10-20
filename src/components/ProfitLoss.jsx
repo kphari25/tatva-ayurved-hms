@@ -7,7 +7,7 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import * as XLSX from 'xlsx';
 import { getPLStartDate, setPLStartDate } from '../lib/appSettings';
 
-const ProfitLoss = () => {
+const ProfitLoss = ({ isAdmin = false }) => {
   const [loading, setLoading] = useState(true);
   // P&L "books start" date (YYYY-MM-DD, '' = no cut-off); undefined until loaded.
   const [plStartDate, setPlStartDateState] = useState(undefined);
@@ -558,6 +558,7 @@ const ProfitLoss = () => {
             ? <>Profit &amp; Loss counts invoices, medicine sales and expenses from <strong>{new Date(plStartDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong> onwards. Earlier entries are not deleted — they are only left out of this page.</>
             : <>Profit &amp; Loss is counting <strong>all dates</strong> (no start date set).</>}
         </span>
+        {isAdmin ? (
         <div className="flex items-center gap-2">
           <input
             type="date"
@@ -582,6 +583,9 @@ const ProfitLoss = () => {
             </button>
           )}
         </div>
+        ) : (
+          <span className="text-xs text-blue-700">Only an admin can change this date.</span>
+        )}
       </div>
 
       {/* Date Filter */}

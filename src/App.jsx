@@ -631,11 +631,11 @@ function App() {
 
         {currentView === 'room-management' && <RoomManagement />}
 
-        {currentView === 'profit-loss' && <ProfitLoss />}
+        {currentView === 'profit-loss' && <ProfitLoss isAdmin={isAdminRole} />}
         {currentView === 'expenses' && <ExpensesPage isAdmin={isAdminRole} />}
         {currentView === 'cash-bank-book' && <CashBankBook />}
 
-        {currentView === 'financials' && <Financials />}
+        {currentView === 'financials' && <Financials isAdmin={isAdminRole} />}
 
         {currentView === 'hr-payroll' && <HRPayrollModule userRole={currentUser?.role} currentUser={currentUser} />}
 
