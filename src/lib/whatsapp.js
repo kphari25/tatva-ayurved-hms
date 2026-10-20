@@ -44,6 +44,7 @@ const dateStr = (d) => toLocalDate(d).toLocaleDateString('en-IN', { weekday: 'lo
 const TEMPLATE_BODIES = {
   registration_confirmation: 'Hello {{1}}, your registration at Tatva Ayurved has been recorded under patient record number {{2}}. Our front desk team will assist you with your visit.',
   invoice_generated: 'Dear {{1}}, your invoice dated {{2}} ({{3}}) has been generated. Total amount: Rs.{{4}}. Payment mode: {{5}}. Patient ID: {{6}}. For any queries, please contact Tatva Ayurved.',
+  invoice_copy: 'Dear {{1}}, please find attached your invoice {{2}} dated {{3}} from Tatva Ayurved. Total amount: Rs.{{4}}. For any queries, please contact Tatva Ayurved.',
   appointment_confirmation: 'Dear {{1}}, your {{2}} at Tatva Ayurved is scheduled on {{3}} at {{4}} with {{5}}. Please arrive 10 minutes early.',
   doctor_appointment_notice: 'Hello {{1}}, an appointment is scheduled. Patient: {{2}} ({{3}}). Type: {{4}}. Date: {{5}} at {{6}}. Notes: {{7}}. Please check the schedule for details.',
 };
@@ -68,6 +69,17 @@ export const invoiceTemplate = (patientName, d) => ({
   ],
 });
 
+// Template with a PDF document header (the invoice copy) — see sendInvoiceDocument.
+export const invoiceCopyTemplate = (patientName, d) => ({
+  name: 'invoice_copy',
+  params: [
+    patientName,
+    d.invoice_number || '-',
+    toLocalDate(d.invoice_date).toLocaleDateString('en-IN'),
+    Number(d.total_amount).toFixed(2),
+  ],
+});
+
 export const appointmentTemplate = (patientName, d) => ({
   name: 'appointment_confirmation',
   params: [patientName, d.appointmentType, dateStr(d.date), d.time, d.doctorName],
@@ -80,6 +92,26 @@ export const doctorAppointmentTemplate = (doctorName, d) => ({
 
 export const sendTemplate = (phone, tpl) => sendWhatsAppTemplate(phone, tpl.name, tpl.params);
 
+// Sends a template whose header is a PDF (base64) through /api/send-whatsapp-document,
+// which uploads the file to Meta and sends the message.
+export const sendDocumentTemplate = async (phone, tpl, pdfBase64, filename) => {
+  try {
+    const token = localStorage.getItem('sessionToken') || '';
+    const response = await fetch('/api/send-whatsapp-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ phone, template: { name: tpl.name, params: tpl.params }, pdfBase64, filename }),
+    });
+    if (response.status === 403) throw new Error('Your sign-in has expired. Please log out and log back in, then try again.');
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) throw new Error(result.error || `Request failed (${response.status})`);
+    return { success: true, id: result.id };
+  } catch (error) {
+    console.error('WhatsApp document send error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export const sendWelcomeWhatsApp = (phone, patientName, patientNumber) => sendTemplate(phone, registrationTemplate(patientName, patientNumber));
 export const sendInvoiceWhatsApp = (phone, patientName, d) => sendTemplate(phone, invoiceTemplate(patientName, d));
 export const sendAppointmentWhatsApp = (phone, patientName, d) => sendTemplate(phone, appointmentTemplate(patientName, d));
@@ -87,6 +119,10 @@ export const sendAppointmentWhatsApp = (phone, patientName, d) => sendTemplate(p
 // Automatic (API) sending is on only once VITE_WHATSAPP_API_ENABLED=true; until
 // then every WhatsApp action stays the one-click wa.me chat.
 export const whatsappApiEnabled = import.meta.env.VITE_WHATSAPP_API_ENABLED === 'true';
+
+// The invoice-copy (PDF) option is shown only after the invoice_copy template is
+// approved and VITE_WHATSAPP_INVOICE_PDF_ENABLED=true is set in Vercel.
+export const invoicePdfEnabled = whatsappApiEnabled && import.meta.env.VITE_WHATSAPP_INVOICE_PDF_ENABLED === 'true';
 
 // ---- wa.me click-to-chat (no API needed) ----------------------------------
 // Opens WhatsApp with the message pre-filled; staff press Send. Must be called

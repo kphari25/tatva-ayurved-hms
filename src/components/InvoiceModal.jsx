@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, FileText, MessageSquare, MessageCircle, Plus } from 'lucide-react';
-import { invoiceMessage, invoiceTemplate } from '../lib/whatsapp';
+import { invoiceMessage, invoiceTemplate, invoiceCopyTemplate } from '../lib/whatsapp';
+import { buildInvoicePdfBase64, invoicePdfFilename } from '../lib/invoicePdf';
 import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -439,7 +440,22 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       patient_number: patient.patient_number
     };
     const fullName = `${patient.first_name} ${patient.last_name}`;
-    setWaDialog({ phone: patient.phone, template: invoiceTemplate(fullName, data), chatMessage: invoiceMessage(fullName, data) });
+    // The PDF copy needs the saved invoice (it carries the invoice number and every
+    // charge line), so the attach option appears only after Save & Print.
+    setWaDialog({
+      phone: patient.phone,
+      template: invoiceTemplate(fullName, data),
+      chatMessage: invoiceMessage(fullName, data),
+      ...(savedInvoiceData
+        ? {
+            invoiceCopy: {
+              template: invoiceCopyTemplate(fullName, savedInvoiceData),
+              buildPdf: () => buildInvoicePdfBase64(savedInvoiceData),
+              filename: invoicePdfFilename(savedInvoiceData),
+            },
+          }
+        : { invoiceCopyHint: 'Save the invoice first (Save & Print) to attach its PDF.' }),
+    });
   };
 
   const handlePrint = async (invoiceData = null) => {
@@ -1280,6 +1296,8 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
         phone={waDialog.phone}
         template={waDialog.template}
         chatMessage={waDialog.chatMessage}
+        invoiceCopy={waDialog.invoiceCopy}
+        invoiceCopyHint={waDialog.invoiceCopyHint}
         onClose={() => setWaDialog(null)}
       />
     )}

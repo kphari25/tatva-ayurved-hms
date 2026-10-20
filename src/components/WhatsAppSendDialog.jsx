@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, MessageCircle, CheckCircle, AlertCircle } from 'lucide-react';
-import { openWhatsAppChat, previewTemplate, sendTemplate, toWhatsAppNumber, whatsappApiEnabled } from '../lib/whatsapp';
+import { openWhatsAppChat, previewTemplate, sendTemplate, sendDocumentTemplate, toWhatsAppNumber, whatsappApiEnabled, invoicePdfEnabled } from '../lib/whatsapp';
 
 // Confirmation step for every WhatsApp message: shows who it goes to and the
 // exact text, and nothing is sent until the user presses the button.
@@ -10,11 +10,19 @@ import { openWhatsAppChat, previewTemplate, sendTemplate, toWhatsAppNumber, what
 //  - API off: the button opens the pre-filled WhatsApp chat, as before.
 // `template` is { name, params } (see lib/whatsapp.js); `chatMessage` is the
 // free text used for the one-click chat.
-const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent, heading = 'Send on WhatsApp' }) => {
+// `invoiceCopy` ({ template, buildPdf, filename }) adds an "Attach the invoice
+// PDF" option: the PDF is built in the browser and sent with the invoice_copy
+// template. `invoiceCopyHint` explains why it isn't available (e.g. unsaved).
+const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent, heading = 'Send on WhatsApp', invoiceCopy, invoiceCopyHint }) => {
   const [state, setState] = useState('confirm'); // confirm | sending | sent | failed
   const [error, setError] = useState('');
+  const canAttach = invoicePdfEnabled && !!invoiceCopy;
+  const [attachPdf, setAttachPdf] = useState(true);
+  const withPdf = canAttach && attachPdf;
   const number = toWhatsAppNumber(phone);
-  const preview = whatsappApiEnabled && template ? previewTemplate(template) : chatMessage;
+  const preview = withPdf
+    ? previewTemplate(invoiceCopy.template)
+    : (whatsappApiEnabled && template ? previewTemplate(template) : chatMessage);
 
   const handleSend = async () => {
     if (!whatsappApiEnabled || !template) {
@@ -22,7 +30,18 @@ const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent, hea
       return;
     }
     setState('sending');
-    const res = await sendTemplate(phone, template);
+    let res;
+    if (withPdf) {
+      try {
+        const pdfBase64 = await invoiceCopy.buildPdf();
+        res = await sendDocumentTemplate(phone, invoiceCopy.template, pdfBase64, invoiceCopy.filename);
+      } catch (e) {
+        console.error('Invoice PDF build failed:', e);
+        res = { success: false, error: 'Could not create the invoice PDF.' };
+      }
+    } else {
+      res = await sendTemplate(phone, template);
+    }
     if (res.success) {
       setState('sent');
       if (onSent) onSent();
@@ -57,8 +76,24 @@ const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent, hea
                 Send this message to <strong>{number ? `+${number}` : 'no valid number'}</strong>?
               </p>
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700 whitespace-pre-wrap">
-                {preview}
+                {withPdf && <div className="mb-2 inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded text-xs font-medium text-gray-600">📎 {invoiceCopy.filename}</div>}
+                <div>{preview}</div>
               </div>
+              {canAttach && (
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={attachPdf}
+                    onChange={(e) => setAttachPdf(e.target.checked)}
+                    disabled={state === 'sending'}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                  Attach the invoice PDF
+                </label>
+              )}
+              {!canAttach && invoicePdfEnabled && invoiceCopyHint && (
+                <p className="text-xs text-gray-500">{invoiceCopyHint}</p>
+              )}
               {state === 'failed' && (
                 <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -90,7 +125,7 @@ const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent, hea
                   className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {state === 'sending'
-                    ? 'Sending…'
+                    ? (withPdf ? 'Creating PDF & sending…' : 'Sending…')
                     : state === 'failed'
                       ? 'Try again'
                       : whatsappApiEnabled && template ? 'Send' : 'Open WhatsApp'}

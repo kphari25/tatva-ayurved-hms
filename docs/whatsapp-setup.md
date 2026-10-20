@@ -17,7 +17,7 @@ Staff can send patients (and doctors) WhatsApp messages from the HMS. Every send
 | Dashboard appointment cards — WhatsApp icon | Patient | `appointment_confirmation` |
 | Patient Portal → Schedule Appointment — patient / doctor checkboxes, then **Send WhatsApp** on each row of the confirmation screen | Patient, doctor | `appointment_confirmation`, `doctor_appointment_notice` |
 | Invoice window (Invoices → New Invoice → Patient Invoice) — **WhatsApp** button | Patient | `invoice_generated` |
-| Invoices list — **WhatsApp** button on each saved invoice, and in the View Invoice window | Patient | `invoice_generated` |
+| Invoices list — **WhatsApp** button on each saved invoice, and in the View Invoice window (with **Attach the invoice PDF**, see §7) | Patient | `invoice_generated`, or `invoice_copy` with the PDF |
 | Registration success screen — **Send Welcome on WhatsApp** (only if the patient ticked the WhatsApp consent box) | Patient | `registration_confirmation` |
 | Patient → **Message** button (free text) | Patient | none — free text; Meta only delivers it inside 24 h of the patient's last message, otherwise the app falls back to the one-click chat |
 
@@ -63,6 +63,7 @@ Set in Vercel → project → Settings → Environment Variables, then **Redeplo
 | `WHATSAPP_API_VERSION` | Config | e.g. `v25.0` |
 | `VITE_WHATSAPP_API_ENABLED` | Config (browser-visible on purpose) | `true` = automatic mode, `false` = one-click |
 | `WHATSAPP_BUSINESS_ACCOUNT_ID` | Config, optional | WABA ID, used only by the status check |
+| `VITE_WHATSAPP_INVOICE_PDF_ENABLED` | Config | `true` once the `invoice_copy` template is approved — turns on the "Attach the invoice PDF" option (needs automatic mode on too) |
 
 Never put the token in a `VITE_` variable — that would expose it in the browser bundle.
 
@@ -78,6 +79,8 @@ Created in **WhatsApp Manager → Message templates**. All are **Utility**, lang
 | `invoice_generated` | 1 name, 2 date, 3 type (OP/IP), 4 total, 5 payment mode, 6 patient ID | Dear {{1}}, your invoice dated {{2}} ({{3}}) has been generated. Total amount: Rs.{{4}}. Payment mode: {{5}}. Patient ID: {{6}}. For any queries, please contact Tatva Ayurved. |
 | `appointment_confirmation` | 1 name, 2 type, 3 date, 4 time, 5 doctor | Dear {{1}}, your {{2}} at Tatva Ayurved is scheduled on {{3}} at {{4}} with {{5}}. Please arrive 10 minutes early. |
 | `doctor_appointment_notice` | 1 doctor, 2 patient, 3 MRD no., 4 type, 5 date, 6 time, 7 notes | Hello {{1}}, an appointment is scheduled. Patient: {{2}} ({{3}}). Type: {{4}}. Date: {{5}} at {{6}}. Notes: {{7}}. Please check the schedule for details. |
+
+| `invoice_copy` | header = PDF document; 1 name, 2 invoice no., 3 date, 4 total | Dear {{1}}, please find attached your invoice {{2}} dated {{3}} from Tatva Ayurved. Total amount: Rs.{{4}}. For any queries, please contact Tatva Ayurved. |
 
 `welcome_patient` was rejected (Meta classed it as Marketing) — it is unused.
 
@@ -140,7 +143,17 @@ WhatsApp Manager → **Overview → Resources → Contact support**. Quote the p
 
 ---
 
-## 7. Known limits / possible future work
+## 7. Sending an invoice copy (PDF)
+
+On a **saved** invoice (Invoices list, the View Invoice window, or the invoice window after *Save & Print*) the WhatsApp dialog offers **Attach the invoice PDF** (ticked by default). Sending then:
+1. `src/lib/invoicePdf.js` renders the invoice in the browser exactly as it prints (A4) and turns it into a PDF (html2canvas + jsPDF, loaded on demand; long invoices become multi-page).
+2. `api/send-whatsapp-document.js` (login-protected) uploads that PDF straight to Meta's media endpoint — there is **no public link** to the invoice; Meta keeps the file 30 days — and sends the `invoice_copy` template with the PDF as its header.
+
+Requires the **`invoice_copy`** template (Utility, English, header type **Document**, a sample PDF is needed when creating it) to be **Approved**, and `VITE_WHATSAPP_INVOICE_PDF_ENABLED=true`. Unticking the box sends the normal `invoice_generated` text message instead. On an unsaved invoice the option is hidden with a hint to save first. If the send fails, the response includes the stage (`upload` or `send`) and, for a send failure, the uploaded `mediaId`, which shows that the upload itself worked.
+
+---
+
+## 8. Known limits / possible future work
 - **No delivery reports.** Receiving statuses and replies needs a webhook, and Meta only sends real data to a **published (Live)** developer app.
 - **No scheduled reminders** (e.g. day-before appointment reminders) — would need a scheduled job and one more approved template.
 - **Consent** is enforced only on the registration welcome.

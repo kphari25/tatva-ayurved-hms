@@ -9,7 +9,8 @@ import MedicineSaleModal from './MedicineSaleModal';
 import { previewIframeStyle } from '../lib/printPreviewSize';
 import { formatDateOnly } from '../lib/formatDate';
 import { buildInvoicePrintHTML } from '../lib/invoicePrint';
-import { invoiceMessage, invoiceTemplate } from '../lib/whatsapp';
+import { invoiceMessage, invoiceTemplate, invoiceCopyTemplate } from '../lib/whatsapp';
+import { buildInvoicePdfBase64, invoicePdfFilename } from '../lib/invoicePdf';
 import WhatsAppSendDialog from './WhatsAppSendDialog';
 
 const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
@@ -235,6 +236,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
       return;
     }
     const data = {
+      invoice_number: invoice.invoice_number || '',
       invoice_date: invoice.invoice_date || invoice.created_at,
       invoice_type: invoice.invoice_type,
       total_amount: invoice.total_amount,
@@ -245,6 +247,12 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
       phone: invoice.patient_phone,
       template: invoiceTemplate(invoice.patient_name, data),
       chatMessage: invoiceMessage(invoice.patient_name, data),
+      // "Attach the invoice PDF" option (shown once the invoice_copy template is live)
+      invoiceCopy: {
+        template: invoiceCopyTemplate(invoice.patient_name, data),
+        buildPdf: () => buildInvoicePdfBase64(invoice),
+        filename: invoicePdfFilename(invoice),
+      },
     });
   };
 
@@ -836,6 +844,7 @@ const InvoicesManagement = ({ initialPatientId, onInitialPatientHandled }) => {
           phone={waDialog.phone}
           template={waDialog.template}
           chatMessage={waDialog.chatMessage}
+          invoiceCopy={waDialog.invoiceCopy}
           onClose={() => setWaDialog(null)}
         />
       )}
