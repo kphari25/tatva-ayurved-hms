@@ -37,6 +37,19 @@ const toLocalDate = (d) => {
 
 const dateStr = (d) => toLocalDate(d).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
+// Appointment times are stored as 24-hour "HH:MM" (17:30). Patients read 12-hour
+// times with AM/PM ("5:30 PM"); anything already carrying AM/PM, or that isn't
+// an HH:MM time, is passed through unchanged.
+const timeStr = (t) => {
+  const raw = String(t || '').trim();
+  if (/[ap]\.?m\.?/i.test(raw)) return raw;
+  const m = /^(\d{1,2}):(\d{2})/.exec(raw);
+  if (!m) return raw;
+  const h24 = Number(m[1]);
+  if (h24 > 23 || Number(m[2]) > 59) return raw;
+  return `${h24 % 12 || 12}:${m[2]} ${h24 >= 12 ? 'PM' : 'AM'}`;
+};
+
 // ---- Approved templates ----------------------------------------------------
 // Each builder returns { name, params } in the exact variable order of the
 // template approved in WhatsApp Manager; TEMPLATE_BODIES holds the approved
@@ -82,12 +95,12 @@ export const invoiceCopyTemplate = (patientName, d) => ({
 
 export const appointmentTemplate = (patientName, d) => ({
   name: 'appointment_confirmation',
-  params: [patientName, d.appointmentType, dateStr(d.date), d.time, d.doctorName],
+  params: [patientName, d.appointmentType, dateStr(d.date), timeStr(d.time), d.doctorName],
 });
 
 export const doctorAppointmentTemplate = (doctorName, d) => ({
   name: 'doctor_appointment_notice',
-  params: [doctorName, d.patientName, d.mrdNumber || '-', d.appointmentType, dateStr(d.date), d.time, d.notes || '-'],
+  params: [doctorName, d.patientName, d.mrdNumber || '-', d.appointmentType, dateStr(d.date), timeStr(d.time), d.notes || '-'],
 });
 
 export const sendTemplate = (phone, tpl) => sendWhatsAppTemplate(phone, tpl.name, tpl.params);
@@ -159,10 +172,10 @@ export const invoiceMessage = (patientName, d) =>
   `Dear ${patientName}, Your invoice at Tatva Ayurved dated ${toLocalDate(d.invoice_date).toLocaleDateString('en-IN')} (${d.invoice_type}) is generated. Total Amount: Rs.${Number(d.total_amount).toFixed(2)}. Payment Mode: ${d.payment_mode}. Patient ID: ${d.patient_number}. Thank you! - Tatva Ayurved`;
 
 export const appointmentMessage = (patientName, d) =>
-  `Dear ${patientName}, Your ${d.appointmentType || 'appointment'} at Tatva Ayurved is scheduled on ${dateStr(d.date)} at ${d.time}${d.doctorName ? ` with ${d.doctorName}` : ''}. Please arrive 10 mins early. - Tatva Ayurved`;
+  `Dear ${patientName}, Your ${d.appointmentType || 'appointment'} at Tatva Ayurved is scheduled on ${dateStr(d.date)} at ${timeStr(d.time)}${d.doctorName ? ` with ${d.doctorName}` : ''}. Please arrive 10 mins early. - Tatva Ayurved`;
 
 export const doctorAppointmentMessage = (doctorName, d) =>
-  `${doctorName}, Appointment scheduled: Patient ${d.patientName}${d.mrdNumber ? ` (${d.mrdNumber})` : ''} for ${d.appointmentType} on ${dateStr(d.date)} at ${d.time}.${d.notes ? ` Notes: ${d.notes}` : ''} - Tatva Ayurved`;
+  `${doctorName}, Appointment scheduled: Patient ${d.patientName}${d.mrdNumber ? ` (${d.mrdNumber})` : ''} for ${d.appointmentType} on ${dateStr(d.date)} at ${timeStr(d.time)}.${d.notes ? ` Notes: ${d.notes}` : ''} - Tatva Ayurved`;
 
 export const sendDoctorAppointmentWhatsApp = (phone, doctorName, d) => sendTemplate(phone, doctorAppointmentTemplate(doctorName, d));
 
