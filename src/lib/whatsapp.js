@@ -30,7 +30,7 @@ export const sendWhatsAppTemplate = (phone, name, params = []) =>
 
 // A bare YYYY-MM-DD string parses as UTC midnight, which shows as the previous
 // day anywhere west of UTC — read it as a local date instead.
-const toLocalDate = (d) => {
+export const toLocalDate = (d) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d));
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(d);
 };

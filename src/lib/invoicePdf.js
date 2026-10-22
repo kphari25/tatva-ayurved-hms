@@ -1,4 +1,5 @@
 import { buildInvoicePrintHTML } from './invoicePrint';
+import { buildMedicineSalePrintHTML } from './medicineSalePrint';
 
 // Renders an invoice, laid out exactly as it prints (A4 portrait), into a PDF in
 // the browser and returns it as base64 (no data: prefix). html2canvas and jsPDF
@@ -10,7 +11,7 @@ const waitForImages = (doc) => Promise.all(
   [...doc.images].map(img => (img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; })))
 );
 
-export const buildInvoicePdfBase64 = async (invoiceData) => {
+const buildPdfBase64FromHtml = async (html) => {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
 
   const iframe = document.createElement('iframe');
@@ -19,7 +20,7 @@ export const buildInvoicePdfBase64 = async (invoiceData) => {
   try {
     await new Promise((resolve) => {
       iframe.onload = resolve;
-      iframe.srcdoc = buildInvoicePrintHTML(invoiceData, 'A4', 'portrait');
+      iframe.srcdoc = html;
     });
     const doc = iframe.contentDocument;
     await waitForImages(doc);
@@ -56,6 +57,14 @@ export const buildInvoicePdfBase64 = async (invoiceData) => {
     iframe.remove();
   }
 };
+
+export const buildInvoicePdfBase64 = (invoiceData) => buildPdfBase64FromHtml(buildInvoicePrintHTML(invoiceData, 'A4', 'portrait'));
+
+// A Medicine Sale bill, laid out as it prints (A4 portrait).
+export const buildMedicineSalePdfBase64 = (sale) => buildPdfBase64FromHtml(buildMedicineSalePrintHTML(sale, 'A4', 'portrait'));
+
+export const medicineSalePdfFilename = (sale) =>
+  `Bill-${String(sale?.bill_number || sale?.customer_name || 'copy').replace(/[^A-Za-z0-9-]+/g, '_')}.pdf`;
 
 export const invoicePdfFilename = (invoice) =>
   `Invoice-${String(invoice?.invoice_number || invoice?.patient_name || 'copy').replace(/[^A-Za-z0-9-]+/g, '_')}.pdf`;

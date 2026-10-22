@@ -18,7 +18,7 @@ const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent, hea
   const [error, setError] = useState('');
   const canAttach = invoicePdfEnabled && !!invoiceCopy;
   const [attachPdf, setAttachPdf] = useState(true);
-  const withPdf = canAttach && attachPdf;
+  const withPdf = canAttach && (invoiceCopy.required || attachPdf);
   const number = toWhatsAppNumber(phone);
   const preview = withPdf
     ? previewTemplate(invoiceCopy.template)
@@ -79,7 +79,7 @@ const WhatsAppSendDialog = ({ phone, template, chatMessage, onClose, onSent, hea
                 {withPdf && <div className="mb-2 inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded text-xs font-medium text-gray-600">📎 {invoiceCopy.filename}</div>}
                 <div>{preview}</div>
               </div>
-              {canAttach && (
+              {canAttach && !invoiceCopy.required && (
                 <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"

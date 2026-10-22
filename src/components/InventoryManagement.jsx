@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, CheckCircle, EyeOff, ChevronDown, Printer, X } from 'lucide-react';
+import { Package, Upload, Plus, Search, Edit, Trash2, Download, AlertCircle, CheckCircle, EyeOff, ChevronDown, Printer, X, MessageCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch,
@@ -8,6 +8,8 @@ import {
 import { db } from '../lib/firebase';
 import AddMedicine from './AddMedicine';
 import { buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
+import { medicineBillDialog } from '../lib/medicineBillWhatsApp';
+import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { hasPack, liquidStockLabel, totalMl } from '../lib/liquidUsage';
 import { previewIframeStyle } from '../lib/printPreviewSize';
 import { GST_CATEGORIES, rateForGSTCategory, splitGST } from '../lib/gstCategories';
@@ -78,6 +80,7 @@ const InventoryManagement = () => {
   // that one fetch reused across every expanded row is far cheaper than
   // loading it on every page visit.
   const [salesHistory, setSalesHistory] = useState(null); // null = not loaded yet
+  const [waDialog, setWaDialog] = useState(null); // confirm-before-send WhatsApp dialog for a saved bill
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
   // Internal ml-usage log per liquid item, loaded when its row is expanded.
   const [usageByItem, setUsageByItem] = useState({});
@@ -1328,12 +1331,22 @@ const InventoryManagement = () => {
                   ))}
                 </div>
               </div>
-              <button
-                onClick={handlePrintInvoicePreview}
-                className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
-              >
-                <Printer className="w-4 h-4" /> Print
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setWaDialog(medicineBillDialog(invoicePreview.sale))}
+                  disabled={!String(invoicePreview.sale.phone || '').trim()}
+                  title={String(invoicePreview.sale.phone || '').trim() ? 'Send this bill to the customer on WhatsApp' : 'No customer phone number on this bill'}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <MessageCircle className="w-4 h-4" /> WhatsApp
+                </button>
+                <button
+                  onClick={handlePrintInvoicePreview}
+                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+                >
+                  <Printer className="w-4 h-4" /> Print
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-auto bg-gray-200 p-6 flex justify-center">
@@ -1347,6 +1360,17 @@ const InventoryManagement = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {waDialog && (
+        <WhatsAppSendDialog
+          heading="Send bill on WhatsApp"
+          phone={waDialog.phone}
+          template={waDialog.template}
+          chatMessage={waDialog.chatMessage}
+          invoiceCopy={waDialog.invoiceCopy}
+          onClose={() => setWaDialog(null)}
+        />
       )}
     </div>
   );

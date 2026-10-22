@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle } from 'lucide-react';
+import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle, MessageCircle } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { basePriceFromMRP, gstPercentForItem, batchesForItem, defaultBatchForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 import { todayLocalDateStr } from '../lib/formatDate';
 import { previewIframeStyle } from '../lib/printPreviewSize';
+import { medicineBillDialog } from '../lib/medicineBillWhatsApp';
+import WhatsAppSendDialog from './WhatsAppSendDialog';
 
 const emptyRow = () => ({ name: '', item_code: '', batch_number: '', quantity: 1, rate: 0, gst_percentage: 0, stock: null, inventory_id: '', id: Date.now() + Math.random() });
 
@@ -53,6 +55,9 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   // contentWindow.print(), sidesteps both — it's never a separate popup, so
   // there's nothing for a browser to fail to load or a pop-up blocker to block.
   const [printPreviewData, setPrintPreviewData] = useState(null);
+  // Confirm-before-send WhatsApp dialog for a saved bill; closeAfter closes the whole
+  // form once it is dismissed (the "Save & WhatsApp" path, which has no print preview).
+  const [waDialog, setWaDialog] = useState(null);
   const [printPageSize, setPrintPageSize] = useState('A4');
   const [printOrientation, setPrintOrientation] = useState('portrait');
   const [closeOnPreviewDismiss, setCloseOnPreviewDismiss] = useState(false);
@@ -350,9 +355,14 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
     if (closeOnPreviewDismiss) onClose();
   };
 
-  const handleSave = async () => {
+  // mode: 'print' (Save & Print) or 'whatsapp' (Save & WhatsApp — saves, then offers to send the bill)
+  const handleSave = async (mode = 'print') => {
     const items = validRows();
     if (items.length === 0) { alert('Please add at least one medicine.'); return; }
+    if (mode === 'whatsapp' && !String(formData.phone || '').trim()) {
+      alert("Enter the customer's phone number to send the bill on WhatsApp.");
+      return;
+    }
     try {
       setSaving(true);
       const billNumber = await getNextBillNumber();
@@ -401,7 +411,8 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
       }
 
       if (onSave) onSave(saleData);
-      handlePrint(saleData);
+      if (mode === 'whatsapp') setWaDialog({ ...medicineBillDialog(saleData), closeAfter: true });
+      else handlePrint(saleData);
     } catch (e) {
       console.error('Error saving medicine sale:', e);
       alert('Failed to save: ' + e.message);
@@ -832,7 +843,15 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
               <Printer className="w-4 h-4" /> Preview & Print
             </button>
             <button
-              onClick={handleSave}
+              onClick={() => handleSave('whatsapp')}
+              disabled={saving}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm disabled:opacity-50"
+              title="Save the bill, then send it to the customer on WhatsApp"
+            >
+              <MessageCircle className="w-4 h-4" /> Save & WhatsApp
+            </button>
+            <button
+              onClick={() => handleSave('print')}
               disabled={saving}
               className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2 text-sm disabled:opacity-50"
             >
@@ -862,7 +881,16 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
             </button>
           </div>
 
-          <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end bg-gray-50">
+          <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end gap-2 bg-gray-50">
+            {/* Only a saved bill (opened via Save & Print) can be sent — a plain preview has no real bill number yet. */}
+            <button
+              onClick={() => setWaDialog(medicineBillDialog(printPreviewData))}
+              disabled={!closeOnPreviewDismiss || !String(printPreviewData.phone || '').trim()}
+              title={!closeOnPreviewDismiss ? 'Save the bill first (Save & Print) to send it on WhatsApp' : !String(printPreviewData.phone || '').trim() ? 'No customer phone number on this bill' : 'Send this bill to the customer on WhatsApp'}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <MessageCircle className="w-4 h-4" /> WhatsApp
+            </button>
             <button
               onClick={handlePrintFromPreview}
               className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
@@ -888,6 +916,17 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
           </div>
         </div>
       </div>
+    )}
+
+    {waDialog && (
+      <WhatsAppSendDialog
+        heading="Send bill on WhatsApp"
+        phone={waDialog.phone}
+        template={waDialog.template}
+        chatMessage={waDialog.chatMessage}
+        invoiceCopy={waDialog.invoiceCopy}
+        onClose={() => { const closeAfter = waDialog.closeAfter; setWaDialog(null); if (closeAfter) onClose(); }}
+      />
     )}
     </>
   );
