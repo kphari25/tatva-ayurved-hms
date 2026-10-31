@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Pill, Package } from 'lucide-react';
 import MedicinesSoldDashboard from './MedicinesSoldDashboard';
-import InventoryAnalytics from './InventoryAnalytics';
+import InventoryHealthDashboard from './InventoryHealthDashboard';
 
-// Analytics hub: what was sold (new) and the existing inventory view.
+// Analytics hub: what was sold, and the health of the stock.
 const TABS = [
   { id: 'sold', label: 'Medicines Sold', icon: Pill },
-  { id: 'inventory', label: 'Inventory', icon: Package },
+  { id: 'inventory', label: 'Inventory Health', icon: Package },
 ];
 
 const AnalyticsPage = () => {
@@ -32,7 +32,7 @@ const AnalyticsPage = () => {
           ))}
         </div>
       </div>
-      {tab === 'sold' ? <MedicinesSoldDashboard /> : <InventoryAnalytics />}
+      {tab === 'sold' ? <MedicinesSoldDashboard /> : <InventoryHealthDashboard />}
     </div>
   );
 };
