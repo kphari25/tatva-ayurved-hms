@@ -132,7 +132,7 @@ const ViewPurchaseRequestModal = ({ request, onClose }) => {
           )}
 
           <div className="flex justify-end mt-6">
-            <button onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
+            <button onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700">Close</button>
           </div>
         </div>
       </div>
