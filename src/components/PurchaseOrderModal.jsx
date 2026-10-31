@@ -120,9 +120,9 @@ const PurchaseOrderModal = ({ request, onClose, onSave }) => {
         vendor: {
           id: selectedVendor.id,
           name: selectedVendor.name,
-          contact: selectedVendor.contact,
-          email: selectedVendor.email,
-          gst_number: selectedVendor.gst_number
+          contact: selectedVendor.contact || '',
+          email: selectedVendor.email || '',
+          gst_number: selectedVendor.gst_number || ''
         },
         po_date: new Date().toISOString().split('T')[0],
         expected_delivery: expectedDelivery,

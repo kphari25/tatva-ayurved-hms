@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  ShoppingCart, CalendarClock, Download, Search, Save, CheckCircle, AlertTriangle, Info, Ban, IndianRupee, Hourglass,
+  ShoppingCart, CalendarClock, Download, Search, Save, CheckCircle, AlertTriangle, Info, Ban, IndianRupee, Hourglass, FileText,
 } from 'lucide-react';
-import { collection, doc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, doc, onSnapshot, writeBatch, deleteDoc } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../lib/firebase';
 import { localDateString, getCurrentUser, isAdminUser } from '../lib/expenses';
 import { flattenLines } from '../lib/salesAnalytics';
 import { buildMedicines, suggestReorder, stockRecords, EXPIRY_BUCKETS } from '../lib/inventoryHealth';
+import { canApprovePurchases, createRequestFromReorder } from '../lib/purchasing';
+import PurchaseOrderModal from './PurchaseOrderModal';
 
 const n0 = (v) => (Number(v) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const n2 = (v) => (Number(v) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -67,6 +69,68 @@ const ReorderView = ({ medicines, coverDays, setCoverDays, targetDays, setTarget
     return next;
   });
 
+  // ── Hand-off to Purchase Management ──
+  const approver = canApprovePurchases();
+  const [creating, setCreating] = useState(false);
+  const [poRequest, setPoRequest] = useState(null); // request being turned into a PO
+  const [result, setResult] = useState(null); // { kind: 'request' | 'po', ... }
+  const [createError, setCreateError] = useState('');
+  const hasQty = chosen.some(r => Number(r.order) > 0);
+
+  const markDone = (usedRows) => setUnchecked(prev => {
+    const next = new Set(prev);
+    usedRows.forEach(r => next.add(r.key)); // untick what was just ordered so it isn't sent twice
+    return next;
+  });
+
+  const sendRequest = async () => {
+    setCreateError('');
+    setResult(null);
+    setCreating(true);
+    try {
+      const used = chosen.filter(r => Number(r.order) > 0);
+      const req = await createRequestFromReorder(used, { preApproved: false });
+      markDone(used);
+      setResult({ kind: 'request', id: req.request_id, count: req.medicines.length, total: req.total_estimated });
+    } catch (e) {
+      setCreateError(e.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // Approvers go straight on to a Purchase Order: the request is recorded as
+  // approved by them, then Purchase Management's own PO screen opens (vendor,
+  // GST, delivery). If they back out of that screen, the request is removed.
+  const startPO = async () => {
+    setCreateError('');
+    setResult(null);
+    setCreating(true);
+    try {
+      const used = chosen.filter(r => Number(r.order) > 0);
+      const req = await createRequestFromReorder(used, { preApproved: true });
+      setPoRequest({ request: req, used });
+    } catch (e) {
+      setCreateError(e.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const closePO = async () => {
+    const pending = poRequest;
+    setPoRequest(null);
+    if (!pending) return;
+    try { await deleteDoc(doc(db, 'purchase_requests', pending.request.id)); } catch (e) { console.error('Could not remove the unused request:', e); }
+  };
+
+  const poCreated = async () => {
+    const pending = poRequest;
+    setPoRequest(null);
+    markDone(pending.used);
+    setResult({ kind: 'po', id: pending.request.request_id, count: pending.request.medicines.length, total: pending.request.total_estimated });
+  };
+
   const exportList = () => {
     const sheet = XLSX.utils.json_to_sheet(chosen.map(r => ({
       Priority: PRIORITY[r.priority].label, Medicine: r.name, Code: r.code, 'In stock': r.stock,
@@ -96,10 +160,40 @@ const ReorderView = ({ medicines, coverDays, setCoverDays, targetDays, setTarget
             <input type="number" min="1" value={targetDays} onChange={e => setTargetDays(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900 dark:text-white" /> days
           </label>
         </div>
-        <button onClick={exportList} disabled={chosen.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
-          <Download className="w-4 h-4" /> Export selected
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={exportList} disabled={chosen.length === 0} className="px-4 py-2 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2">
+            <Download className="w-4 h-4" /> Export
+          </button>
+          <button onClick={sendRequest} disabled={creating || !hasQty} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2" title="Sends the selected medicines to Purchase Management for approval">
+            <FileText className="w-4 h-4" /> {creating ? 'Working...' : 'Create purchase request'}
+          </button>
+          {approver && (
+            <button onClick={startPO} disabled={creating || !hasQty} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2" title="Approves the request and opens the Purchase Order screen">
+              <ShoppingCart className="w-4 h-4" /> Create purchase order
+            </button>
+          )}
+        </div>
       </div>
+
+      {createError && (
+        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{createError}</div>
+      )}
+      {result && (
+        <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg flex flex-wrap items-center justify-between gap-3 text-sm text-green-900">
+          <span className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+            {result.kind === 'po'
+              ? <>Purchase order created from request <strong>{result.id}</strong> ({result.count} medicine{result.count === 1 ? '' : 's'}, about {rupees(result.total)}). It is in Purchase Management → Purchase Orders.</>
+              : <>Purchase request <strong>{result.id}</strong> created ({result.count} medicine{result.count === 1 ? '' : 's'}, about {rupees(result.total)}). It is waiting for approval in Purchase Management → Purchase Requests.</>}
+          </span>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'purchase' }))}
+            className="px-3 py-1.5 bg-green-700 text-white rounded-lg hover:bg-green-800"
+          >
+            Open Purchase Management
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
         <div className="overflow-x-auto">
@@ -161,10 +255,14 @@ const ReorderView = ({ medicines, coverDays, setCoverDays, targetDays, setTarget
           </table>
         </div>
         <p className="text-xs text-gray-400 mt-4">
-          The suggested quantity covers {targetDays} days of sales at the recent selling rate, less what is already in stock — change any quantity before exporting.
+          The suggested quantity covers {targetDays} days of sales at the recent selling rate, less what is already in stock — change any quantity before you export or send it to purchasing.
           Based on medicine bills only; medicines used for IP patients are not counted, so check those before ordering.
         </p>
       </div>
+
+      {poRequest && (
+        <PurchaseOrderModal request={poRequest.request} onClose={closePO} onSave={poCreated} />
+      )}
     </div>
   );
 };

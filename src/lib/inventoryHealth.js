@@ -209,6 +209,7 @@ export const suggestReorder = (medicines, targetDays = 30) => medicines
     const suggested = Math.max(1, Math.ceil(velocity * targetDays - have));
     const unitCost = latestCost(m.records);
     const priority = m.flags.outSelling ? 'urgent' : (m.daysLeft !== null && m.daysLeft < 7) ? 'high' : 'normal';
-    return { key: m.key, name: m.name, code: m.codes[0] || '', stock: m.stock, sold30: m.sold30, sold90: m.sold90, daysLeft: m.daysLeft, lastSold: m.lastSold, velocity, suggested, unitCost, priority };
+    const recordId = (m.records.find(r => r.item_name === m.name) || m.records[0])?.id || '';
+    return { key: m.key, recordId, reorderLevel: m.reorderLevel, name: m.name, code: m.codes[0] || '', stock: m.stock, sold30: m.sold30, sold90: m.sold90, daysLeft: m.daysLeft, lastSold: m.lastSold, velocity, suggested, unitCost, priority };
   })
   .sort((a, b) => ({ urgent: 0, high: 1, normal: 2 }[a.priority] - { urgent: 0, high: 1, normal: 2 }[b.priority]) || ((a.daysLeft ?? -1) - (b.daysLeft ?? -1)));
