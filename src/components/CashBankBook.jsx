@@ -18,7 +18,7 @@ const fmtDate = (s) => {
   return isNaN(d) ? s : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white';
+const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900';
 
 // ── Opening balance (admin) ─────────────────────────────────────────────────
 const OpeningModal = ({ settings, onClose }) => {
@@ -307,11 +307,11 @@ const CashBankBook = () => {
             <div className="flex flex-wrap items-end gap-3 mb-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
-                <input type="date" value={from} onChange={e => setFromPick(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white" />
+                <input type="date" value={from} onChange={e => setFromPick(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
-                <input type="date" value={to} onChange={e => setToPick(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white" />
+                <input type="date" value={to} onChange={e => setToPick(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900" />
               </div>
               <span className="text-xs text-gray-500 pb-2">Book starts {fmtDate(openingDate)}</span>
             </div>

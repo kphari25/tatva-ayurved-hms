@@ -176,7 +176,7 @@ const UnsoldList = ({ items, range, onClose }) => {
               value={q}
               onChange={e => setQ(e.target.value)}
               placeholder="Search medicine or code"
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white"
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900"
             />
           </div>
           <table className="w-full text-sm">
@@ -392,7 +392,7 @@ const MedicinesSoldDashboard = () => {
           value={anchor}
           max={today}
           onChange={e => e.target.value && setAnchor(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white"
+          className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
         />
         <button onClick={() => setAnchor(today)} className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50">Today</button>
         <div className="text-lg font-semibold ml-1">{range.label}</div>
@@ -495,7 +495,7 @@ const MedicinesSoldDashboard = () => {
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Search medicine or code"
-                    className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white"
+                    className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900"
                   />
                 </div>
               </div>

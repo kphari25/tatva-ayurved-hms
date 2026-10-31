@@ -359,10 +359,10 @@ const InventoryHealthDashboard = () => {
         <h2 className="text-lg font-bold">Needs attention</h2>
         <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
           <label className="inline-flex items-center gap-2">Low stock below
-            <input type="number" min="0" value={lowLimit} onChange={e => setLowLimit(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900 dark:text-white" />
+            <input type="number" min="0" value={lowLimit} onChange={e => setLowLimit(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900" />
           </label>
           <label className="inline-flex items-center gap-2">Reorder when under
-            <input type="number" min="0" value={coverDays} onChange={e => setCoverDays(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900 dark:text-white" /> days left
+            <input type="number" min="0" value={coverDays} onChange={e => setCoverDays(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900" /> days left
           </label>
         </div>
       </div>
@@ -465,7 +465,7 @@ const InventoryHealthDashboard = () => {
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input value={search} onChange={e => { setSearch(e.target.value); setLimit(100); }} placeholder="Search medicine or code" className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white" />
+              <input value={search} onChange={e => { setSearch(e.target.value); setLimit(100); }} placeholder="Search medicine or code" className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900" />
             </div>
             <button onClick={exportExcel} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"><Download className="w-4 h-4" /> Export</button>
           </div>

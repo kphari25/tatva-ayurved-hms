@@ -154,10 +154,10 @@ const ReorderView = ({ medicines, coverDays, setCoverDays, targetDays, setTarget
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
           <label className="inline-flex items-center gap-2">List a medicine when it has under
-            <input type="number" min="1" value={coverDays} onChange={e => setCoverDays(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900 dark:text-white" /> days of stock
+            <input type="number" min="1" value={coverDays} onChange={e => setCoverDays(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900" /> days of stock
           </label>
           <label className="inline-flex items-center gap-2">Order enough for
-            <input type="number" min="1" value={targetDays} onChange={e => setTargetDays(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900 dark:text-white" /> days
+            <input type="number" min="1" value={targetDays} onChange={e => setTargetDays(e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-gray-900" /> days
           </label>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -241,7 +241,7 @@ const ReorderView = ({ medicines, coverDays, setCoverDays, targetDays, setTarget
                       min="0"
                       value={r.order}
                       onChange={e => setQty(q => ({ ...q, [r.key]: e.target.value }))}
-                      className="w-20 px-2 py-1 border border-gray-300 rounded-lg text-right text-gray-900 dark:text-white"
+                      className="w-20 px-2 py-1 border border-gray-300 rounded-lg text-right text-gray-900"
                     />
                   </td>
                   <td className="py-2 pr-3 text-right">{r.unitCost ? rupees(r.unitCost) : '—'}</td>
@@ -412,7 +412,7 @@ const ExpiryView = ({ inventory, today, canEdit }) => {
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input value={search} onChange={e => { setSearch(e.target.value); setLimit(100); }} placeholder="Search medicine, code or batch" className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900 dark:text-white" />
+              <input value={search} onChange={e => { setSearch(e.target.value); setLimit(100); }} placeholder="Search medicine, code or batch" className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900" />
             </div>
             {canEdit && (
               <button onClick={save} disabled={saving || dirtyIds.length === 0} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2">
@@ -454,7 +454,7 @@ const ExpiryView = ({ inventory, today, canEdit }) => {
                           type="date"
                           value={shown}
                           onChange={e => setDate(r.id, e.target.value, r.expiry)}
-                          className="px-2 py-1 border border-gray-300 rounded-lg text-gray-900 dark:text-white"
+                          className="px-2 py-1 border border-gray-300 rounded-lg text-gray-900"
                         />
                       ) : (r.expiry ? fmtDay(r.expiry) : <span className="text-gray-400">not entered</span>)}
                     </td>
