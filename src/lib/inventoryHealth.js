@@ -23,7 +23,7 @@ const toDay = (v) => {
 
 // Earliest expiry among the batches that still hold stock (falls back to the
 // record's own expiry date).
-const recordExpiry = (rec) => {
+export const recordExpiry = (rec) => {
   const fromBatches = (rec.batches || [])
     .filter(b => num(b.quantity) > 0)
     .map(b => toDay(b.expiry_date))
@@ -157,3 +157,58 @@ export const monthlyTrend = (sales, expenses, today, count = 6) => {
   months.forEach(m => { m.sales = round2(m.sales); m.purchases = round2(m.purchases); });
   return months;
 };
+
+// ── Reorder & expiry ────────────────────────────────────────────────────────
+
+export const EXPIRY_BUCKETS = [
+  { id: 'expired', label: 'Expired', test: d => d < 0 },
+  { id: 'd30', label: 'Within 30 days', test: d => d >= 0 && d <= 30 },
+  { id: 'd60', label: '31–60 days', test: d => d > 30 && d <= 60 },
+  { id: 'd90', label: '61–90 days', test: d => d > 60 && d <= 90 },
+  { id: 'd180', label: '91–180 days', test: d => d > 90 && d <= 180 },
+  { id: 'later', label: 'Later', test: d => d > 180 },
+];
+
+export const expiryBucket = (days) => (EXPIRY_BUCKETS.find(b => b.test(days)) || { id: 'later' }).id;
+
+// One row per stock record that still holds stock, with its expiry (if entered).
+export const stockRecords = (inventory, today) => inventory
+  .filter(r => num(r.stock_quantity) > 0)
+  .map(r => {
+    const stock = num(r.stock_quantity);
+    const expiry = recordExpiry(r);
+    const days = expiry ? daysBetween(today, expiry) : null;
+    return {
+      id: r.id,
+      name: r.item_name || r.item_code || 'Unnamed',
+      code: r.item_code || '',
+      batch: r.batch_number || r.batches?.[0]?.batch_number || '',
+      stock,
+      costValue: round2(stock * num(r.purchase_price ?? r.purchase_rate)),
+      expiry,
+      days,
+      bucket: expiry ? expiryBucket(days) : 'none',
+      record: r,
+    };
+  });
+
+const latestCost = (records) => {
+  const sorted = [...records].sort((a, b) => String(b.purchase_date || b.last_purchase_date || '').localeCompare(String(a.purchase_date || a.last_purchase_date || '')));
+  const hit = sorted.find(r => num(r.purchase_price ?? r.purchase_rate) > 0);
+  return hit ? num(hit.purchase_price ?? hit.purchase_rate) : 0;
+};
+
+// Medicines worth reordering: running short against their sales, already out but still selling,
+// or at their own reorder level. The suggested quantity covers `targetDays` of sales
+// at the recent selling rate, less what is already in stock.
+export const suggestReorder = (medicines, targetDays = 30) => medicines
+  .filter(m => m.flags.outSelling || m.flags.reorder || (m.reorderLevel > 0 && m.flags.low))
+  .map(m => {
+    const velocity = m.sold30 > 0 ? m.sold30 / 30 : m.sold90 > 0 ? m.sold90 / 90 : 0;
+    const have = Math.max(0, m.stock);
+    const suggested = Math.max(1, Math.ceil(velocity * targetDays - have));
+    const unitCost = latestCost(m.records);
+    const priority = m.flags.outSelling ? 'urgent' : (m.daysLeft !== null && m.daysLeft < 7) ? 'high' : 'normal';
+    return { key: m.key, name: m.name, code: m.codes[0] || '', stock: m.stock, sold30: m.sold30, sold90: m.sold90, daysLeft: m.daysLeft, lastSold: m.lastSold, velocity, suggested, unitCost, priority };
+  })
+  .sort((a, b) => ({ urgent: 0, high: 1, normal: 2 }[a.priority] - { urgent: 0, high: 1, normal: 2 }[b.priority]) || ((a.daysLeft ?? -1) - (b.daysLeft ?? -1)));

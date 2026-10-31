@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Pill, Package } from 'lucide-react';
+import { Pill, Package, ShoppingCart } from 'lucide-react';
 import MedicinesSoldDashboard from './MedicinesSoldDashboard';
 import InventoryHealthDashboard from './InventoryHealthDashboard';
+import ReorderExpiryDashboard from './ReorderExpiryDashboard';
 
 // Analytics hub: what was sold, and the health of the stock.
 const TABS = [
   { id: 'sold', label: 'Medicines Sold', icon: Pill },
   { id: 'inventory', label: 'Inventory Health', icon: Package },
+  { id: 'planning', label: 'Reorder & Expiry', icon: ShoppingCart },
 ];
 
 const AnalyticsPage = () => {
@@ -32,7 +34,9 @@ const AnalyticsPage = () => {
           ))}
         </div>
       </div>
-      {tab === 'sold' ? <MedicinesSoldDashboard /> : <InventoryHealthDashboard />}
+      {tab === 'sold' && <MedicinesSoldDashboard />}
+      {tab === 'inventory' && <InventoryHealthDashboard />}
+      {tab === 'planning' && <ReorderExpiryDashboard />}
     </div>
   );
 };
