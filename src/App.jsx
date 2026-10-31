@@ -23,7 +23,7 @@ import InventoryManagement from './components/InventoryManagement';
 import MessExpenseTracker from './components/MessExpenseTracker';
 import MessManagement from './components/MessManagement';
 import DietModule from './components/DietModule';
-import InventoryAnalytics from './components/InventoryAnalytics';
+import AnalyticsPage from './components/AnalyticsPage';
 import MedicineOrderingTable from './components/MedicineOrderingTable';
 import InvoicesManagement from './components/InvoicesManagement';
 import DischargeManagement from './components/DischargeManagement';
@@ -601,7 +601,7 @@ function App() {
         {currentView === 'mess-management' && <MessManagement />}
         {currentView === 'mess-expense' && <MessExpenseTracker />}
         {currentView === 'diet-module' && <DietModule />}
-        {currentView === 'analytics' && <InventoryAnalytics />}
+        {currentView === 'analytics' && <AnalyticsPage />}
         {currentView === 'reports' && <Reports />}
         {currentView === 'invoices' && (
           <InvoicesManagement
