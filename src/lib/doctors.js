@@ -1,5 +1,6 @@
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from './firebase';
+import { withDrPrefix } from './formatDoctorName';
 
 const DOCTOR_KEYWORDS = ['doctor', 'physician', 'consultant', 'vaidya', 'surgeon', 'rmo', 'medical'];
 
@@ -62,6 +63,8 @@ const fetchDoctorsList = async () => {
       id: u.id,
       name: u.name || '',
       designation: u.designation || u.department || '',
+      // The designation typed in User Management for this doctor (no department fallback)
+      explicitDesignation: (u.designation || '').trim(),
       qualification: u.qualification || '',
       registrationNumber: u.registrationNumber || '',
       phone: u.phone || '',
@@ -81,8 +84,23 @@ const fetchDoctorsList = async () => {
       byName.set(key, entry);
     }
   });
+  // A designation set in User Management is the one the clinic chose on purpose, so
+  // it wins over the HR record's (or the department fallback) for the same doctor.
+  userDoctors.forEach(u => {
+    if (!u.explicitDesignation) return;
+    const kept = byName.get(normalizeDocName(u.name));
+    if (kept) kept.designation = u.explicitDesignation;
+  });
 
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+};
+
+// "Dr. Name" plus the designation when the doctor has one ("Dr. Priya · Senior Consultant").
+export const doctorWithDesignation = (doctorsList, name, sep = ' · ') => {
+  const base = withDrPrefix(name);
+  if (!base) return '';
+  const info = findDoctorInfo(doctorsList || [], name);
+  return info?.designation ? `${base}${sep}${info.designation}` : base;
 };
 
 // Finds one doctor's info (for a print signature block) by name, tolerant

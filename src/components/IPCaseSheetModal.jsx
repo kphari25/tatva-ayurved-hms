@@ -396,7 +396,7 @@ const buildCaseSheetPrintHTML = (patient, form, dailyProgress, sectionId = 'all'
     <div class="info-row"><span class="info-label">IP No:</span> ${patient?.ip_number || ''}</div>
     <div class="info-row"><span class="info-label">Room No:</span> ${form.room_number}</div>
     <div class="info-row"><span class="info-label">Department:</span> ${form.department}</div>
-    <div class="info-row"><span class="info-label">Physician:</span> ${form.physician_name}</div>
+    <div class="info-row"><span class="info-label">Physician:</span> ${form.physician_name}${doctorInfo.designation ? ` (${doctorInfo.designation})` : ''}</div>
     <div class="info-row"><span class="info-label">Date of Admission:</span> ${fmtDate(form.admission_date)}${form.admission_time ? ` (${fmtTime12h(form.admission_time)})` : ''}</div>
     <div class="info-row"><span class="info-label">Date of Discharge:</span> ${fmtDate(form.discharge_date)}${form.discharge_time ? ` (${fmtTime12h(form.discharge_time)})` : ''}</div>
     <div class="info-row"><span class="info-label">Diagnosis:</span> ${form.admin_diagnosis}</div>
@@ -411,6 +411,7 @@ ${bodyHTML}
   <div class="sig-block">
     <div class="sig-line"></div>
     ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
+    ${doctorInfo.designation ? `<p class="reg">${doctorInfo.designation}</p>` : ''}
     ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
     ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
     <p style="font-size:10px;margin-top:2px;">Signature of Physician</p>
@@ -725,6 +726,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     const doctorInfo = matchedDoctor ? {
       name: form.physician_name.replace(/^Dr\.?\s*/i, ''),
       qualification: matchedDoctor.qualification || '',
+      designation: matchedDoctor.designation || '',
       registrationNumber: matchedDoctor.isDoctor ? (matchedDoctor.registrationNumber || '') : '',
     } : {};
     const html = buildCaseSheetPrintHTML(patient, form, dailyProgress, sectionId, doctorInfo);

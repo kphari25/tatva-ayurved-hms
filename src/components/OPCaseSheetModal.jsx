@@ -409,7 +409,7 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all',
     <div class="info-row"><span class="info-label">MRD No:</span> ${patient?.mrd_number || ''}</div>
     <div class="info-row"><span class="info-label">Phone:</span> ${patient?.phone || ''}</div>
     <div class="info-row"><span class="info-label">Department:</span> ${form.department}</div>
-    <div class="info-row"><span class="info-label">Physician:</span> ${form.physician}</div>
+    <div class="info-row"><span class="info-label">Physician:</span> ${form.physician}${doctorInfo.designation ? ` (${doctorInfo.designation})` : ''}</div>
     <div class="info-row"><span class="info-label">Date:</span> ${fmtDate(form.case_date)}</div>
     <div class="info-row"><span class="info-label">Time:</span> ${form.admission_time ? fmtTime12h(form.admission_time) : ''}</div>
   </div>
@@ -422,6 +422,7 @@ ${bodyHTML}
   <div class="sig-block">
     <div class="sig-line"></div>
     ${doctorInfo.name ? `<p class="doctor-name">Dr. ${doctorInfo.name}</p>` : ''}
+    ${doctorInfo.designation ? `<p class="reg">${doctorInfo.designation}</p>` : ''}
     ${doctorInfo.qualification ? `<p class="reg">${doctorInfo.qualification}</p>` : ''}
     ${doctorInfo.registrationNumber ? `<p class="reg">Reg No: ${doctorInfo.registrationNumber}</p>` : ''}
     <p style="font-size:10px;margin-top:2px;">Signature of Physician</p>
@@ -675,6 +676,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     const doctorInfo = matchedDoctor ? {
       name: form.physician.replace(/^Dr\.?\s*/i, ''),
       qualification: matchedDoctor.qualification || '',
+      designation: matchedDoctor.designation || '',
       registrationNumber: matchedDoctor.isDoctor ? (matchedDoctor.registrationNumber || '') : '',
     } : {};
     const html = buildOPCaseSheetPrintHTML(patient, form, visitNotes, sectionId, doctorInfo);

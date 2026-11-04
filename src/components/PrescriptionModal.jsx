@@ -43,6 +43,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
   // picked below, since it isn't tied to a particular day.
   const [dischargeMedicines, setDischargeMedicines] = useState([]);
   const [dischargeDate, setDischargeDate] = useState('');
+  const [allDoctors, setAllDoctors] = useState([]); // so the signature block can look up whoever is printed
   const [doctorDesignation, setDoctorDesignation] = useState('');
   const [doctorRegistrationNumber, setDoctorRegistrationNumber] = useState('');
   const [printPageSize, setPrintPageSize] = useState('A4');
@@ -81,7 +82,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
       // own record (e.g. "Dr. Satheesh" vs the HR/User Management record's
       // full "Dr. Satheesh Kumar"). A failed doctor lookup only costs the
       // designation/registration number on the print — never the medicines.
-      const doctorsPromise = patient?.assigned_doctor ? loadDoctorsList().catch(() => []) : Promise.resolve([]);
+      const doctorsPromise = loadDoctorsList().catch(() => []);
 
       const [entries, latestSummary, doctorsList] = await Promise.all([
         entriesPromise,
@@ -96,6 +97,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
         setDischargeDate(latestSummary.discharge_date || '');
       }
 
+      setAllDoctors(doctorsList);
       const match = patient?.assigned_doctor ? findDoctorInfo(doctorsList, patient.assigned_doctor) : null;
       if (match) {
         setDoctorDesignation(match.designation || '');
@@ -138,6 +140,12 @@ const PrescriptionModal = ({ patient, onClose }) => {
     const attendingDoctor = (entries.find(e => e.signed_by)?.signed_by || patient?.assigned_doctor || '')
       .replace(/^dr\.?\s*/i, '')
       .trim();
+
+    // The signature shows the designation/registration of the doctor whose name is
+    // printed (the one who signed, which can differ from the patient's assigned doctor).
+    const attendingInfo = attendingDoctor ? findDoctorInfo(allDoctors, attendingDoctor) : null;
+    const sigDesignation = attendingInfo ? (attendingInfo.designation || '') : doctorDesignation;
+    const sigRegistration = attendingInfo ? (attendingInfo.registrationNumber || '') : doctorRegistrationNumber;
 
     const showDateColumn = entries.length > 1;
     const rows = [];
@@ -282,8 +290,8 @@ const PrescriptionModal = ({ patient, onClose }) => {
     <div class="sig-block">
       <div class="sig-line"></div>
       ${attendingDoctor ? `<p class="doctor-name" style="margin-top:4px;">Dr. ${attendingDoctor}</p>` : ''}
-      ${doctorDesignation ? `<p class="reg">${doctorDesignation}</p>` : ''}
-      ${doctorRegistrationNumber ? `<p class="reg">Reg No: ${doctorRegistrationNumber}</p>` : ''}
+      ${sigDesignation ? `<p class="reg">${sigDesignation}</p>` : ''}
+      ${sigRegistration ? `<p class="reg">Reg No: ${sigRegistration}</p>` : ''}
       <p style="font-size:11px;">Signature of Physician</p>
     </div>
     <div class="footer-bar"></div>

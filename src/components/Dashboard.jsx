@@ -8,7 +8,7 @@ import { formatDateOnly, addDaysToDateString, daysSince } from '../lib/formatDat
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, colorForAppointment, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
 import { withDrPrefix } from '../lib/formatDoctorName';
-import { loadDoctorsList } from '../lib/doctors';
+import { loadDoctorsList, doctorWithDesignation } from '../lib/doctors';
 import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms } from '../lib/roomAvailability';
 import PatientRegistrationNew from './PatientRegistrationNew';
@@ -1632,7 +1632,7 @@ const Dashboard = () => {
                               )}
                               {apt.doctorName && (
                                 <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
-                                  🩺 {withDrPrefix(apt.doctorName)}
+                                  🩺 {doctorWithDesignation(doctors, apt.doctorName)}
                                 </p>
                               )}
                               {(apt.therapistNames?.length > 0 || apt.therapistName) && (
@@ -1746,7 +1746,7 @@ const Dashboard = () => {
                             )}
                             {apt.doctorName && (
                               <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
-                                🩺 {withDrPrefix(apt.doctorName)}
+                                🩺 {doctorWithDesignation(doctors, apt.doctorName)}
                               </p>
                             )}
                             {(apt.therapistNames?.length > 0 || apt.therapistName) && (

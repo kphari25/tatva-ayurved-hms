@@ -11,7 +11,7 @@ import { collection, getDocs, doc, deleteDoc, query, orderBy, where, addDoc, upd
 import { appointmentMessage, doctorAppointmentMessage, appointmentTemplate, doctorAppointmentTemplate, whatsappApiEnabled } from '../lib/whatsapp';
 import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { withDrPrefix } from '../lib/formatDoctorName';
-import { loadDoctorsList } from '../lib/doctors';
+import { loadDoctorsList, doctorWithDesignation } from '../lib/doctors';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { addDaysToDateString, formatDateOnly } from '../lib/formatDate';
 import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
@@ -1085,7 +1085,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                     <div>
                       <p className="font-semibold text-green-800">Appointment saved successfully!</p>
                       <p className="text-sm text-green-700 mt-1">
-                        {savedAppt.appointment_type} with {savedAppt.doctor_name} on{' '}
+                        {savedAppt.appointment_type} with {doctorWithDesignation(doctors, savedAppt.doctor_name) || savedAppt.doctor_name} on{' '}
                         {formatDateOnly(savedAppt.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} at {savedAppt.time}
                       </p>
                       {apptReactivated && (

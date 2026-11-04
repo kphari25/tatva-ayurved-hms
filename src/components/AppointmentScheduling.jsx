@@ -4,8 +4,7 @@ import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } 
 import { db } from '../lib/firebase';
 import { APPOINTMENT_BUCKETS, bucketForAppointment, APPOINTMENT_TYPE_COLORS, APPOINTMENT_TYPE_OPTIONS } from '../lib/appointmentBuckets';
 import { createPendingIPPatient } from '../lib/pendingIPPatient';
-import { withDrPrefix } from '../lib/formatDoctorName';
-import { loadDoctorsList } from '../lib/doctors';
+import { loadDoctorsList, doctorWithDesignation } from '../lib/doctors';
 import { ROOMS, ROOM_BOOKING_OPTIONS, parseRoomBookingKey } from '../lib/rooms';
 import { getOccupiedRooms } from '../lib/roomAvailability';
 import TherapistMultiSelect, { toggleTherapistInFields } from './TherapistMultiSelect';
@@ -1104,7 +1103,7 @@ const AppointmentScheduling = () => {
                       <td className="px-4 py-3">{apt.time}</td>
                       <td className="px-4 py-3 font-medium text-gray-800">{apt.patient}</td>
                       <td className="px-4 py-3 text-gray-600">{apt.type}</td>
-                      <td className="px-4 py-3 text-gray-600">{apt.doctorName || '—'}</td>
+                      <td className="px-4 py-3 text-gray-600">{apt.doctorName ? doctorWithDesignation(doctors, apt.doctorName) : '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[apt.status] || STATUS_STYLES.scheduled}`}>
                           {apt.status ? apt.status.charAt(0).toUpperCase() + apt.status.slice(1) : 'Scheduled'}
@@ -1234,7 +1233,7 @@ const AppointmentScheduling = () => {
                                 )}
                                 {apt.doctorName && (
                                   <p className="text-xs text-teal-700 flex items-center gap-1 mt-1.5">
-                                    🩺 {withDrPrefix(apt.doctorName)}
+                                    🩺 {doctorWithDesignation(doctors, apt.doctorName)}
                                   </p>
                                 )}
                                 {(apt.therapistNames?.length > 0 || apt.therapistName) && (

@@ -398,7 +398,7 @@ ${letterhead ? '' : `
     <div class="info-row"><span class="info-label">Age / sex:</span> ${age}/${gender}</div>
     <div class="info-row"><span class="info-label">Date of Admission:</span> ${admDate} (${form.admission_time || ''})</div>
     <div class="info-row"><span class="info-label">Duration of stay:</span> ${form.duration_days ? form.duration_days + ' DAYS' : ''}</div>
-    <div class="info-row"><span class="info-label">Doctor in Charge:</span> ${form.doctor_in_charge?.toUpperCase() || ''}</div>
+    <div class="info-row"><span class="info-label">Doctor in Charge:</span> ${form.doctor_in_charge?.toUpperCase() || ''}${doctorInfo.designation ? ` (${doctorInfo.designation.toUpperCase()})` : ''}</div>
   </div>
   <div class="info-right">
     <div class="info-row"><span class="info-label">Ward no:</span> ${form.ward_no}</div>
@@ -561,7 +561,7 @@ ${form.lifestyle_modification ? `
 <!-- FOLLOW-UP -->
 <div class="section-title">Follow-Up Plan</div>
 <p>Next Review: ${form.next_review ? `After ${form.next_review}` : '—'}${form.next_review_date ? ` &nbsp;|&nbsp; <strong>Date: ${new Date(form.next_review_date).toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })}</strong>` : ''}</p>
-${form.doctor_in_charge ? `<p>Doctor: ${form.doctor_in_charge}</p>` : ''}
+${form.doctor_in_charge ? `<p>Doctor: ${form.doctor_in_charge}${doctorInfo.designation ? ` (${doctorInfo.designation})` : ''}</p>` : ''}
 <p>Review Procedure: ${form.review_procedure}</p>
 
 <!-- PROGNOSIS -->
