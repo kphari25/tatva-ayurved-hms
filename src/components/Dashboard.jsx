@@ -69,6 +69,40 @@ const getMonthRange = (d) => [
   new Date(d.getFullYear(), d.getMonth() + 1, 0)
 ];
 
+// Appointments can be viewed and booked for this month and the next six.
+const BOOKING_MONTHS_AHEAD = 6;
+
+const getBookingWindow = () => {
+  const now = new Date();
+  return {
+    min: toDateStr(new Date(now.getFullYear(), now.getMonth(), 1)),
+    max: toDateStr(new Date(now.getFullYear(), now.getMonth() + BOOKING_MONTHS_AHEAD + 1, 0)),
+  };
+};
+
+const getMonthOptions = () => {
+  const now = new Date();
+  return Array.from({ length: BOOKING_MONTHS_AHEAD + 1 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const name = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    return { value: toDateStr(d).slice(0, 7), first: toDateStr(d), name, label: i === 0 ? `${name} (this month)` : name };
+  });
+};
+
+const fmtLongDate = (dateStr) =>
+  new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+// Returns an error message if `date` is outside the bookable window, else ''.
+// A past appointment being edited keeps its own date allowed.
+const bookingDateError = (date, existingDate) => {
+  const win = getBookingWindow();
+  const min = existingDate && existingDate < win.min ? existingDate : win.min;
+  if (date < min || date > win.max) {
+    return `Appointment date must be between ${fmtLongDate(min)} and ${fmtLongDate(win.max)} (this month and the next ${BOOKING_MONTHS_AHEAD}).`;
+  }
+  return '';
+};
+
 const formatGroupDate = (dateStr) => {
   const today = toDateStr(new Date());
   const tomorrow = new Date();
@@ -82,14 +116,14 @@ const formatGroupDate = (dateStr) => {
 // Phone number on file for the doctor picked in a booking form ('' if none).
 const doctorPhoneFor = (doctors, doctorId) => ((doctors || []).find(d => d.id === doctorId)?.phone || '').trim();
 
-const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [], therapists = [], patients = [], onPickExistingPatient }) => {
+const AddAppointmentModal = ({ appointment, initialDate, onClose, onSave, saving, doctors = [], therapists = [], patients = [], onPickExistingPatient }) => {
   const isEditMode = !!appointment;
   const [formData, setFormData] = useState({
     patient: appointment?.patient || '',
     phone: appointment?.phone || '',
     calledInDate: appointment?.called_in_date || toDateStr(new Date()),
     calledInTime: appointment?.called_in_time || toTimeStr(new Date()),
-    date: appointment?.date || toDateStr(new Date()),
+    date: appointment?.date || initialDate || toDateStr(new Date()),
     time: appointment?.time || '',
     type: appointment?.type || '',
     doctorId: appointment?.doctorId || '',
@@ -178,6 +212,11 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
     e.preventDefault();
     if (!formData.patient.trim() || !formData.date || !formData.time) {
       setError('Patient name, date and time are required.');
+      return;
+    }
+    const dateError = bookingDateError(formData.date, appointment?.date);
+    if (dateError) {
+      setError(dateError);
       return;
     }
     if (!formData.calledInDate || !formData.calledInTime) {
@@ -277,6 +316,8 @@ const AddAppointmentModal = ({ appointment, onClose, onSave, saving, doctors = [
               <input
                 type="date"
                 value={formData.date}
+                min={appointment?.date && appointment.date < getBookingWindow().min ? appointment.date : getBookingWindow().min}
+                max={getBookingWindow().max}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -422,6 +463,11 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
       setError('Date and time are required.');
       return;
     }
+    const dateError = bookingDateError(fields.date);
+    if (dateError) {
+      setError(dateError);
+      return;
+    }
     if (fields.sendDoctorWhatsApp && !doctorPhoneFor(doctors, fields.doctorId)) {
       setError('Choose a doctor who has a phone number on file to send them a WhatsApp.');
       return;
@@ -477,6 +523,8 @@ const ScheduleExistingPatientModal = ({ patient, initialFields, doctors = [], th
               <input
                 type="date"
                 value={fields.date}
+                min={getBookingWindow().min}
+                max={getBookingWindow().max}
                 onChange={(e) => setFields({ ...fields, date: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -632,6 +680,10 @@ const Dashboard = () => {
   const [todayAppointments, setTodayAppointments] = useState([]);
   const [greeting, setGreeting] = useState(getGreeting());
   const [appointmentView, setAppointmentView] = useState('daily'); // daily | weekly | monthly
+  // Monthly view: this month plus the next six, chosen from a dropdown.
+  const monthOptions = useMemo(() => getMonthOptions(), []);
+  const [selectedMonth, setSelectedMonth] = useState(() => getMonthOptions()[0].value);
+  const selectedMonthOption = monthOptions.find(o => o.value === selectedMonth) || monthOptions[0];
   const [panelAppointments, setPanelAppointments] = useState([]);
   // Checked-in and cancelled appointments drop off the board entirely (see
   // handleCheckInAppointment / handleCancelAppointment) rather than just
@@ -766,6 +818,36 @@ const Dashboard = () => {
   const isDoctorView = currentUser.role === 'doctor';
   const myName = normName(currentUser.name);
   const isMine = (doctorField) => !isDoctorView || normName(doctorField) === myName;
+
+  // Pending Admissions = people already awaiting admission, plus every
+  // appointment booked from tomorrow onward (any type) straight from the live
+  // appointments collection, so a new booking shows up here at once. An
+  // appointment that belongs to someone already listed as awaiting admission
+  // isn't repeated.
+  const pendingList = useMemo(() => {
+    const tomorrow = addDaysToDateString(toDateStr(new Date()), 1);
+    const people = dashboardData.pendingAdmissions.map(p => ({ ...p, kind: 'admission' }));
+    const listedPatientIds = new Set(people.map(p => p.id));
+    const upcoming = footfallAppointments
+      .filter(a => a.date && a.date >= tomorrow && a.status !== 'checked_in' && a.status !== 'cancelled')
+      .filter(a => isMine(a.doctorName))
+      .filter(a => !(a.patient_id && listedPatientIds.has(a.patient_id)))
+      .map(a => ({
+        id: `appt-${a.id}`,
+        kind: 'appointment',
+        patientId: a.patient_id || null,
+        patient: a.patient || 'Unnamed patient',
+        type: a.type || '',
+        time: a.time || '',
+        doctorName: a.doctorName || '',
+        admissionDate: a.date,
+        roomNumber: a.room_number || null,
+        mrd_number: '',
+      }));
+    return [...people, ...upcoming].sort((a, b) =>
+      (a.admissionDate || '9999-99-99').localeCompare(b.admissionDate || '9999-99-99') || (a.time || '').localeCompare(b.time || ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboardData.pendingAdmissions, footfallAppointments]);
 
   useEffect(() => {
     loadDashboardData();
@@ -978,7 +1060,8 @@ const Dashboard = () => {
     if (appointmentView === 'weekly') {
       [start, end] = getWeekRange(now);
     } else if (appointmentView === 'monthly') {
-      [start, end] = getMonthRange(now);
+      const [y, m] = selectedMonth.split('-').map(Number);
+      [start, end] = getMonthRange(new Date(y, m - 1, 1));
     }
     const startStr = toDateStr(start);
     const endStr = toDateStr(end);
@@ -995,7 +1078,7 @@ const Dashboard = () => {
     );
 
     return () => unsubscribe();
-  }, [appointmentView]);
+  }, [appointmentView, selectedMonth]);
 
   const loadDashboardData = async () => {
     try {
@@ -1458,11 +1541,11 @@ const Dashboard = () => {
         />
         <StatCard
           title="Pending Admissions"
-          value={dashboardData.stats.pendingAdmissionsCount}
+          value={pendingList.length}
           icon={Users}
           color="#f59e0b"
-          subtitle="Awaiting admission"
-          onClick={dashboardData.stats.pendingAdmissionsCount > 0 ? () => setShowPendingAdmissions(true) : undefined}
+          subtitle="Awaiting admission & upcoming bookings"
+          onClick={pendingList.length > 0 ? () => setShowPendingAdmissions(true) : undefined}
         />
         <StatCard
           title="Outstanding Payments"
@@ -1556,6 +1639,18 @@ const Dashboard = () => {
                     {tab.label}
                   </button>
                 ))}
+                {appointmentView === 'monthly' && (
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    title="Choose a month — this month and the next six"
+                    className="ml-2 bg-white/90 text-gray-800 text-sm font-semibold rounded-full px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white"
+                  >
+                    {monthOptions.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               {appointmentView !== 'daily' && (
                 <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-white/90">
@@ -1572,7 +1667,7 @@ const Dashboard = () => {
             {visibleAppointments.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p>No appointments scheduled for this {appointmentView === 'daily' ? 'day' : appointmentView === 'weekly' ? 'week' : 'month'}</p>
+                <p>No appointments scheduled for {appointmentView === 'daily' ? 'this day' : appointmentView === 'weekly' ? 'this week' : selectedMonthOption.name}</p>
               </div>
             ) : appointmentView === 'daily' ? (
               <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -2008,6 +2103,7 @@ const Dashboard = () => {
       {(showAddAppointment || editingAppointment) && (
         <AddAppointmentModal
           appointment={editingAppointment}
+          initialDate={!editingAppointment && appointmentView === 'monthly' && selectedMonth !== monthOptions[0].value ? selectedMonthOption.first : undefined}
           onClose={() => { setShowAddAppointment(false); setEditingAppointment(null); }}
           onSave={saveAppointment}
           saving={savingAppointment}
@@ -2075,33 +2171,49 @@ const Dashboard = () => {
               </button>
             </div>
             <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
-              {dashboardData.pendingAdmissions.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-8">No pending admissions.</p>
+              {pendingList.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">No pending admissions or upcoming appointments.</p>
               ) : (
-                dashboardData.pendingAdmissions.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      setShowPendingAdmissions(false);
-                      window.dispatchEvent(new CustomEvent('viewPatient', { detail: p.id }));
-                    }}
-                    className="w-full text-left px-6 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900 text-sm">{p.patient || 'Unnamed patient'}</p>
-                      <p className="text-xs text-gray-500 flex gap-2">
-                        {p.mrd_number && <span>{p.mrd_number}</span>}
-                        {p.admissionDate ? (
-                          <span className="text-amber-700 font-medium">Admission: {formatGroupDate(p.admissionDate)}</span>
-                        ) : (
-                          p.requested_at && <span>Requested {formatDateOnly(p.requested_at)}</span>
-                        )}
-                        {p.roomNumber && <span className="text-teal-700 font-medium">🛏️ Room {p.roomNumber}</span>}
-                      </p>
-                    </div>
-                    <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-semibold shrink-0">View</span>
-                  </button>
-                ))
+                pendingList.map(p => {
+                  const patientId = p.kind === 'admission' ? p.id : p.patientId;
+                  const Row = patientId ? 'button' : 'div';
+                  return (
+                    <Row
+                      key={p.id}
+                      onClick={patientId ? () => {
+                        setShowPendingAdmissions(false);
+                        window.dispatchEvent(new CustomEvent('viewPatient', { detail: patientId }));
+                      } : undefined}
+                      className={`w-full text-left px-6 py-3 flex items-center justify-between gap-3 ${patientId ? 'hover:bg-gray-50' : ''}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 text-sm">{p.patient || 'Unnamed patient'}</p>
+                        <p className="text-xs text-gray-500 flex flex-wrap gap-x-2 gap-y-0.5">
+                          {p.kind === 'appointment' ? (
+                            <>
+                              <span className="text-amber-700 font-medium">{formatGroupDate(p.admissionDate)}{p.time ? ` · ${p.time}` : ''}</span>
+                              {p.type && <span className="text-blue-700 font-medium">{p.type}</span>}
+                              {p.doctorName && <span>🩺 {p.doctorName}</span>}
+                            </>
+                          ) : (
+                            <>
+                              {p.mrd_number && <span>{p.mrd_number}</span>}
+                              {p.admissionDate ? (
+                                <span className="text-amber-700 font-medium">Admission: {formatGroupDate(p.admissionDate)}</span>
+                              ) : (
+                                p.requested_at && <span>Requested {formatDateOnly(p.requested_at)}</span>
+                              )}
+                            </>
+                          )}
+                          {p.roomNumber && <span className="text-teal-700 font-medium">🛏️ Room {p.roomNumber}</span>}
+                        </p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${p.kind === 'admission' ? 'text-amber-700 bg-amber-100' : 'text-blue-700 bg-blue-100'}`}>
+                        {p.kind === 'admission' ? 'Awaiting admission' : 'Booked'}
+                      </span>
+                    </Row>
+                  );
+                })
               )}
             </div>
           </div>
