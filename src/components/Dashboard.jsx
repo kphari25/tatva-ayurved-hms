@@ -89,6 +89,21 @@ const getMonthOptions = () => {
   });
 };
 
+// Pending Admissions is split into two groups: IP & PNC, and everything else
+// (OP). Decided by the appointment type picked at booking — IP and PNC (also
+// anything like "IP Admission") go in the first group; Consultation, Therapy,
+// Follow up, OP, and older free-text types are OP.
+const pendingGroupForType = (type) => {
+  const words = String(type || '').toLowerCase().split(/[^a-z0-9]+/);
+  return words.includes('ip') || words.includes('pnc') ? 'ippnc' : 'op';
+};
+
+// One patient can have several bookings (repeat therapy sessions), so counts
+// of "patients" are taken per person, not per booking.
+const pendingPatientKey = (item) => item.kind === 'admission'
+  ? item.id
+  : (item.patientId || `${String(item.patient || '').trim().toLowerCase()}|${String(item.phone || '').replace(/\D/g, '')}`);
+
 const fmtLongDate = (dateStr) =>
   new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -826,7 +841,7 @@ const Dashboard = () => {
   // isn't repeated.
   const pendingList = useMemo(() => {
     const tomorrow = addDaysToDateString(toDateStr(new Date()), 1);
-    const people = dashboardData.pendingAdmissions.map(p => ({ ...p, kind: 'admission' }));
+    const people = dashboardData.pendingAdmissions.map(p => ({ ...p, kind: 'admission', group: 'ippnc' }));
     const listedPatientIds = new Set(people.map(p => p.id));
     const upcoming = footfallAppointments
       .filter(a => a.date && a.date >= tomorrow && a.status !== 'checked_in' && a.status !== 'cancelled')
@@ -835,6 +850,8 @@ const Dashboard = () => {
       .map(a => ({
         id: `appt-${a.id}`,
         kind: 'appointment',
+        group: pendingGroupForType(a.type),
+        phone: a.phone || a.patient_phone || '',
         patientId: a.patient_id || null,
         patient: a.patient || 'Unnamed patient',
         type: a.type || '',
@@ -848,6 +865,61 @@ const Dashboard = () => {
       (a.admissionDate || '9999-99-99').localeCompare(b.admissionDate || '9999-99-99') || (a.time || '').localeCompare(b.time || ''));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboardData.pendingAdmissions, footfallAppointments]);
+
+  // Counts for the two groups. "patients" = distinct people; "bookings" = rows.
+  const pendingSummary = useMemo(() => {
+    const section = (group) => {
+      const rows = pendingList.filter(p => p.group === group);
+      return { rows, bookings: rows.length, patients: new Set(rows.map(pendingPatientKey)).size };
+    };
+    return {
+      ippnc: section('ippnc'),
+      op: section('op'),
+      totalPatients: new Set(pendingList.map(pendingPatientKey)).size,
+      totalBookings: pendingList.length,
+    };
+  }, [pendingList]);
+
+  const renderPendingRow = (p) => {
+    const patientId = p.kind === 'admission' ? p.id : p.patientId;
+    const Row = patientId ? 'button' : 'div';
+    return (
+      <Row
+        key={p.id}
+        onClick={patientId ? () => {
+          setShowPendingAdmissions(false);
+          window.dispatchEvent(new CustomEvent('viewPatient', { detail: patientId }));
+        } : undefined}
+        className={`w-full text-left px-6 py-3 flex items-center justify-between gap-3 ${patientId ? 'hover:bg-gray-50' : ''}`}
+      >
+        <div className="min-w-0">
+          <p className="font-medium text-gray-900 text-sm">{p.patient || 'Unnamed patient'}</p>
+          <p className="text-xs text-gray-500 flex flex-wrap gap-x-2 gap-y-0.5">
+            {p.kind === 'appointment' ? (
+              <>
+                <span className="text-amber-700 font-medium">{formatGroupDate(p.admissionDate)}{p.time ? ` · ${p.time}` : ''}</span>
+                {p.type && <span className="text-blue-700 font-medium">{p.type}</span>}
+                {p.doctorName && <span>🩺 {p.doctorName}</span>}
+              </>
+            ) : (
+              <>
+                {p.mrd_number && <span>{p.mrd_number}</span>}
+                {p.admissionDate ? (
+                  <span className="text-amber-700 font-medium">Admission: {formatGroupDate(p.admissionDate)}</span>
+                ) : (
+                  p.requested_at && <span>Requested {formatDateOnly(p.requested_at)}</span>
+                )}
+              </>
+            )}
+            {p.roomNumber && <span className="text-teal-700 font-medium">🛏️ Room {p.roomNumber}</span>}
+          </p>
+        </div>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${p.kind === 'admission' ? 'text-amber-700 bg-amber-100' : 'text-blue-700 bg-blue-100'}`}>
+          {p.kind === 'admission' ? 'Awaiting admission' : 'Booked'}
+        </span>
+      </Row>
+    );
+  };
 
   useEffect(() => {
     loadDashboardData();
@@ -1541,10 +1613,10 @@ const Dashboard = () => {
         />
         <StatCard
           title="Pending Admissions"
-          value={pendingList.length}
+          value={pendingSummary.totalPatients}
           icon={Users}
           color="#f59e0b"
-          subtitle="Awaiting admission & upcoming bookings"
+          subtitle={`IP & PNC ${pendingSummary.ippnc.patients} · OP ${pendingSummary.op.patients}`}
           onClick={pendingList.length > 0 ? () => setShowPendingAdmissions(true) : undefined}
         />
         <StatCard
@@ -2163,58 +2235,55 @@ const Dashboard = () => {
 
       {showPendingAdmissions && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b">
-              <h3 className="text-lg font-bold text-gray-900">Pending Admissions</h3>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col">
+            <div className="flex items-start justify-between px-6 py-4 border-b shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Pending Admissions</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {pendingSummary.totalPatients} patient{pendingSummary.totalPatients === 1 ? '' : 's'}
+                  {pendingSummary.totalBookings !== pendingSummary.totalPatients ? ` · ${pendingSummary.totalBookings} bookings` : ''}
+                  {' '}· awaiting admission, or booked from tomorrow onward
+                </p>
+              </div>
               <button onClick={() => setShowPendingAdmissions(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
-              {pendingList.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-8">No pending admissions or upcoming appointments.</p>
-              ) : (
-                pendingList.map(p => {
-                  const patientId = p.kind === 'admission' ? p.id : p.patientId;
-                  const Row = patientId ? 'button' : 'div';
-                  return (
-                    <Row
-                      key={p.id}
-                      onClick={patientId ? () => {
-                        setShowPendingAdmissions(false);
-                        window.dispatchEvent(new CustomEvent('viewPatient', { detail: patientId }));
-                      } : undefined}
-                      className={`w-full text-left px-6 py-3 flex items-center justify-between gap-3 ${patientId ? 'hover:bg-gray-50' : ''}`}
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900 text-sm">{p.patient || 'Unnamed patient'}</p>
-                        <p className="text-xs text-gray-500 flex flex-wrap gap-x-2 gap-y-0.5">
-                          {p.kind === 'appointment' ? (
-                            <>
-                              <span className="text-amber-700 font-medium">{formatGroupDate(p.admissionDate)}{p.time ? ` · ${p.time}` : ''}</span>
-                              {p.type && <span className="text-blue-700 font-medium">{p.type}</span>}
-                              {p.doctorName && <span>🩺 {p.doctorName}</span>}
-                            </>
-                          ) : (
-                            <>
-                              {p.mrd_number && <span>{p.mrd_number}</span>}
-                              {p.admissionDate ? (
-                                <span className="text-amber-700 font-medium">Admission: {formatGroupDate(p.admissionDate)}</span>
-                              ) : (
-                                p.requested_at && <span>Requested {formatDateOnly(p.requested_at)}</span>
-                              )}
-                            </>
-                          )}
-                          {p.roomNumber && <span className="text-teal-700 font-medium">🛏️ Room {p.roomNumber}</span>}
-                        </p>
-                      </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${p.kind === 'admission' ? 'text-amber-700 bg-amber-100' : 'text-blue-700 bg-blue-100'}`}>
-                        {p.kind === 'admission' ? 'Awaiting admission' : 'Booked'}
-                      </span>
-                    </Row>
-                  );
-                })
-              )}
+            <div className="grid grid-cols-2 gap-3 px-6 py-3 border-b shrink-0">
+              <div className="rounded-lg bg-purple-50 border border-purple-200 px-4 py-2">
+                <p className="text-xs font-semibold text-purple-700">IP &amp; PNC</p>
+                <p className="text-2xl font-bold text-purple-900 leading-tight">{pendingSummary.ippnc.patients}</p>
+                <p className="text-xs text-purple-700">patient{pendingSummary.ippnc.patients === 1 ? '' : 's'}</p>
+              </div>
+              <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-2">
+                <p className="text-xs font-semibold text-blue-700">OP</p>
+                <p className="text-2xl font-bold text-blue-900 leading-tight">{pendingSummary.op.patients}</p>
+                <p className="text-xs text-blue-700">patient{pendingSummary.op.patients === 1 ? '' : 's'}</p>
+              </div>
+            </div>
+            <div className="overflow-y-auto">
+              {[
+                { id: 'ippnc', title: 'IP & PNC', head: 'bg-purple-50 text-purple-800 border-purple-200', data: pendingSummary.ippnc },
+                { id: 'op', title: 'OP', head: 'bg-blue-50 text-blue-800 border-blue-200', data: pendingSummary.op },
+              ].map(sec => (
+                <div key={sec.id}>
+                  <div className={`flex items-center justify-between px-6 py-2 border-y ${sec.head}`}>
+                    <h4 className="text-sm font-bold">{sec.title}</h4>
+                    <span className="text-xs font-semibold">
+                      {sec.data.patients} patient{sec.data.patients === 1 ? '' : 's'}
+                      {sec.data.bookings !== sec.data.patients ? ` · ${sec.data.bookings} bookings` : ''}
+                    </span>
+                  </div>
+                  {sec.data.rows.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-5">None</p>
+                  ) : (
+                    <div className="divide-y divide-gray-100">{sec.data.rows.map(renderPendingRow)}</div>
+                  )}
+                </div>
+              ))}
+              <p className="text-xs text-gray-400 px-6 py-3">
+                IP &amp; PNC = people awaiting admission and bookings made as IP or PNC. Everything else (consultation, therapy, follow-up, OP) is OP.
+              </p>
             </div>
           </div>
         </div>
