@@ -133,6 +133,15 @@ const emptyFollowUp = () => {
 // The first version of follow-ups stored a single "notes" field; show it as
 // the Doctor's Notes so those entries carry over.
 const normFollowUp = ({ notes, ...f }) => ({ ...emptyFollowUp(), ...f, doctors_notes: f.doctors_notes ?? notes ?? '' });
+// Whether a Daily Log / Follow up entry form has anything typed in it (the
+// date and Treatment Days alone don't count) — a blank form isn't kept as a draft.
+const entryHasContent = (f) => {
+  if (!f) return false;
+  const text = ['bp_morning', 'bp_evening', 'temperature', 'pulse', 'spo2', 'weight', 'diet', 'treatment_performed', 'doctors_notes'];
+  return text.some(k => String(f[k] || '').trim() !== '')
+    || (f.treatment_items || []).length > 0
+    || (f.medicine_items || []).some(m => m && (m.item_name || m.dose || m.frequency || m.instructions || m.days || m.ml_used));
+};
 const sortFollowUps = (list) => (list || []).map(normFollowUp).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 
 const FROM_OP_INPUT = 'bg-amber-50 border-amber-300';
@@ -241,6 +250,33 @@ const LogEntryFields = ({ value, setValue }) => {
     </>
   );
 };
+
+// Title row of the Daily Log / Follow up entry form, with its autosave status.
+// A new entry is only a draft until Add; an edited entry is saved as you type.
+const EntryFormHeader = ({ title, editing, autosave, hasContent, restored, addLabel, onDiscard }) => (
+  <div className="mb-3">
+    <div className="flex items-center justify-between gap-3">
+      <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide">{title}</h3>
+      {(editing || hasContent) && autosave.indicator}
+    </div>
+    {!editing && hasContent && (
+      <p className="text-xs text-gray-500 mt-1">
+        Draft — kept safe if the sheet closes, but not in the log until you click <strong>{addLabel}</strong>.
+      </p>
+    )}
+    {editing && <p className="text-xs text-gray-500 mt-1">Changes to this entry save automatically.</p>}
+    {restored && (
+      <div className="flex items-center justify-between gap-3 mt-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">
+        <span>
+          Unfinished entry restored
+          {restored.saved_at ? ` (last saved ${new Date(restored.saved_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${restored.saved_by ? ` by ${restored.saved_by}` : ''})` : ''}.
+          Review it and click <strong>{addLabel}</strong>.
+        </span>
+        <button onClick={onDiscard} className="text-amber-800 underline flex-shrink-0">Discard draft</button>
+      </div>
+    )}
+  </div>
+);
 
 // Read-only body of a saved log entry (daily log or follow-up).
 const LogEntryDetails = ({ e }) => (
@@ -575,6 +611,8 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   const [followUpForm, setFollowUpForm] = useState(emptyFollowUp());
   const [editingFollowUpId, setEditingFollowUpId] = useState(null);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
+  // Drafts found when the sheet opened: { daily?: {saved_at, saved_by}, followup?: {...} }
+  const [restoredDrafts, setRestoredDrafts] = useState({});
   const tabContainerRef = useRef(null);
   // OP → IP carry-over: the patient's OP case sheet (if any), the review
   // dialog, and which IP fields were just filled from it and not yet
@@ -624,7 +662,21 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
         if (!data.treatment_details && data.treatment_medication_details) {
           data.treatment_details = data.treatment_medication_details;
         }
-        setForm(prev => ({ ...prev, ...data }));
+        // Unfinished new Daily Log / Follow up entries (autosaved drafts) live
+        // on the sheet doc but not in `form`, so the sheet's own saves can't
+        // overwrite a newer draft with the copy loaded here.
+        const { daily_draft: dailyDraft, follow_up_draft: followUpDraft, ...sheet } = data;
+        setForm(prev => ({ ...prev, ...sheet }));
+        const restored = {};
+        if (dailyDraft?.data) {
+          setDailyForm({ ...emptyDailyEntry(), ...dailyDraft.data });
+          restored.daily = dailyDraft;
+        }
+        if (followUpDraft?.data) {
+          setFollowUpForm({ ...emptyFollowUp(), ...followUpDraft.data });
+          restored.followup = followUpDraft;
+        }
+        setRestoredDrafts(restored);
       } else {
         // First time this patient's case sheet is opened — pre-fill the room
         // (and its A/C/Non-A/C type) from whichever IP appointment they were
@@ -716,7 +768,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   const writeSheet = async (data, extra = {}) => {
     const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
     const now = new Date().toISOString();
-    const { follow_ups: _omit, ...fields } = data;
+    const { follow_ups: _omit, daily_draft: _dd, follow_up_draft: _fd, ...fields } = data;
     const createdAt = data.created_at || createdRef.current || now;
     await setDoc(doc(db, 'ip_case_sheets', patientId), {
       ...fields,
@@ -778,7 +830,8 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
   // Save anything outstanding before the sheet closes.
   const closeAfterSaving = async (then) => {
-    const ok = await autosave.flush();
+    const results = await Promise.all([autosave.flush(), dailyAutosave.flush(), followUpAutosave.flush()]);
+    const ok = results.every(Boolean);
     if (!ok && !window.confirm('Your latest changes could not be saved (check the connection).\n\nClose the case sheet anyway and lose them?')) return;
     then();
   };
@@ -798,8 +851,58 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     }
   };
 
+  // ── Autosave for the Daily Log and Follow up entry forms ──
+  // A NEW entry being typed is autosaved as a draft on the case sheet doc
+  // (daily_draft / follow_up_draft) and restored when the sheet is reopened;
+  // it only becomes a real entry — and only then touches stock — on "Add".
+  // An EXISTING entry being edited is saved straight into that entry.
+  const writeDraft = async (field, data) => {
+    const email = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
+    await setDoc(doc(db, 'ip_case_sheets', patientId), {
+      patient_id: patientId,
+      [field]: entryHasContent(data) ? { data, saved_at: new Date().toISOString(), saved_by: email } : null,
+    }, { merge: true });
+  };
+
+  const updateDailyEntry = async (id, data) => {
+    const { treatment_days: _td, ...entryFields } = data;
+    const email = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
+    await updateDoc(doc(db, 'daily_progress', id), { ...entryFields, updated_at: new Date().toISOString(), updated_by: email });
+    await syncUsageSafely({ id, date: entryFields.date, items: entryFields.medicine_items });
+    setDailyProgress(prev => prev.map(e => (e.id === id ? { ...e, ...entryFields } : e)));
+  };
+
+  const updateFollowUp = async (id, data) => {
+    const email = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
+    const now = new Date().toISOString();
+    await persistFollowUps(sortFollowUps(form.follow_ups).map(f => (f.id === id ? { ...f, ...data, updated_at: now, updated_by: email } : f)));
+    await syncUsageSafely({ id, date: data.date, items: data.medicine_items, source: 'ip_follow_up' });
+  };
+
+  const dailyAutosave = useAutosave({
+    value: dailyForm,
+    enabled: !loading && !!patientId,
+    resetKey: editingDailyId || 'new',
+    tone: 'light',
+    save: (data) => (editingDailyId ? updateDailyEntry(editingDailyId, data) : writeDraft('daily_draft', data)),
+  });
+  const followUpAutosave = useAutosave({
+    value: followUpForm,
+    enabled: !loading && !!patientId,
+    resetKey: editingFollowUpId || 'new',
+    tone: 'light',
+    save: (data) => (editingFollowUpId ? updateFollowUp(editingFollowUpId, data) : writeDraft('follow_up_draft', data)),
+  });
+
+  // The new-entry draft is set aside while an existing entry is being edited,
+  // and put back in the form afterwards.
+  const dailyStashRef = useRef(null);
+  const followUpStashRef = useRef(null);
+
   const handleSaveDailyEntry = async () => {
     if (!dailyForm.date) { alert('Please select a date.'); return; }
+    // Let any pending autosave land first, so it can't race the save below.
+    await dailyAutosave.flush();
     try {
       setSavingDaily(true);
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
@@ -841,9 +944,13 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
         }
         await batch.commit();
         for (const c of created) await syncUsageSafely({ id: c.id, date: c.date, items: entryFields.medicine_items, patientName });
+        // The draft is now a real entry.
+        await writeDraft('daily_draft', emptyDailyEntry());
+        setRestoredDrafts(prev => ({ ...prev, daily: undefined }));
       }
 
-      setDailyForm(emptyDailyEntry());
+      setDailyForm(editingDailyId ? (dailyStashRef.current || emptyDailyEntry()) : emptyDailyEntry());
+      dailyStashRef.current = null;
       setEditingDailyId(null);
       await loadDailyProgress();
     } catch (e) {
@@ -860,7 +967,9 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     document.getElementById(formId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 50);
 
-  const handleEditDailyEntry = (entry) => {
+  const handleEditDailyEntry = async (entry) => {
+    await dailyAutosave.flush(); // finish saving whatever was being typed
+    if (!editingDailyId) dailyStashRef.current = dailyForm;
     scrollToForm('daily-entry-form');
     setEditingDailyId(entry.id);
     setDailyForm({
@@ -881,18 +990,26 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     });
   };
 
-  const handleCancelEditDaily = () => {
+  // "Done": edits are already autosaved into the entry; go back to the new-entry form.
+  const handleCancelEditDaily = async () => {
+    await dailyAutosave.flush();
     setEditingDailyId(null);
-    setDailyForm(emptyDailyEntry());
+    setDailyForm(dailyStashRef.current || emptyDailyEntry());
+    dailyStashRef.current = null;
   };
 
   const handleDeleteDailyEntry = async (id) => {
     if (!window.confirm('Delete this daily record?')) return;
     try {
+      await dailyAutosave.flush(); // nothing may autosave into it once it's gone
       await removeEntryUsage(id);
       await deleteDoc(doc(db, 'daily_progress', id));
       setDailyProgress(prev => prev.filter(e => e.id !== id));
-      if (editingDailyId === id) handleCancelEditDaily();
+      if (editingDailyId === id) {
+        setEditingDailyId(null);
+        setDailyForm(dailyStashRef.current || emptyDailyEntry());
+        dailyStashRef.current = null;
+      }
     } catch (e) {
       alert('Error deleting entry: ' + e.message);
     }
@@ -909,6 +1026,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
   const handleSaveFollowUp = async () => {
     if (!followUpForm.date) { alert('Please select a date.'); return; }
+    await followUpAutosave.flush();
     try {
       setSavingFollowUp(true);
       const email = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
@@ -922,7 +1040,12 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
       // Liquid medicines used at the follow-up come out of internal stock,
       // exactly as on the daily log (Usage History shows them as "IP Follow up").
       await syncUsageSafely({ id, date: followUpForm.date, items: followUpForm.medicine_items, source: 'ip_follow_up' });
-      setFollowUpForm(emptyFollowUp());
+      if (!editingFollowUpId) {
+        await writeDraft('follow_up_draft', emptyFollowUp()); // the draft is now a real entry
+        setRestoredDrafts(prev => ({ ...prev, followup: undefined }));
+      }
+      setFollowUpForm(editingFollowUpId ? (followUpStashRef.current || emptyFollowUp()) : emptyFollowUp());
+      followUpStashRef.current = null;
       setEditingFollowUpId(null);
     } catch (e) {
       alert('Error saving follow-up: ' + e.message);
@@ -931,24 +1054,33 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     }
   };
 
-  const handleEditFollowUp = (f) => {
+  const handleEditFollowUp = async (f) => {
+    await followUpAutosave.flush();
+    if (!editingFollowUpId) followUpStashRef.current = followUpForm;
     scrollToForm('followup-entry-form');
     setEditingFollowUpId(f.id);
     const { id: _id, created_at: _c, created_by: _cb, updated_at: _u, updated_by: _ub, ...fields } = normFollowUp(f);
     setFollowUpForm({ ...fields, date: f.date || today() });
   };
 
-  const handleCancelEditFollowUp = () => {
+  const handleCancelEditFollowUp = async () => {
+    await followUpAutosave.flush();
     setEditingFollowUpId(null);
-    setFollowUpForm(emptyFollowUp());
+    setFollowUpForm(followUpStashRef.current || emptyFollowUp());
+    followUpStashRef.current = null;
   };
 
   const handleDeleteFollowUp = async (id) => {
     if (!window.confirm('Delete this follow-up record?')) return;
     try {
+      await followUpAutosave.flush(); // nothing may autosave into it once it's gone
       await removeEntryUsage(id); // give back any stock it used
       await persistFollowUps((form.follow_ups || []).filter(f => f.id !== id));
-      if (editingFollowUpId === id) handleCancelEditFollowUp();
+      if (editingFollowUpId === id) {
+        setEditingFollowUpId(null);
+        setFollowUpForm(followUpStashRef.current || emptyFollowUp());
+        followUpStashRef.current = null;
+      }
     } catch (e) {
       alert('Error deleting follow-up: ' + e.message);
     }
@@ -1262,9 +1394,15 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
               {activeTab === 'vitals' && (
                 <div className="space-y-5">
                   <div id="daily-entry-form" className={`border rounded-xl p-4 bg-gray-50 ${editingDailyId ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-200'}`} ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e)}>
-                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">
-                      {editingDailyId ? `Editing Entry — ${fmtDate(dailyForm.date)}` : 'Add Daily Record'}
-                    </h3>
+                    <EntryFormHeader
+                      title={editingDailyId ? `Editing Entry — ${fmtDate(dailyForm.date)}` : 'Add Daily Record'}
+                      editing={!!editingDailyId}
+                      autosave={dailyAutosave}
+                      hasContent={entryHasContent(dailyForm)}
+                      restored={!editingDailyId && entryHasContent(dailyForm) ? restoredDrafts.daily : null}
+                      addLabel="Add Entry"
+                      onDiscard={() => { setDailyForm(emptyDailyEntry()); setRestoredDrafts(p => ({ ...p, daily: undefined })); }}
+                    />
 
                     <div className="grid grid-cols-3 gap-3 mb-3">
                       <Field label="Date" type="date" value={dailyForm.date} onChange={v => setDailyForm(p => ({ ...p, date: v }))} />
@@ -1306,8 +1444,9 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                         <button
                           onClick={handleCancelEditDaily}
                           className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                          title="Your edits are already saved automatically"
                         >
-                          Cancel Edit
+                          Done
                         </button>
                       )}
                     </div>
@@ -1351,9 +1490,15 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
               {activeTab === 'followup' && (
                 <div className="space-y-5">
                   <div id="followup-entry-form" className={`border rounded-xl p-4 bg-gray-50 ${editingFollowUpId ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-200'}`} ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e)}>
-                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">
-                      {editingFollowUpId ? `Editing Follow up — ${fmtDate(followUpForm.date)}` : 'Add Follow up'}
-                    </h3>
+                    <EntryFormHeader
+                      title={editingFollowUpId ? `Editing Follow up — ${fmtDate(followUpForm.date)}` : 'Add Follow up'}
+                      editing={!!editingFollowUpId}
+                      autosave={followUpAutosave}
+                      hasContent={entryHasContent(followUpForm)}
+                      restored={!editingFollowUpId && entryHasContent(followUpForm) ? restoredDrafts.followup : null}
+                      addLabel="Add Follow up"
+                      onDiscard={() => { setFollowUpForm(emptyFollowUp()); setRestoredDrafts(p => ({ ...p, followup: undefined })); }}
+                    />
                     <div className="grid grid-cols-3 gap-3 mb-3">
                       <Field label="Follow-up Date" type="date" value={followUpForm.date} onChange={v => setFollowUpForm(p => ({ ...p, date: v }))} />
                     </div>
@@ -1368,8 +1513,8 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                         {savingFollowUp ? 'Saving...' : editingFollowUpId ? 'Update Follow up' : 'Add Follow up'}
                       </button>
                       {editingFollowUpId && (
-                        <button onClick={handleCancelEditFollowUp} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
-                          Cancel Edit
+                        <button onClick={handleCancelEditFollowUp} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50" title="Your edits are already saved automatically">
+                          Done
                         </button>
                       )}
                     </div>
@@ -1425,7 +1570,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
         {/* Bottom bar */}
         <div className="flex-shrink-0 border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
-          <span>Changes save automatically as you type. Daily Log and Follow up entries are saved with their own Add button.</span>
+          <span>Everything saves automatically as you type. A new Daily Log or Follow up entry stays a draft until you click Add.</span>
           <button onClick={() => setShowPrintOptions(true)} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
             <Printer className="w-4 h-4" /> Print Case Sheet
           </button>
