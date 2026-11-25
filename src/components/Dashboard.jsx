@@ -830,7 +830,10 @@ const Dashboard = () => {
   const currentUser = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('currentUser') || '{}'); } catch { return {}; }
   }, []);
-  const isDoctorView = currentUser.role === 'doctor';
+  // A doctor with the "View All Appointments" option ticked in User
+  // Management sees the whole clinic's board, same as front office.
+  const isDoctorView = currentUser.role === 'doctor'
+    && !(currentUser.permissions || []).includes('all-appointments');
   const myName = normName(currentUser.name);
   const isMine = (doctorField) => !isDoctorView || normName(doctorField) === myName;
 
