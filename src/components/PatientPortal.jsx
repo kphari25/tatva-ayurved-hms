@@ -782,37 +782,37 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">MRD / IP No.</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Age/Gender</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Contact</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Registration Date</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                  <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                  <th className="px-3 xl:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">MRD / IP No.</th>
+                  <th className="px-3 xl:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
+                  <th className="px-3 xl:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Age/Gender</th>
+                  <th className="px-3 xl:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                  <th className="px-3 xl:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
+                  <th className="px-3 xl:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Contact</th>
+                  <th className="px-3 xl:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Registration Date</th>
+                  <th className="px-3 xl:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                  <th className="px-3 xl:px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredPatients.map((patient) => (
                   <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
+                    <td className="px-3 xl:px-4 py-3">
                       <div className="space-y-1">
                         {patient.mrd_number ? (
-                          <span className="block font-mono text-sm font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded">
+                          <span className="block whitespace-nowrap font-mono text-sm font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded">
                             {patient.mrd_number}
                           </span>
                         ) : (
                           <span className="block font-mono text-xs text-gray-400">{patient.patient_number || 'N/A'}</span>
                         )}
                         {patient.ip_number && (
-                          <span className="block font-mono text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded">
+                          <span className="block whitespace-nowrap font-mono text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded">
                             {patient.ip_number}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 xl:px-4 py-3">
                       <div className="flex items-center">
                         <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center mr-3">
                           <span className="text-teal-700 font-semibold text-sm">
@@ -848,13 +848,13 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 xl:px-4 py-3">
                       <div className="text-sm">
                         <p className="text-gray-900">{patient.age ? `${patient.age} yrs` : calculateAge(patient.date_of_birth) !== 'N/A' ? `${calculateAge(patient.date_of_birth)} yrs` : 'N/A'}</p>
                         <p className="text-gray-500">{patient.gender || 'N/A'}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 xl:px-4 py-3">
                       <span className={`px-3 py-1 text-xs rounded-full font-semibold ${(patient.patient_type || 'OP') === 'IP' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
                         {patient.patient_type || 'OP'}
                       </span>
@@ -864,7 +864,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 xl:px-4 py-3">
                       <select
                         value={patient.patient_category || 'General'}
                         onChange={(e) => handleCategoryChange(patient, e.target.value)}
@@ -875,7 +875,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         <option value="PNC">PNC</option>
                       </select>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 xl:px-4 py-3">
                       <div className="text-sm">
                         {patient.phone && (
                           <p className="text-gray-900 flex items-center">
@@ -888,7 +888,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-3 xl:px-4 py-3 text-sm text-gray-600">
                       {patient.created_at 
                         ? new Date(patient.created_at).toLocaleDateString('en-IN')
                         : patient.registration_date
@@ -896,7 +896,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         : 'N/A'
                       }
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 xl:px-4 py-3">
                       {patient.admission_status !== 'discharged' ? (
                         <span className="px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
                           Active
@@ -907,12 +907,12 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center flex-wrap gap-1">
+                    <td className="px-3 xl:px-4 py-3">
+                      <div className="grid grid-cols-5 gap-1 w-max mx-auto">
                         {/* View */}
                         <button
                           onClick={() => viewPatientDetails(patient)}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="View Details"
                         >
                           <Eye className="w-4 h-4" />
@@ -920,7 +920,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {/* Edit */}
                         <button
                           onClick={() => { setEditingPatient(patient); setShowEditPatient(true); }}
-                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                           title="Edit Patient"
                         >
                           <Edit className="w-4 h-4" />
@@ -928,7 +928,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {/* Schedule Appointment */}
                         <button
                           onClick={() => openAppointmentModal(patient)}
-                          className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                          className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                           title="Schedule Appointment"
                         >
                           <CalendarPlus className="w-4 h-4" />
@@ -936,7 +936,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {/* Assign Doctor */}
                         <button
                           onClick={() => openAssignDoctorModal(patient)}
-                          className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                           title={patient.assigned_doctor ? `Doctor: ${patient.assigned_doctor}` : 'Assign Doctor'}
                         >
                           <UserRound className="w-4 h-4" />
@@ -945,7 +945,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {patient.admission_status === 'pending_admission' && (
                           <button
                             onClick={() => openAdmitModal(patient)}
-                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                             title="Admit Patient"
                           >
                             <BedDouble className="w-4 h-4" />
@@ -955,7 +955,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {(patient.patient_type === 'IP' || patient.ip_number) && patient.admission_status === 'admitted' && (
                           <button
                             onClick={() => openAdmitModal(patient)}
-                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                             title={patient.expected_stay_days != null ? `Expected stay: ${patient.expected_stay_days} day(s) — edit` : 'Set expected stay / edit admission date'}
                           >
                             <Clock className="w-4 h-4" />
@@ -965,7 +965,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {(patient.patient_type === 'IP' || patient.ip_number) && (
                           <button
                             onClick={() => { setCaseSheetPatient(patient); setShowCaseSheet(true); }}
-                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                             title="IP Case Sheet"
                           >
                             <FileText className="w-4 h-4" />
@@ -975,7 +975,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {(patient.patient_type === 'IP' || patient.ip_number) && (
                           <button
                             onClick={() => { setDailyProgressPatient(patient); setShowDailyProgress(true); }}
-                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                             title="IP Daily Progress"
                           >
                             <Activity className="w-4 h-4" />
@@ -985,7 +985,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {!(patient.patient_type === 'IP' || patient.ip_number) && (
                           <button
                             onClick={() => { setOpCaseSheetPatient(patient); setShowOPCaseSheet(true); }}
-                            className="p-2 text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
+                            className="p-1.5 text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
                             title="OP Case Sheet"
                           >
                             <BookOpen className="w-4 h-4" />
@@ -994,7 +994,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {/* Discharge Summary */}
                         <button
                           onClick={() => openDischargeSummary(patient)}
-                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                          className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                           title="Discharge Summary"
                         >
                           <ClipboardList className="w-4 h-4" />
@@ -1003,7 +1003,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {(patient.patient_type === 'IP' || patient.ip_number) && patient.admission_status !== 'discharged' && (
                           <button
                             onClick={() => window.dispatchEvent(new CustomEvent('startDischarge', { detail: patient.id }))}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Discharge"
                           >
                             <LogOut className="w-4 h-4" />
@@ -1013,7 +1013,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {!(patient.patient_type === 'IP' || patient.ip_number) && patient.admission_status !== 'discharged' && (
                           <button
                             onClick={() => handleOpCheckout(patient)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Checkout"
                           >
                             <LogOut className="w-4 h-4" />
@@ -1023,7 +1023,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {patient.admission_status === 'discharged' && (
                           <button
                             onClick={() => handleReactivate(patient)}
-                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                             title="Reactivate"
                           >
                             <RotateCcw className="w-4 h-4" />
@@ -1032,7 +1032,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {/* Prescription */}
                         <button
                           onClick={() => { setPrescriptionPatient(patient); setShowPrescription(true); }}
-                          className="p-2 text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
+                          className="p-1.5 text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
                           title="Prescription"
                         >
                           <Pill className="w-4 h-4" />
@@ -1040,7 +1040,7 @@ const PatientPortal = ({ onAddPatient, initialPatientId, onInitialPatientHandled
                         {/* Delete */}
                         <button
                           onClick={() => handleDelete(patient.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="Delete Patient"
                         >
                           <Trash2 className="w-4 h-4" />
