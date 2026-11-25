@@ -1,5 +1,6 @@
 import { formatDateOnly } from './formatDate';
 import { fitToPageCss, fitToPageScript } from './printFit';
+import { escapeHtml as esc, escapeHtmlMultiline } from './escapeHtml';
 
 export const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -66,7 +67,7 @@ const buildTreatmentRows = (data) => {
       const rate = dayItems.length === 1 ? `₹${Number(dayItems[0].price || 0).toFixed(2)}` : '-';
       return `
         <tr>
-          <td>Treatment: ${dayItems.map(it => it.name).join(', ')}</td>
+          <td>Treatment: ${dayItems.map(it => esc(it.name)).join(', ')}</td>
           <td>${dateKey === 'Undated' ? '-' : formatDateOnly(dateKey)}</td>
           <td>${rate}</td>
           <td>₹${total.toFixed(2)}</td>
@@ -89,7 +90,7 @@ const buildTreatmentRows = (data) => {
   });
   return Object.values(groups).map(g => `
     <tr>
-      <td>${g.name}</td>
+      <td>${esc(g.name)}</td>
       <td>${g.qty}</td>
       <td>₹${g.rate.toFixed(2)}</td>
       <td>₹${(g.qty * g.rate).toFixed(2)}</td>
@@ -116,7 +117,7 @@ const buildMedicineRows = (data) => {
   });
   return Object.values(groups).map(g => `
     <tr>
-      <td>${g.name}${g.batch ? ` <span style="font-size:11px;color:#888;">(Batch ${g.batch})</span>` : ''}${g.gst_percentage != null ? ` <span style="font-size:11px;color:#888;">(GST ${g.gst_percentage}%)</span>` : ''}</td>
+      <td>${esc(g.name)}${g.batch ? ` <span style="font-size:11px;color:#888;">(Batch ${esc(g.batch)})</span>` : ''}${g.gst_percentage != null ? ` <span style="font-size:11px;color:#888;">(GST ${esc(g.gst_percentage)}%)</span>` : ''}</td>
       <td>${g.qty}</td>
       <td>₹${g.rate.toFixed(2)}</td>
       <td>₹${(g.qty * g.rate).toFixed(2)}</td>
@@ -144,7 +145,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
   return `<!DOCTYPE html>
 <html>
 <head>
-  <title>Invoice - ${data.invoice_number || data.patient_name || data.mrd_number || data.patient_number}</title>
+  <title>Invoice - ${esc(data.invoice_number || data.patient_name || data.mrd_number || data.patient_number)}</title>
   <style>
     * { box-sizing: border-box; }
     @media print { html { height: auto; } }
@@ -186,9 +187,13 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
     .thank-you { text-align: center; font-size: 13px; color: #888; margin-bottom: 10px; }
     .page-footer { text-align: center; font-size: 15px; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
     .footer-bar { height: 6px; background: #14b8a6; margin-top: 10px; }
+    /* Shown on "Preview & Print" before the invoice is saved: the number on
+       it is only the expected next one, not a reserved invoice number. */
+    .draft-mark { text-align: center; color: #b91c1c; border: 2px dashed #b91c1c; font-weight: bold; letter-spacing: 2px; padding: 4px; margin-bottom: 8px; }
   </style>
 </head>
 <body>
+  ${data.is_draft ? '<div class="draft-mark">DRAFT — NOT A VALID INVOICE</div>' : ''}
   <div class="page-content">
   ${letterhead ? '' : `
   <div class="header">
@@ -207,19 +212,20 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
   <div class="info">
     <div class="info-box">
       <h3>Patient Details:</h3>
-      <p><strong>Name:</strong> ${data.patient_name}</p>
-      ${data.ip_number ? `<p><strong>IP No:</strong> ${data.ip_number}</p>` : ''}
-      <p><strong>Phone:</strong> ${data.patient_phone || 'N/A'}</p>
-      <p><strong>Address:</strong> ${data.patient_address || 'N/A'}</p>
+      <p><strong>Name:</strong> ${esc(data.patient_name)}</p>
+      ${(data.mrd_number || data.patient_number) ? `<p><strong>MRD No:</strong> ${esc(data.mrd_number || data.patient_number)}</p>` : ''}
+      ${data.ip_number ? `<p><strong>IP No:</strong> ${esc(data.ip_number)}</p>` : ''}
+      <p><strong>Phone:</strong> ${esc(data.patient_phone || 'N/A')}</p>
+      <p><strong>Address:</strong> ${esc(data.patient_address || 'N/A')}</p>
     </div>
     <div class="info-box" style="text-align: right;">
       <h3>Invoice Details:</h3>
-      ${data.invoice_number ? `<p><strong>Invoice No:</strong> ${data.invoice_number}</p>` : ''}
+      ${data.invoice_number ? `<p><strong>Invoice No:</strong> ${esc(data.invoice_number)}${data.is_draft ? ' <span style="color:#b91c1c;font-weight:bold;">(DRAFT)</span>' : ''}</p>` : ''}
       <p><strong>Date:</strong> ${formatDateOnly(data.invoice_date)}</p>
-      <p><strong>Invoice Type:</strong> ${data.invoice_type}</p>
+      <p><strong>Invoice Type:</strong> ${esc(data.invoice_type)}</p>
       ${data.invoice_type === 'IP' && data.admission_date ? `<p><strong>Admission Date:</strong> ${formatDateOnly(data.admission_date)}</p>` : ''}
       ${data.invoice_type === 'IP' && data.discharge_date ? `<p><strong>Discharge Date:</strong> ${formatDateOnly(data.discharge_date)}</p>` : ''}
-      <p><strong>Payment Mode:</strong> ${data.payment_mode}</p>
+      <p><strong>Payment Mode:</strong> ${esc(data.payment_mode)}</p>
     </div>
   </div>
 
@@ -244,7 +250,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
       ` : ''}
       ${data.invoice_type === 'IP' && data.room_rent > 0 ? `
         <tr>
-          <td>Room Rent (${data.room_type})</td>
+          <td>Room Rent (${esc(data.room_type)})</td>
           <td>${data.days} days</td>
           <td>₹${data.room_rent.toFixed(2)}</td>
           <td>₹${(data.room_rent * data.days).toFixed(2)}</td>
@@ -286,7 +292,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
       ` : ''}
       ${(data.additional_charges && data.additional_charges.length > 0) ? data.additional_charges.map(charge => `
         <tr>
-          <td>${charge.label || 'Additional Charge'}</td>
+          <td>${esc(charge.label || 'Additional Charge')}</td>
           <td>-</td>
           <td>-</td>
           <td>₹${Number(charge.amount || 0).toFixed(2)}</td>
@@ -374,7 +380,7 @@ export const buildInvoicePrintHTML = (data, pageSize = 'A4', orientation = 'port
   ${data.notes ? `
     <div style="margin-top: 30px;">
       <strong>Notes:</strong>
-      <p>${data.notes}</p>
+      <p>${escapeHtmlMultiline(data.notes)}</p>
     </div>
   ` : ''}
   </div>

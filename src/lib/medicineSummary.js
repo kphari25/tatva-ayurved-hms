@@ -1,3 +1,5 @@
+import { escapeHtml as esc } from './escapeHtml';
+
 // Renders a plain-text summary of MedicineTable rows so older code that only
 // reads `medication_details` (e.g. PrescriptionModal) keeps working unchanged.
 export const summarizeMedicineItems = (items = []) =>
@@ -23,11 +25,11 @@ export const buildMedicineItemsTableHTML = (items = []) => {
   const rowsHTML = rows.map((item, i) => `
     <tr>
       <td>${i + 1}</td>
-      <td>${item.item_name}</td>
-      <td>${item.dose || ''}</td>
-      <td>${item.frequency || ''}</td>
-      <td>${item.instructions || ''}</td>
-      <td>${item.days || ''}</td>
+      <td>${esc(item.item_name)}</td>
+      <td>${esc(item.dose)}</td>
+      <td>${esc(item.frequency)}</td>
+      <td>${esc(item.instructions)}</td>
+      <td>${esc(item.days)}</td>
     </tr>
   `).join('');
   return `<table class="med-table">

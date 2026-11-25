@@ -7,6 +7,7 @@ import { formatDateOnly } from '../lib/formatDate';
 import { fetchLatestDischargeSummary } from '../lib/dischargeSummary';
 import { loadDoctorsList, findDoctorInfo } from '../lib/doctors';
 import { fitToPageCss, fitToPageScript } from '../lib/printFit';
+import { escapeHtml as esc } from '../lib/escapeHtml';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -143,9 +144,14 @@ const PrescriptionModal = ({ patient, onClose }) => {
 
     // The signature shows the designation/registration of the doctor whose name is
     // printed (the one who signed, which can differ from the patient's assigned doctor).
+    // If the printed name can't be matched to exactly one doctor, print no
+    // designation/registration rather than borrow the assigned doctor's —
+    // the signer may be a different person.
     const attendingInfo = attendingDoctor ? findDoctorInfo(allDoctors, attendingDoctor) : null;
-    const sigDesignation = attendingInfo ? (attendingInfo.designation || '') : doctorDesignation;
-    const sigRegistration = attendingInfo ? (attendingInfo.registrationNumber || '') : doctorRegistrationNumber;
+    const printedIsAssigned = !!patient?.assigned_doctor &&
+      attendingDoctor.toLowerCase() === patient.assigned_doctor.replace(/^dr\.?\s*/i, '').trim().toLowerCase();
+    const sigDesignation = attendingInfo ? (attendingInfo.designation || '') : (printedIsAssigned ? doctorDesignation : '');
+    const sigRegistration = attendingInfo ? (attendingInfo.registrationNumber || '') : (printedIsAssigned ? doctorRegistrationNumber : '');
 
     const showDateColumn = entries.length > 1;
     const rows = [];
@@ -165,11 +171,11 @@ const PrescriptionModal = ({ patient, onClose }) => {
       <tr>
         <td>${i + 1}</td>
         ${showDateColumn ? `<td>${fmtDate(r.date)}</td>` : ''}
-        <td>${r.item_name}</td>
-        <td>${r.dose || ''}</td>
-        <td>${r.frequency || ''}</td>
-        <td>${r.instructions || ''}</td>
-        <td>${r.days || ''}</td>
+        <td>${esc(r.item_name)}</td>
+        <td>${esc(r.dose)}</td>
+        <td>${esc(r.frequency)}</td>
+        <td>${esc(r.instructions)}</td>
+        <td>${esc(r.days)}</td>
       </tr>
     `).join('');
 
@@ -177,7 +183,7 @@ const PrescriptionModal = ({ patient, onClose }) => {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Prescription – ${patientName}</title>
+  <title>Prescription – ${esc(patientName)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     @media print { html { height: auto; } }
@@ -231,10 +237,10 @@ const PrescriptionModal = ({ patient, onClose }) => {
       <div class="tagline">Ayurveda for Health &amp; Happiness</div>
     </div>
     <table class="patient-block">
-      <tr><td class="info-label">Name</td><td class="info-value">: ${patientName}</td></tr>
-      <tr><td class="info-label">Age &amp; Sex</td><td class="info-value">: ${patient?.age || '—'} yrs, ${patient?.gender || '—'}</td></tr>
-      <tr><td class="info-label">MRD No</td><td class="info-value">: ${patient?.mrd_number || patient?.patient_number || '—'}</td></tr>
-      ${patient?.ip_number ? `<tr><td class="info-label">IP No</td><td class="info-value">: ${patient.ip_number}</td></tr>` : ''}
+      <tr><td class="info-label">Name</td><td class="info-value">: ${esc(patientName)}</td></tr>
+      <tr><td class="info-label">Age &amp; Sex</td><td class="info-value">: ${esc(patient?.age || '—')} yrs, ${esc(patient?.gender || '—')}</td></tr>
+      <tr><td class="info-label">MRD No</td><td class="info-value">: ${esc(patient?.mrd_number || patient?.patient_number || '—')}</td></tr>
+      ${patient?.ip_number ? `<tr><td class="info-label">IP No</td><td class="info-value">: ${esc(patient.ip_number)}</td></tr>` : ''}
       <tr><td class="info-label">Date</td><td class="info-value">: ${dateLabel || todayLabel()}</td></tr>
     </table>
   </div>
@@ -273,11 +279,11 @@ const PrescriptionModal = ({ patient, onClose }) => {
         ${dischargeMedicines.map((item, i) => `
           <tr>
             <td>${i + 1}</td>
-            <td>${item.item_name}</td>
-            <td>${item.dose || ''}</td>
-            <td>${item.frequency || ''}</td>
-            <td>${item.instructions || ''}</td>
-            <td>${item.days || ''}</td>
+            <td>${esc(item.item_name)}</td>
+            <td>${esc(item.dose)}</td>
+            <td>${esc(item.frequency)}</td>
+            <td>${esc(item.instructions)}</td>
+            <td>${esc(item.days)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -289,9 +295,9 @@ const PrescriptionModal = ({ patient, onClose }) => {
   <div class="print-footer">
     <div class="sig-block">
       <div class="sig-line"></div>
-      ${attendingDoctor ? `<p class="doctor-name" style="margin-top:4px;">Dr. ${attendingDoctor}</p>` : ''}
-      ${sigDesignation ? `<p class="reg">${sigDesignation}</p>` : ''}
-      ${sigRegistration ? `<p class="reg">Reg No: ${sigRegistration}</p>` : ''}
+      ${attendingDoctor ? `<p class="doctor-name" style="margin-top:4px;">Dr. ${esc(attendingDoctor)}</p>` : ''}
+      ${sigDesignation ? `<p class="reg">${esc(sigDesignation)}</p>` : ''}
+      ${sigRegistration ? `<p class="reg">Reg No: ${esc(sigRegistration)}</p>` : ''}
       <p style="font-size:11px;">Signature of Physician</p>
     </div>
     <div class="footer-bar"></div>

@@ -10,6 +10,7 @@ import { useWritingCheck } from './useWritingCheck';
 import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import InvestigationAttachments from './InvestigationAttachments';
 import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
+import { escapeFields } from '../lib/escapeHtml';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
@@ -180,7 +181,13 @@ const fmtTime12h = (t) => {
 };
 
 // ── Print HTML generator ────────────────────────────────────────────────
-const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all', doctorInfo = {}) => {
+const buildOPCaseSheetPrintHTML = (rawPatient, rawForm, rawVisitNotes, sectionId = 'all', rawDoctorInfo = {}) => {
+  // Every user-entered field is escaped once here, so text like "<L4/L5>"
+  // prints as typed and can't inject markup or script into the print window.
+  const patient = escapeFields(rawPatient);
+  const form = escapeFields(rawForm);
+  const visitNotes = (rawVisitNotes || []).map(escapeFields);
+  const doctorInfo = escapeFields(rawDoctorInfo);
   const patientName = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim().toUpperCase();
   const age = patient?.age || '';
   const gender = patient?.gender?.[0]?.toUpperCase() || '';
@@ -331,7 +338,7 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all',
   <title>OP Case Sheet – ${patientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; padding-bottom: 140px; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; }
     @page { size: A4; margin: 15mm 12mm; }
     @media print { body { -webkit-print-color-adjust: exact; } }
 
@@ -361,13 +368,11 @@ const buildOPCaseSheetPrintHTML = (patient, form, visitNotes, sectionId = 'all',
     table.med-table th, table.med-table td { border: 1px solid #ccc; padding: 2px 4px; text-align: left; }
     table.med-table th { background: #f5f5f5; font-weight: 600; }
 
-    /* Signature block stays pinned to the bottom of the printed page, same
-       treatment as the prescription and invoice printouts, instead of
-       trailing wherever the content happens to end. */
-    .footer { margin-top: 50px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; }
-    @media print {
-      .footer { position: fixed; left: 12mm; right: 12mm; bottom: 15mm; margin-top: 0; background: #fff; }
-    }
+    /* Signature block follows the content and is kept whole on one page.
+       It used to be position:fixed in print, which repeats it on every page
+       of a multi-page case sheet and paints it (white background) over the
+       clinical rows underneath. */
+    .footer { margin-top: 50px; border-top: 2px solid #1a5f4e; padding-top: 10px; display: flex; justify-content: space-between; break-inside: avoid; page-break-inside: avoid; }
     .sig-block { text-align: right; }
     .sig-line { border-top: 1px solid #000; width: 180px; margin-top: 40px; margin-left: auto; margin-bottom: 4px; }
     .sig-block .doctor-name { font-weight: bold; font-size: 11px; }

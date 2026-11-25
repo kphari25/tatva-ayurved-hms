@@ -5,6 +5,7 @@ import { buildInvoicePdfBase64, invoicePdfFilename } from '../lib/invoicePdf';
 import WhatsAppSendDialog from './WhatsAppSendDialog';
 import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { peekNextDocumentNumber, reserveNextDocumentNumber } from '../lib/documentNumbers';
 import { sendInvoiceSMS } from '../lib/sms';
 import { ROOMS, ROOM_TYPES, ROOM_RATES, getRoomRate } from '../lib/rooms';
 import { addDaysToDateString, todayLocalDateStr } from '../lib/formatDate';
@@ -311,15 +312,9 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
     return calculateSubtotal() + calculateGST() - (parseFloat(formData.discount) || 0);
   };
 
-  // Same approach as MedicineSaleModal's getNextBillNumber — "A" + a plain,
-  // zero-padded running count instead of the old MED-YYYY-NNNN style, so
-  // it's short enough to read out over the phone and track against.
-  // Counted separately from medicine_sales, since these are a different
-  // invoice series.
-  const getNextInvoiceNumber = async () => {
-    const snap = await getDocs(collection(db, 'invoices'));
-    return `A${String(snap.size + 1).padStart(4, '0')}`;
-  };
+  // "A" + zero-padded number, shared with medicine sale bills and reserved
+  // atomically on save so no two invoices/bills get the same number — see
+  // lib/documentNumbers.js.
 
   const handleSaveInvoice = async () => {
     if (savingRef.current) return;
@@ -328,7 +323,7 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
       setSaving(true);
 
       const invoiceData = {
-        invoice_number: await getNextInvoiceNumber(),
+        invoice_number: await reserveNextDocumentNumber(),
         patient_id: patient.firebaseId || patient.id,
         patient_number: patient.patient_number,
         mrd_number: patient.mrd_number || '',
@@ -460,9 +455,14 @@ const InvoiceModal = ({ patient, onClose, onSave, registrationFee = 0, consultat
 
   const handlePrint = async (invoiceData = null) => {
     const data = invoiceData || {
-      invoice_number: await getNextInvoiceNumber(),
+      // Not saved yet: the number is only the expected next one, so the
+      // printout is marked DRAFT (see buildInvoicePrintHTML).
+      invoice_number: await peekNextDocumentNumber(),
+      is_draft: true,
       patient_name: `${patient.first_name} ${patient.last_name}`,
       patient_number: patient.patient_number,
+      mrd_number: patient.mrd_number || '',
+      ip_number: patient.ip_number || '',
       patient_phone: patient.phone,
       patient_address: patient.address,
       invoice_type: invoiceType,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { History, Printer, RefreshCw, Calendar, Users } from 'lucide-react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { escapeHtml } from '../lib/escapeHtml';
 
 // All dates/times in this report are pinned to IST (Asia/Kolkata), regardless of the
 // viewer's or server's local timezone, so login/logout times are unambiguous.
@@ -112,8 +113,8 @@ const UserActivityReport = () => {
       <tr style="background:#f0f0f0;"><td colspan="5"><strong>${fmtDate(dateKey)}</strong></td></tr>
       ${entries.map((s) => `
         <tr>
-          <td>${s.user_name || ''}</td>
-          <td>${s.role || ''}</td>
+          <td>${escapeHtml(s.user_name)}</td>
+          <td>${escapeHtml(s.role)}</td>
           <td>${fmtTime(s.login_at)}</td>
           <td>${s.logged_out_at ? fmtTime(s.logged_out_at) : (isRecentlyActive(s) ? 'Active now' : `Last seen ${fmtTime(s.last_seen)}`)}</td>
           <td>${fmtDuration(durationMs(s))}</td>

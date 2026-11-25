@@ -3,6 +3,7 @@ import { IndianRupee, Printer, RefreshCw, ChevronDown, ChevronRight, Calendar } 
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { getFinancialsStartDate, setFinancialsStartDate } from '../lib/appSettings';
+import { escapeHtml } from '../lib/escapeHtml';
 
 const fmt = (n) => `₹${(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 
@@ -243,7 +244,7 @@ const Financials = ({ isAdmin = false }) => {
     const otherExpenseRows = Object.entries(summary.otherExpenseByCategory)
       .map(
         ([cat, amt]) => `
-        <tr><td>${cat.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</td><td style="text-align:right;">${fmt(amt)}</td></tr>`
+        <tr><td>${escapeHtml(cat.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))}</td><td style="text-align:right;">${fmt(amt)}</td></tr>`
       )
       .join('');
 

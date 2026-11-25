@@ -1,5 +1,6 @@
 import { formatDateOnly } from './formatDate';
 import { fitToPageCss, fitToPageScript } from './printFit';
+import { escapeHtml as esc, escapeHtmlMultiline } from './escapeHtml';
 
 export const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -95,18 +96,18 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
   const rowsHTML = saleData.items.map((r, i) => `
       <tr>
         <td>${i + 1}</td>
-        <td>${r.name}</td>
-        <td style="text-align:center">${r.batch_number || '—'}</td>
-        <td style="text-align:center">${r.quantity}</td>
+        <td>${esc(r.name)}</td>
+        <td style="text-align:center">${esc(r.batch_number || '—')}</td>
+        <td style="text-align:center">${esc(r.quantity)}</td>
         <td style="text-align:right">₹${parseFloat(r.rate).toFixed(2)}</td>
-        <td style="text-align:center">${r.gst_percentage != null ? `${r.gst_percentage}%` : '—'}</td>
+        <td style="text-align:center">${r.gst_percentage != null ? `${esc(r.gst_percentage)}%` : '—'}</td>
         <td style="text-align:right">₹${(r.quantity * r.rate).toFixed(2)}</td>
       </tr>`).join('');
 
   return `<!DOCTYPE html>
 <html>
 <head>
-  <title>Medicine Sale - ${saleData.bill_number}</title>
+  <title>Medicine Sale - ${esc(saleData.bill_number)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     @media print { html { height: auto; } }
@@ -172,14 +173,14 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
 
   <div class="info">
     <div class="info-block">
-      <div class="customer-line"><b>Customer:</b> ${saleData.customer_name || 'Walk-in Customer'}</div>
-      ${saleData.mrd_number ? `<div class="mrd-line"><b>MRD No:</b> ${saleData.mrd_number}</div>` : ''}
-      ${saleData.phone ? `<div><b>Phone:</b> ${saleData.phone}</div>` : ''}
+      <div class="customer-line"><b>Customer:</b> ${esc(saleData.customer_name || 'Walk-in Customer')}</div>
+      ${saleData.mrd_number ? `<div class="mrd-line"><b>MRD No:</b> ${esc(saleData.mrd_number)}</div>` : ''}
+      ${saleData.phone ? `<div><b>Phone:</b> ${esc(saleData.phone)}</div>` : ''}
     </div>
     <div class="info-block" style="text-align:right">
-      <div><b>Bill No:</b> ${saleData.bill_number}</div>
+      <div><b>Bill No:</b> ${esc(saleData.bill_number)}</div>
       <div><b>Date:</b> ${formatDateOnly(saleData.sale_date, { day: 'numeric', month: 'numeric', year: 'numeric' })}</div>
-      <div><b>Payment:</b> ${saleData.payment_mode}</div>
+      <div><b>Payment:</b> ${esc(saleData.payment_mode)}</div>
     </div>
   </div>
 
@@ -215,7 +216,7 @@ export const buildMedicineSalePrintHTML = (saleData, pageSize = 'A4', orientatio
   </div>
   <div style="clear:both"></div>
   </div>
-  ${saleData.notes ? `<div style="margin-top:16px"><b>Notes:</b> ${saleData.notes}</div>` : ''}
+  ${saleData.notes ? `<div style="margin-top:16px"><b>Notes:</b> ${escapeHtmlMultiline(saleData.notes)}</div>` : ''}
   </div>
 
   <div class="print-footer">

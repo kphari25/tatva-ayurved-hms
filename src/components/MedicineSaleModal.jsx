@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Trash2, ShoppingBag, Search, User, AlertTriangle, MessageCircle } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { peekNextDocumentNumber, reserveNextDocumentNumber } from '../lib/documentNumbers';
 import { basePriceFromMRP, gstPercentForItem, batchesForItem, defaultBatchForItem, buildMedicineSalePrintHTML } from '../lib/medicineSalePrint';
 import { todayLocalDateStr } from '../lib/formatDate';
 import { previewIframeStyle } from '../lib/printPreviewSize';
@@ -311,10 +312,10 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
   // acceptable, unlikely edge case for a display-only preview.
   // "A" + zero-padded running count (no MED-/year prefix) — short enough to
   // read out over the phone and track against.
-  const getNextBillNumber = async () => {
-    const snap = await getDocs(collection(db, 'medicine_sales'));
-    return `A${String(snap.size + 1).padStart(4, '0')}`;
-  };
+  // The "A" series is shared with invoices and reserved atomically on save
+  // (lib/documentNumbers.js), so a bill never repeats an invoice's or
+  // another bill's number. The preview only peeks at the next number.
+  const getNextBillNumber = () => peekNextDocumentNumber();
 
   const handlePrint = async (saleData = null) => {
     const data = saleData || {
@@ -365,7 +366,7 @@ const MedicineSaleModal = ({ onClose, onSave, initialCustomer, initialMedicineNa
     }
     try {
       setSaving(true);
-      const billNumber = await getNextBillNumber();
+      const billNumber = await reserveNextDocumentNumber();
       const saleData = {
         bill_number: billNumber,
         // Durable link back to the patient (and therefore their

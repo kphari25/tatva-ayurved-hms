@@ -108,11 +108,22 @@ export const doctorWithDesignation = (doctorsList, name, sep = ' · ') => {
 // name (e.g. a patient's assigned_doctor "Dr. Satheesh" vs the record's
 // full "Dr. Satheesh Kumar") — exact matching silently drops
 // designation/registration number whenever the two don't match verbatim.
+// A shorter form only matches on whole words ("Satheesh" → "Satheesh Kumar",
+// never "Anu" → "Anupama"), and only when exactly one doctor fits — a wrong
+// match prints another doctor's registration number on a prescription or
+// discharge summary, so no match (blank designation/registration) is safer.
+const matchKey = (s) => normalizeDocName(s).replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+const isWordPrefix = (longer, shorter) => longer.startsWith(shorter) && longer.charAt(shorter.length) === ' ';
+
 export const findDoctorInfo = (doctorsList, targetName) => {
-  const target = normalizeDocName(targetName);
+  const target = matchKey(targetName);
   if (!target) return null;
-  return doctorsList.find(d => {
-    const n = normalizeDocName(d.name);
-    return n && (n === target || n.startsWith(target) || target.startsWith(n));
-  }) || null;
+  const list = (doctorsList || []).filter(d => matchKey(d.name));
+  const exact = list.find(d => matchKey(d.name) === target);
+  if (exact) return exact;
+  const partial = list.filter(d => {
+    const n = matchKey(d.name);
+    return isWordPrefix(n, target) || isWordPrefix(target, n);
+  });
+  return partial.length === 1 ? partial[0] : null;
 };

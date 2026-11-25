@@ -9,6 +9,7 @@ import { todayLocalDateStr, addDaysToDateString } from '../lib/formatDate';
 import MedicineTable from './MedicineTable';
 import { buildMedicineItemsTableHTML } from '../lib/medicineSummary';
 import { fitToPageCss, fitToPageScript } from '../lib/printFit';
+import { escapeDeep } from '../lib/escapeHtml';
 
 const HOSPITAL = {
   name: 'Tatva Ayurved',
@@ -279,7 +280,14 @@ const MedicineListEditor = ({ label, items, onChange, inventory }) => {
 // letterhead=true skips the logo/contact header (already pre-printed on the
 // hospital's letterhead stock) and pushes page-1 content down to clear that
 // artwork — only page 1 gets the extra top margin; page 2+ print normally.
-const buildPrintHTML = (patient, form, letterhead = false, doctorInfo = {}, pageSize = 'A4') => {
+const buildPrintHTML = (rawPatient, rawForm, letterhead = false, rawDoctorInfo = {}, pageSize = 'A4') => {
+  // Every user-entered value (including the nested lists/sections) is
+  // escaped once here, so text like "<L4/L5>" prints as typed and can't
+  // inject markup or script into the print preview. The structured medicine
+  // table stays raw because buildMedicineItemsTableHTML escapes it itself.
+  const patient = escapeDeep(rawPatient || {});
+  const form = { ...escapeDeep(rawForm || {}), discharge_internal_medicines: rawForm?.discharge_internal_medicines || [] };
+  const doctorInfo = escapeDeep(rawDoctorInfo || {});
   // A5 is roughly half of A4 — a short OP-style discharge summary can fit,
   // though a full clinical discharge summary with treatments/medicines is
   // long enough that it will likely still span multiple A5 pages; that's an
