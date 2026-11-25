@@ -71,6 +71,10 @@ const MODULES = {
   dashboard: { label: 'Dashboard', icon: Home, description: 'Main dashboard overview' },
   patients: { label: 'Patient Portal', icon: Users, description: 'Patient registration, records, view/edit' },
   scheduling: { label: 'Scheduling', icon: Calendar, description: 'Appointment booking and therapist schedules' },
+  // Not a page of its own — a Dashboard override for doctor logins, who
+  // otherwise only see their own appointments/admissions (see Dashboard.jsx's
+  // isDoctorView). Tick it on one doctor to show them every doctor's.
+  'all-appointments': { label: 'View All Appointments', icon: Calendar, description: "Doctors: see every doctor's appointments and admissions on the Dashboard, not just their own" },
   'room-management': { label: 'Room Management', icon: BedDouble, description: 'Floor plan view of IP rooms and current occupancy' },
   leads: { label: 'Lead Management', icon: ClipboardList, description: 'Track and manage patient leads' },
   inventory: { label: 'Inventory', icon: Package, description: 'Medicine inventory and stock management' },
