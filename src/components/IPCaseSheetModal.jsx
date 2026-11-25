@@ -11,7 +11,7 @@ import { useWritingCheck } from './useWritingCheck';
 import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import PrintSectionModal from './PrintSectionModal';
 import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
-import { escapeFields } from '../lib/escapeHtml';
+import { escapeFields, escapeHtml, escapeHtmlMultiline } from '../lib/escapeHtml';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
@@ -28,6 +28,7 @@ const PRINT_SECTIONS = [
   { id: 'history', label: 'History & Examination' },
   { id: 'investigations', label: 'Investigations & Procedure' },
   { id: 'vitals', label: 'Vitals & Daily Log' },
+  { id: 'followup', label: 'Follow up' },
 ];
 
 const TREATMENT_DAYS_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
@@ -119,7 +120,12 @@ const emptyForm = () => ({
   investigations: '',
   procedure: '',
   investigation_attachments: [],
+  // Post-discharge follow-up visits: [{ id, date, notes, created_at, created_by, updated_at?, updated_by? }]
+  follow_ups: [],
 });
+
+const emptyFollowUp = () => ({ date: today(), notes: '' });
+const sortFollowUps = (list) => [...(list || [])].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 
 const FROM_OP_INPUT = 'bg-amber-50 border-amber-300';
 const FromOPTag = () => <span className="ml-1.5 text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">from OP</span>;
@@ -310,8 +316,18 @@ const buildCaseSheetPrintHTML = (rawPatient, rawForm, rawDailyProgress, sectionI
 <div class="section-title">Procedure</div>
 <p style="white-space:pre-line;">${form.procedure}</p>`;
 
-  const availableSections = { sheet: sheetHTML, history: historyHTML, vitals: vitalsHTML, investigations: investigationsHTML };
-  const orderedKeys = ['sheet', 'history', 'investigations', 'vitals'];
+  const followUpRows = sortFollowUps(rawForm.follow_ups)
+    .map(f => `<tr><td>${fmtDate(f.date)}</td><td>${escapeHtmlMultiline(f.notes)}</td><td>${escapeHtml(f.created_by)}</td></tr>`).join('');
+
+  const followupHTML = `
+<div class="section-title">Follow up</div>
+<table class="grid">
+  <thead><tr><th style="width:90px;">Date</th><th>Notes</th><th style="width:150px;">Recorded By</th></tr></thead>
+  <tbody>${followUpRows || '<tr><td colspan="3" style="text-align:center;color:#888;">No records</td></tr>'}</tbody>
+</table>`;
+
+  const availableSections = { sheet: sheetHTML, history: historyHTML, vitals: vitalsHTML, investigations: investigationsHTML, followup: followupHTML };
+  const orderedKeys = ['sheet', 'history', 'investigations', 'vitals', 'followup'];
   const selectedKeys = sectionId === 'all' ? orderedKeys : orderedKeys.filter(k => k === sectionId);
   const bodyHTML = selectedKeys
     .map((k, i) => (i > 0 ? '<div class="page-break"></div>' : '') + availableSections[k])
@@ -442,6 +458,9 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   const [doctors, setDoctors] = useState([]);
   const [showPrintOptions, setShowPrintOptions] = useState(false);
   const [occupiedRooms, setOccupiedRooms] = useState(new Set());
+  const [followUpForm, setFollowUpForm] = useState(emptyFollowUp());
+  const [editingFollowUpId, setEditingFollowUpId] = useState(null);
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
   const tabContainerRef = useRef(null);
   // OP → IP carry-over: the patient's OP case sheet (if any), the review
   // dialog, and which IP fields were just filled from it and not yet
@@ -726,6 +745,57 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     }
   };
 
+  // Follow-ups are saved straight to the case sheet on Add/Update/Delete (only
+  // the follow_ups field is written), so a returning patient's visit can be
+  // recorded without having to re-save the rest of the sheet.
+  const persistFollowUps = async (list) => {
+    const sorted = sortFollowUps(list);
+    await setDoc(doc(db, 'ip_case_sheets', patientId), { follow_ups: sorted, patient_id: patientId }, { merge: true });
+    setForm(prev => ({ ...prev, follow_ups: sorted }));
+  };
+
+  const handleSaveFollowUp = async () => {
+    if (!followUpForm.date) { alert('Please select a date.'); return; }
+    if (!followUpForm.notes.trim()) { alert('Please enter follow-up notes.'); return; }
+    try {
+      setSavingFollowUp(true);
+      const email = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
+      const now = new Date().toISOString();
+      const current = form.follow_ups || [];
+      const list = editingFollowUpId
+        ? current.map(f => f.id === editingFollowUpId ? { ...f, date: followUpForm.date, notes: followUpForm.notes, updated_at: now, updated_by: email } : f)
+        : [...current, { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, date: followUpForm.date, notes: followUpForm.notes, created_at: now, created_by: email }];
+      await persistFollowUps(list);
+      setFollowUpForm(emptyFollowUp());
+      setEditingFollowUpId(null);
+    } catch (e) {
+      alert('Error saving follow-up: ' + e.message);
+    } finally {
+      setSavingFollowUp(false);
+    }
+  };
+
+  const handleEditFollowUp = (f) => {
+    scrollToForm('followup-entry-form');
+    setEditingFollowUpId(f.id);
+    setFollowUpForm({ date: f.date || today(), notes: f.notes || '' });
+  };
+
+  const handleCancelEditFollowUp = () => {
+    setEditingFollowUpId(null);
+    setFollowUpForm(emptyFollowUp());
+  };
+
+  const handleDeleteFollowUp = async (id) => {
+    if (!window.confirm('Delete this follow-up record?')) return;
+    try {
+      await persistFollowUps((form.follow_ups || []).filter(f => f.id !== id));
+      if (editingFollowUpId === id) handleCancelEditFollowUp();
+    } catch (e) {
+      alert('Error deleting follow-up: ' + e.message);
+    }
+  };
+
   const handlePrint = (sectionId = 'all') => {
     const matchedDoctor = doctors.find(d => d.name === form.physician_name);
     const doctorInfo = matchedDoctor ? {
@@ -748,6 +818,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     { id: 'history', label: 'History & Examination' },
     { id: 'investigations', label: 'Investigations & Procedure' },
     { id: 'vitals', label: `Vitals & Daily Log ${dailyProgress.length > 0 ? `(${dailyProgress.length})` : ''}` },
+    { id: 'followup', label: `Follow up ${form.follow_ups?.length > 0 ? `(${form.follow_ups.length})` : ''}` },
   ];
 
   return (
@@ -1192,6 +1263,67 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                               </div>
                             )}
                           </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── FOLLOW UP (after discharge) ── */}
+              {activeTab === 'followup' && (
+                <div className="space-y-5">
+                  <div id="followup-entry-form" className={`border rounded-xl p-4 bg-gray-50 ${editingFollowUpId ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-200'}`} ref={tabContainerRef}>
+                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">
+                      {editingFollowUpId ? `Editing Follow up — ${fmtDate(followUpForm.date)}` : 'Add Follow up'}
+                    </h3>
+                    <div className="grid grid-cols-3 gap-3 mb-3">
+                      <Field label="Follow-up Date" type="date" value={followUpForm.date} onChange={v => setFollowUpForm(p => ({ ...p, date: v }))} />
+                    </div>
+                    <div className="mb-3">
+                      <TextArea label="Notes" rows={4} value={followUpForm.notes} onChange={v => setFollowUpForm(p => ({ ...p, notes: v }))}
+                        placeholder="Condition on review, complaints, advice, medicines changed, next review…" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveFollowUp}
+                        disabled={savingFollowUp}
+                        className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:opacity-60"
+                      >
+                        <Plus className="w-4 h-4" />
+                        {savingFollowUp ? 'Saving...' : editingFollowUpId ? 'Update Follow up' : 'Add Follow up'}
+                      </button>
+                      {editingFollowUpId && (
+                        <button onClick={handleCancelEditFollowUp} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+                          Cancel Edit
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {(form.follow_ups || []).length === 0 ? (
+                    <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                      <p className="font-medium">No follow-up records yet.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {sortFollowUps(form.follow_ups).map(f => (
+                        <div key={f.id} className={`border rounded-xl overflow-hidden ${editingFollowUpId === f.id ? 'border-teal-400 ring-1 ring-teal-200' : 'border-gray-200'}`}>
+                          <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-800 text-sm">{fmtDate(f.date)}</span>
+                              {f.created_by && <span className="text-xs text-gray-400">by {f.created_by}</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleEditFollowUp(f)} className="p-1 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg" title="Edit">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => handleDeleteFollowUp(f.id)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="px-4 py-3 text-sm text-gray-800 whitespace-pre-line">{f.notes}</p>
                         </div>
                       ))}
                     </div>
