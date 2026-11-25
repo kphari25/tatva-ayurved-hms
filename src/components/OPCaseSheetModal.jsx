@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAutosave } from './useAutosave';
+import EntryFormHeader from './EntryFormHeader';
 import { X, Printer, Save, Plus, Trash2, Pencil } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, deleteDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
@@ -108,6 +109,16 @@ const emptyVisitEntry = () => ({
   treatment_days: 1,
   signed_by: '',
 });
+
+// Whether the Visit Log entry form has anything typed in it (the date and
+// Treatment Days alone don't count) — a blank form isn't kept as a draft.
+const visitHasContent = (f) => {
+  if (!f) return false;
+  const text = ['time', 'clinical_findings', 'treatment_notes', 'pain_intensity_score', 'signed_by'];
+  return text.some(k => String(f[k] ?? '').trim() !== '')
+    || (f.treatment_items || []).length > 0
+    || (f.medicine_items || []).some(m => m && (m.item_name || m.dose || m.frequency || m.instructions || m.days || m.ml_used));
+};
 
 const TREATMENT_DAYS_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
@@ -452,6 +463,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
   const [visitForm, setVisitForm] = useState(emptyVisitEntry());
   const [savingVisit, setSavingVisit] = useState(false);
   const [editingVisitId, setEditingVisitId] = useState(null);
+  const [restoredDraft, setRestoredDraft] = useState(null); // { saved_at, saved_by } of a draft found on open
   const [doctors, setDoctors] = useState([]);
   const [showPrintOptions, setShowPrintOptions] = useState(false);
   const tabContainerRef = useRef(null);
@@ -486,7 +498,15 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
         if (!data.treatment_details && data.treatment_medication_details) {
           data.treatment_details = data.treatment_medication_details;
         }
-        setForm(prev => ({ ...prev, ...data }));
+        // An unfinished new Visit Log entry (autosaved draft) lives on the
+        // sheet doc but not in `form`, so the sheet's own saves can't
+        // overwrite a newer draft with the copy loaded here.
+        const { visit_draft: visitDraft, ...sheet } = data;
+        setForm(prev => ({ ...prev, ...sheet }));
+        if (visitDraft?.data) {
+          setVisitForm({ ...emptyVisitEntry(), ...visitDraft.data });
+          setRestoredDraft(visitDraft);
+        }
       } else {
         setForm(prev => ({ ...prev, physician: patient?.assigned_doctor || '' }));
       }
@@ -518,19 +538,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
-  const hasUnsavedVisitEntry = () => {
-    if (activeTab !== 'visits') return false;
-    const f = visitForm;
-    return !!(
-      (f.clinical_findings && f.clinical_findings.trim()) ||
-      (f.medication_notes && f.medication_notes.trim()) ||
-      (f.treatment_notes && f.treatment_notes.trim()) ||
-      (f.medicine_items && f.medicine_items.length > 0) ||
-      (f.treatment_items && f.treatment_items.length > 0) ||
-      (f.pain_intensity_score !== '' && f.pain_intensity_score != null) ||
-      (f.signed_by && f.signed_by.trim())
-    );
-  };
+  const hasUnsavedVisitEntry = () => activeTab === 'visits' && !editingVisitId && visitHasContent(visitForm);
 
   // created_at of a brand-new sheet, remembered across autosaves so each
   // save doesn't stamp a fresh creation time.
@@ -541,8 +549,9 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
     const now = new Date().toISOString();
     const createdAt = data.created_at || createdRef.current || now;
+    const { visit_draft: _vd, ...fields } = data;
     await setDoc(doc(db, 'op_case_sheets', patientId), {
-      ...data,
+      ...fields,
       patient_id: patientId,
       patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
       mrd_number: patient?.mrd_number || '',
@@ -555,7 +564,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
   };
 
   // Autosave while the sheet is open (Initial Assessment and History &
-  // Examination; Visit Log entries are still saved with their Add Entry button).
+  // Examination; the Visit Log entry form has its own, visitAutosave).
   const autosave = useAutosave({
     value: form,
     enabled: !loading && !!patientId,
@@ -570,10 +579,9 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     // this button instead of "Add Entry" is silently discarded.
     if (hasUnsavedVisitEntry()) {
       const proceed = window.confirm(
-        'You have an unsaved Visit Log entry on this tab.\n\n' +
-        'This Save button only saves the Initial Assessment and History & Examination sections — it does NOT save the Visit Log entry.\n\n' +
-        'Go to the Visit Log tab and click "Add Entry" to save it.\n\n' +
-        'Click OK to save the case sheet anyway (the Visit Log entry will stay unsaved), or Cancel to go back and click "Add Entry" first.'
+        'The Visit Log entry on this tab hasn\'t been added to the log yet.\n\n' +
+        'It is kept as a draft, but this Save button only saves the Initial Assessment and History & Examination sections — the entry only goes into the Visit Log when you click "Add Entry".\n\n' +
+        'Click OK to save the case sheet anyway (the entry stays a draft), or Cancel to go back and click "Add Entry" first.'
       );
       if (!proceed) return;
     }
@@ -591,7 +599,8 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
 
   // Save anything outstanding before the sheet closes.
   const closeAfterSaving = async () => {
-    const ok = await autosave.flush();
+    const results = await Promise.all([autosave.flush(), visitAutosave.flush()]);
+    const ok = results.every(Boolean);
     if (!ok && !window.confirm('Your latest changes could not be saved (check the connection).\n\nClose the case sheet anyway and lose them?')) return;
     onClose();
   };
@@ -611,8 +620,43 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     }
   };
 
+  // ── Visit Log entry autosave ──
+  // A NEW entry being typed is autosaved as a draft on the case sheet doc
+  // (visit_draft) and restored when the sheet is reopened; it only becomes a
+  // real entry — and only then touches stock — on "Add Entry". An EXISTING
+  // entry being edited is saved straight into that entry.
+  const writeVisitDraft = async (data) => {
+    const email = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
+    await setDoc(doc(db, 'op_case_sheets', patientId), {
+      patient_id: patientId,
+      visit_draft: visitHasContent(data) ? { data, saved_at: new Date().toISOString(), saved_by: email } : null,
+    }, { merge: true });
+  };
+
+  const updateVisitEntry = async (id, data) => {
+    const { treatment_days: _td, ...entryFields } = data;
+    const email = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
+    await updateDoc(doc(db, 'op_visit_notes', id), { ...entryFields, updated_at: new Date().toISOString(), updated_by: email });
+    await syncUsageSafely({ id, date: entryFields.date, items: entryFields.medicine_items });
+    setVisitNotes(prev => prev.map(v => (v.id === id ? { ...v, ...entryFields } : v)));
+  };
+
+  const visitAutosave = useAutosave({
+    value: visitForm,
+    enabled: !loading && !!patientId,
+    resetKey: editingVisitId || 'new',
+    tone: 'light',
+    save: (data) => (editingVisitId ? updateVisitEntry(editingVisitId, data) : writeVisitDraft(data)),
+  });
+
+  // The new-entry draft is set aside while an existing entry is being edited,
+  // and put back in the form afterwards.
+  const visitStashRef = useRef(null);
+
   const handleSaveVisitNote = async () => {
     if (!visitForm.date) { alert('Please select a date.'); return; }
+    // Let any pending autosave land first, so it can't race the save below.
+    await visitAutosave.flush();
     try {
       setSavingVisit(true);
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
@@ -651,9 +695,12 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
         }
         await batch.commit();
         for (const c of created) await syncUsageSafely({ id: c.id, date: c.date, items: entryFields.medicine_items });
+        await writeVisitDraft(emptyVisitEntry()); // the draft is now a real entry
+        setRestoredDraft(null);
       }
 
-      setVisitForm(emptyVisitEntry());
+      setVisitForm(editingVisitId ? (visitStashRef.current || emptyVisitEntry()) : emptyVisitEntry());
+      visitStashRef.current = null;
       setEditingVisitId(null);
       await loadVisitNotes();
     } catch (e) {
@@ -670,7 +717,9 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     document.getElementById(formId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 50);
 
-  const handleEditVisitNote = (entry) => {
+  const handleEditVisitNote = async (entry) => {
+    await visitAutosave.flush(); // finish saving whatever was being typed
+    if (!editingVisitId) visitStashRef.current = visitForm;
     scrollToForm('visit-entry-form');
     setEditingVisitId(entry.id);
     setVisitForm({
@@ -687,18 +736,26 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     });
   };
 
-  const handleCancelEditVisit = () => {
+  // "Done": edits are already autosaved into the entry; go back to the new-entry form.
+  const handleCancelEditVisit = async () => {
+    await visitAutosave.flush();
     setEditingVisitId(null);
-    setVisitForm(emptyVisitEntry());
+    setVisitForm(visitStashRef.current || emptyVisitEntry());
+    visitStashRef.current = null;
   };
 
   const handleDeleteVisitNote = async (id) => {
     if (!window.confirm('Remove this visit entry?')) return;
     try {
+      await visitAutosave.flush(); // nothing may autosave into it once it's gone
       await removeEntryUsage(id);
       await deleteDoc(doc(db, 'op_visit_notes', id));
       setVisitNotes(prev => prev.filter(v => v.id !== id));
-      if (editingVisitId === id) handleCancelEditVisit();
+      if (editingVisitId === id) {
+        setEditingVisitId(null);
+        setVisitForm(visitStashRef.current || emptyVisitEntry());
+        visitStashRef.current = null;
+      }
     } catch (e) {
       alert('Error deleting entry: ' + e.message);
     }
@@ -982,9 +1039,15 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
               {activeTab === 'visits' && (
                 <div className="space-y-5">
                   <div id="visit-entry-form" className={`border rounded-xl p-4 bg-gray-50 ${editingVisitId ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-200'}`} ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e)}>
-                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">
-                      {editingVisitId ? `Editing Entry — ${fmtDate(visitForm.date)}${visitForm.time ? ` ${fmtTime12h(visitForm.time)}` : ''}` : 'Add Visit Entry'}
-                    </h3>
+                    <EntryFormHeader
+                      title={editingVisitId ? `Editing Entry — ${fmtDate(visitForm.date)}${visitForm.time ? ` ${fmtTime12h(visitForm.time)}` : ''}` : 'Add Visit Entry'}
+                      editing={!!editingVisitId}
+                      autosave={visitAutosave}
+                      hasContent={visitHasContent(visitForm)}
+                      restored={!editingVisitId && visitHasContent(visitForm) ? restoredDraft : null}
+                      addLabel="Add Entry"
+                      onDiscard={() => { setVisitForm(emptyVisitEntry()); setRestoredDraft(null); }}
+                    />
                     <div className="grid grid-cols-4 gap-3 mb-3">
                       <Field label="Date" type="date" value={visitForm.date} onChange={v => setVisitForm(p => ({ ...p, date: v }))} />
                       <Field label="Time" type="time" value={visitForm.time} onChange={v => setVisitForm(p => ({ ...p, time: v }))} />
@@ -1061,8 +1124,9 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
                         <button
                           onClick={handleCancelEditVisit}
                           className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                          title="Your edits are already saved automatically"
                         >
-                          Cancel Edit
+                          Done
                         </button>
                       )}
                     </div>
@@ -1141,7 +1205,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
 
         {/* Bottom bar */}
         <div className="flex-shrink-0 border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
-          <span>Changes save automatically as you type. Visit Log entries are saved with their Add Entry button.</span>
+          <span>Everything saves automatically as you type. A new Visit Log entry stays a draft until you click Add Entry.</span>
           <button onClick={() => setShowPrintOptions(true)} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
             <Printer className="w-4 h-4" /> Print Case Sheet
           </button>
