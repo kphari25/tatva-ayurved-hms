@@ -1192,7 +1192,7 @@ const InventoryManagement = () => {
                                         <tr key={u.id}>
                                           <td className="px-3 py-2">{u.date ? formatDateOnly(u.date, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '-'}</td>
                                           <td className="px-3 py-2">{u.patient_name || '-'}{(u.ip_number || u.mrd_number) && <span className="text-gray-400"> · {u.ip_number || u.mrd_number}</span>}</td>
-                                          <td className="px-3 py-2">{u.source === 'op_visit_log' ? 'OP Visit Log' : 'IP Daily Log'}</td>
+                                          <td className="px-3 py-2">{u.source === 'op_visit_log' ? 'OP Visit Log' : u.source === 'ip_follow_up' ? 'IP Follow up' : 'IP Daily Log'}</td>
                                           <td className="px-3 py-2">{(u.batches_used || []).map(b => b.batch_number || '-').join(', ') || '-'}</td>
                                           <td className="px-3 py-2 text-right font-medium">{u.ml} {u.unit || 'ml'}{u.shortage > 0 && <span className="ml-1 text-red-600 text-xs">(short {u.shortage})</span>}</td>
                                         </tr>
