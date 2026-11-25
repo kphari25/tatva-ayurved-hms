@@ -16,7 +16,12 @@ import { Check, Loader2, AlertCircle, CloudUpload } from 'lucide-react';
 // - `flush()` saves anything outstanding right now (call it before closing);
 //   it resolves true when everything is saved. `markSaved()` resets the
 //   baseline after a manual save. `indicator` is a small status label.
-export function useAutosave({ value, enabled, save, delay = 2000, ignoreKeys = [] }) {
+//
+// `resetKey`: when it changes, whatever is in the form at that moment becomes
+// the new baseline (e.g. switching which log entry is being edited, or back
+// to a blank "new entry" form) — flush() first if pending changes matter.
+// `tone`: 'dark' for the teal header, 'light' for a white/grey panel.
+export function useAutosave({ value, enabled, save, delay = 2000, ignoreKeys = [], resetKey, tone = 'dark' }) {
   const [status, setStatus] = useState('idle'); // idle | pending | saving | saved | error
   const [lastSavedAt, setLastSavedAt] = useState(null);
 
@@ -72,6 +77,16 @@ export function useAutosave({ value, enabled, save, delay = 2000, ignoreKeys = [
     if (enabled && baselineRef.current === null) baselineRef.current = snapshot(valueRef.current);
   }, [enabled, snapshot]);
 
+  // A new resetKey starts over from what's in the form now.
+  const lastResetKeyRef = useRef(resetKey);
+  useEffect(() => {
+    if (lastResetKeyRef.current === resetKey) return;
+    lastResetKeyRef.current = resetKey;
+    clearTimeout(timerRef.current);
+    if (baselineRef.current !== null) baselineRef.current = snapshot(valueRef.current);
+    setStatus('idle');
+  }, [resetKey, snapshot]);
+
   // Debounced save after each change; retry a failed save after 10s.
   useEffect(() => {
     if (!enabled || baselineRef.current === null) return;
@@ -118,13 +133,16 @@ export function useAutosave({ value, enabled, save, delay = 2000, ignoreKeys = [
   }, [snapshot]);
 
   const time = lastSavedAt?.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const c = tone === 'light'
+    ? { text: 'text-gray-500', idle: 'text-gray-400', error: 'text-amber-700' }
+    : { text: 'text-teal-100', idle: 'text-teal-200', error: 'text-amber-200' };
   const indicator = (() => {
     const base = 'flex items-center gap-1 text-xs whitespace-nowrap';
-    if (status === 'saving') return <span className={`${base} text-teal-100`}><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>;
-    if (status === 'pending') return <span className={`${base} text-teal-100`}><CloudUpload className="w-3.5 h-3.5" /> Unsaved changes…</span>;
-    if (status === 'error') return <span className={`${base} text-amber-200 font-semibold`} title="Will retry automatically. You can also click Save."><AlertCircle className="w-3.5 h-3.5" /> Couldn't save — retrying</span>;
-    if (status === 'saved') return <span className={`${base} text-teal-100`}><Check className="w-3.5 h-3.5" /> All changes saved{time ? ` · ${time}` : ''}</span>;
-    return <span className={`${base} text-teal-200`}>Autosave on</span>;
+    if (status === 'saving') return <span className={`${base} ${c.text}`}><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>;
+    if (status === 'pending') return <span className={`${base} ${c.text}`}><CloudUpload className="w-3.5 h-3.5" /> Unsaved changes…</span>;
+    if (status === 'error') return <span className={`${base} ${c.error} font-semibold`} title="Will retry automatically. You can also click Save."><AlertCircle className="w-3.5 h-3.5" /> Couldn't save — retrying</span>;
+    if (status === 'saved') return <span className={`${base} ${c.text}`}><Check className="w-3.5 h-3.5" /> All changes saved{time ? ` · ${time}` : ''}</span>;
+    return <span className={`${base} ${c.idle}`}>Autosave on</span>;
   })();
 
   return { status, lastSavedAt, flush, markSaved, isDirty, indicator };
