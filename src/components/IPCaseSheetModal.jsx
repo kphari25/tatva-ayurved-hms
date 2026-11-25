@@ -8,6 +8,7 @@ import PackagePickerButton, { packageTreatmentDetails } from './PackagePickerBut
 import TreatmentItemsList from './TreatmentItemsList';
 import MedicineTable from './MedicineTable';
 import { useWritingCheck } from './useWritingCheck';
+import { useAutosave } from './useAutosave';
 import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import PrintSectionModal from './PrintSectionModal';
 import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
@@ -589,46 +590,84 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
     }
   };
 
+  // created_at of a brand-new sheet, remembered across autosaves so each
+  // save doesn't stamp a fresh creation time.
+  const createdRef = useRef(null);
+  // Last admission_date written to the patient doc (the `patient` prop isn't
+  // refreshed while the sheet is open).
+  const syncedAdmissionRef = useRef(patient?.admission_date || '');
+
+  // Writes the sheet. Used by both the Save button and autosave. follow_ups is
+  // left out: it's saved on its own (persistFollowUps), and writing a stale
+  // copy here could undo a follow-up added while this save was in flight.
+  const writeSheet = async (data, extra = {}) => {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const now = new Date().toISOString();
+    const { follow_ups: _omit, ...fields } = data;
+    const createdAt = data.created_at || createdRef.current || now;
+    await setDoc(doc(db, 'ip_case_sheets', patientId), {
+      ...fields,
+      patient_id: patientId,
+      patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
+      mrd_number: patient?.mrd_number || '',
+      ip_number: patient?.ip_number || '',
+      updated_at: now,
+      updated_by: currentUser.email || '',
+      created_at: createdAt,
+      created_by: data.created_by || currentUser.email || '',
+      ...extra,
+    }, { merge: true });
+    createdRef.current = createdAt;
+
+    // Keep the patient's own admission_date in sync with this case
+    // sheet's — Room Management, the Dashboard's In-Patient Status table,
+    // and the "Patients Today" footfall count all read admission_date
+    // directly off the patient doc, not the case sheet, so correcting a
+    // wrong admission date only here (e.g. front desk admitted early by
+    // mistake) would otherwise silently not show up anywhere else.
+    if (data.admission_date && data.admission_date !== syncedAdmissionRef.current) {
+      await updateDoc(doc(db, 'patients', patientId), { admission_date: data.admission_date });
+      syncedAdmissionRef.current = data.admission_date;
+    }
+  };
+
+  // Autosave while the sheet is open. Fields copied from the OP sheet keep
+  // their highlight until the Save button is used (that's the "reviewed"
+  // signal); autosave just makes sure nothing typed is lost.
+  const autosave = useAutosave({
+    value: form,
+    enabled: !loading && !!patientId,
+    save: (data) => writeSheet(data),
+    ignoreKeys: ['bmi', 'follow_ups'],
+  });
+
   const handleSave = async () => {
     try {
       setSaving(true);
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       const now = new Date().toISOString();
-      await setDoc(doc(db, 'ip_case_sheets', patientId), {
-        ...form,
-        patient_id: patientId,
-        patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
-        mrd_number: patient?.mrd_number || '',
-        ip_number: patient?.ip_number || '',
-        updated_at: now,
-        updated_by: currentUser.email || '',
-        created_at: form.created_at || now,
-        created_by: form.created_by || currentUser.email || '',
-        ...(Object.keys(importedKeys).length > 0 ? {
-          op_import: { status: 'imported', at: now, by: currentUser.email || '', op_case_date: opSheet?.case_date || '' },
-        } : {}),
-      }, { merge: true });
-      if (Object.keys(importedKeys).length > 0) {
-        setForm(prev => ({ ...prev, op_import: { status: 'imported', at: now, by: currentUser.email || '', op_case_date: opSheet?.case_date || '' } }));
+      const importMeta = Object.keys(importedKeys).length > 0
+        ? { status: 'imported', at: now, by: currentUser.email || '', op_case_date: opSheet?.case_date || '' }
+        : null;
+      await writeSheet(form, importMeta ? { op_import: importMeta } : {});
+      if (importMeta) {
+        setForm(prev => ({ ...prev, op_import: importMeta }));
         setImportedKeys({});
       }
-
-      // Keep the patient's own admission_date in sync with this case
-      // sheet's — Room Management, the Dashboard's In-Patient Status table,
-      // and the "Patients Today" footfall count all read admission_date
-      // directly off the patient doc, not the case sheet, so correcting a
-      // wrong admission date only here (e.g. front desk admitted early by
-      // mistake) would otherwise silently not show up anywhere else.
-      if (form.admission_date && form.admission_date !== patient?.admission_date) {
-        await updateDoc(doc(db, 'patients', patientId), { admission_date: form.admission_date });
-      }
-
+      autosave.markSaved();
       alert('✅ Case sheet saved!');
     } catch (e) {
       alert('Error saving: ' + e.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  // Save anything outstanding before the sheet closes.
+  const closeAfterSaving = async (then) => {
+    const ok = await autosave.flush();
+    if (!ok && !window.confirm('Your latest changes could not be saved (check the connection).\n\nClose the case sheet anyway and lose them?')) return;
+    then();
   };
 
   // Internal liquid-stock tracking (ml used) for a daily entry — a failure here
@@ -834,11 +873,12 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
               {patient?.mrd_number && <span className="ml-2 font-mono">MRD: {patient.mrd_number}</span>}
               {patient?.ip_number && <span className="ml-2 font-mono">IP: {patient.ip_number}</span>}
             </p>
+            {!loading && <div className="mt-1">{autosave.indicator}</div>}
           </div>
           <div className="flex gap-2">
             {onViewDischargeSummary && (
               <button
-                onClick={onViewDischargeSummary}
+                onClick={() => closeAfterSaving(onViewDischargeSummary)}
                 className="flex items-center gap-2 px-4 py-2 bg-teal-800 text-white rounded-lg hover:bg-teal-900 font-medium text-sm"
                 title="Open this patient's Discharge Summary"
               >
@@ -867,7 +907,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
             >
               <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
             </button>
-            <button onClick={onClose} className="p-2 text-white hover:bg-teal-600 rounded-lg">
+            <button onClick={() => closeAfterSaving(onClose)} className="p-2 text-white hover:bg-teal-600 rounded-lg" title="Close (unsaved changes are saved first)">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -1351,7 +1391,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
         {/* Bottom bar */}
         <div className="flex-shrink-0 border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
-          <span>Fill in the sections then Save or Print directly.</span>
+          <span>Changes save automatically as you type. Daily Log and Follow up entries are saved with their own Add button.</span>
           <button onClick={() => setShowPrintOptions(true)} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
             <Printer className="w-4 h-4" /> Print Case Sheet
           </button>

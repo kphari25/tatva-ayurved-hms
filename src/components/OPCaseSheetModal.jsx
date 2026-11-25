@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAutosave } from './useAutosave';
 import { X, Printer, Save, Plus, Trash2, Pencil } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, deleteDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
@@ -531,6 +532,37 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     );
   };
 
+  // created_at of a brand-new sheet, remembered across autosaves so each
+  // save doesn't stamp a fresh creation time.
+  const createdRef = useRef(null);
+
+  // Writes the sheet. Used by both the Save button and autosave.
+  const writeSheet = async (data) => {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const now = new Date().toISOString();
+    const createdAt = data.created_at || createdRef.current || now;
+    await setDoc(doc(db, 'op_case_sheets', patientId), {
+      ...data,
+      patient_id: patientId,
+      patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
+      mrd_number: patient?.mrd_number || '',
+      updated_at: now,
+      updated_by: currentUser.email || '',
+      created_at: createdAt,
+      created_by: data.created_by || currentUser.email || '',
+    }, { merge: true });
+    createdRef.current = createdAt;
+  };
+
+  // Autosave while the sheet is open (Initial Assessment and History &
+  // Examination; Visit Log entries are still saved with their Add Entry button).
+  const autosave = useAutosave({
+    value: form,
+    enabled: !loading && !!patientId,
+    save: writeSheet,
+    ignoreKeys: ['bmi'],
+  });
+
   const handleSave = async () => {
     // The header Save button only writes Initial Assessment / History &
     // Examination — it doesn't know about the separate "Add Entry" form on
@@ -547,25 +579,21 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
     }
     try {
       setSaving(true);
-      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-      const now = new Date().toISOString();
-      await setDoc(doc(db, 'op_case_sheets', patientId), {
-        ...form,
-        patient_id: patientId,
-        patient_name: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
-        mrd_number: patient?.mrd_number || '',
-        updated_at: now,
-        updated_by: currentUser.email || '',
-        created_at: form.created_at || now,
-        created_by: form.created_by || currentUser.email || '',
-      }, { merge: true });
-
+      await writeSheet(form);
+      autosave.markSaved();
       alert('✅ Case sheet saved!');
     } catch (e) {
       alert('Error saving: ' + e.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  // Save anything outstanding before the sheet closes.
+  const closeAfterSaving = async () => {
+    const ok = await autosave.flush();
+    if (!ok && !window.confirm('Your latest changes could not be saved (check the connection).\n\nClose the case sheet anyway and lose them?')) return;
+    onClose();
   };
 
   // Internal liquid-stock tracking (ml used) for a visit entry — a failure here
@@ -710,6 +738,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
               {patient?.first_name} {patient?.last_name}
               {patient?.mrd_number && <span className="ml-2 font-mono">MRD: {patient.mrd_number}</span>}
             </p>
+            {!loading && <div className="mt-1">{autosave.indicator}</div>}
           </div>
           <div className="flex gap-2">
             <button
@@ -725,7 +754,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
             >
               <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
             </button>
-            <button onClick={onClose} className="p-2 text-white hover:bg-teal-600 rounded-lg">
+            <button onClick={closeAfterSaving} className="p-2 text-white hover:bg-teal-600 rounded-lg" title="Close (unsaved changes are saved first)">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -1112,7 +1141,7 @@ const OPCaseSheetModal = ({ patient, onClose }) => {
 
         {/* Bottom bar */}
         <div className="flex-shrink-0 border-t border-gray-200 px-6 py-3 bg-gray-50 rounded-b-xl flex justify-between items-center text-sm text-gray-500">
-          <span>Fill in the sections then Save or Print directly.</span>
+          <span>Changes save automatically as you type. Visit Log entries are saved with their Add Entry button.</span>
           <button onClick={() => setShowPrintOptions(true)} className="flex items-center gap-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">
             <Printer className="w-4 h-4" /> Print Case Sheet
           </button>
