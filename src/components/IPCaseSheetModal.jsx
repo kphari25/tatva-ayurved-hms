@@ -12,7 +12,7 @@ import { useAutosave } from './useAutosave';
 import { syncEntryUsage, removeEntryUsage } from '../lib/liquidUsage';
 import PrintSectionModal from './PrintSectionModal';
 import { summarizeMedicineItems, buildMedicineItemsTableHTML } from '../lib/medicineSummary';
-import { escapeFields, escapeHtml, escapeHtmlMultiline } from '../lib/escapeHtml';
+import { escapeFields, escapeHtmlMultiline } from '../lib/escapeHtml';
 import { loadDoctors } from '../lib/staff';
 import { handleContainerEnter, focusFirstField } from '../lib/formKeyNav';
 import { formatDateOnly, addDaysToDateString } from '../lib/formatDate';
@@ -125,8 +125,15 @@ const emptyForm = () => ({
   follow_ups: [],
 });
 
-const emptyFollowUp = () => ({ date: today(), notes: '' });
-const sortFollowUps = (list) => [...(list || [])].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+// A follow-up visit records the same things as a Vitals & Daily Log entry.
+const emptyFollowUp = () => {
+  const { treatment_days: _omit, ...fields } = emptyDailyEntry();
+  return fields;
+};
+// The first version of follow-ups stored a single "notes" field; show it as
+// the Doctor's Notes so those entries carry over.
+const normFollowUp = ({ notes, ...f }) => ({ ...emptyFollowUp(), ...f, doctors_notes: f.doctors_notes ?? notes ?? '' });
+const sortFollowUps = (list) => (list || []).map(normFollowUp).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 
 const FROM_OP_INPUT = 'bg-amber-50 border-amber-300';
 const FromOPTag = () => <span className="ml-1.5 text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">from OP</span>;
@@ -175,6 +182,90 @@ const SectionTitle = ({ children }) => (
 
 const fmtDate = (d) => formatDateOnly(d);
 
+// Vitals, medicines, treatment, diet and notes of one log entry — shared by
+// the Vitals & Daily Log tab and the Follow up tab so both record the same.
+// `setValue` is a state setter (it's called with an updater function).
+const LogEntryFields = ({ value, setValue }) => {
+  const upd = (key) => (v) => setValue(p => ({ ...p, [key]: v }));
+  return (
+    <>
+      <p className="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-2">Vitals</p>
+      <div className="grid grid-cols-3 gap-3 mb-3">
+        <Field label="BP Morning" value={value.bp_morning} onChange={upd('bp_morning')} placeholder="e.g. 120/80" />
+        <Field label="BP Evening" value={value.bp_evening} onChange={upd('bp_evening')} placeholder="e.g. 118/76" />
+        <Field label="Temperature" value={value.temperature} onChange={upd('temperature')} placeholder="e.g. 98.6°F" />
+        <Field label="Pulse" value={value.pulse} onChange={upd('pulse')} placeholder="e.g. 72/min" />
+        <Field label="SPO2" value={value.spo2} onChange={upd('spo2')} placeholder="e.g. 98%" />
+        <Field label="Weight" value={value.weight} onChange={upd('weight')} placeholder="e.g. 65 kg" />
+      </div>
+
+      <div className="space-y-3 mb-3">
+        <MedicineTable
+          trackUsage
+          items={value.medicine_items}
+          onChange={(items) => setValue(p => ({ ...p, medicine_items: items, medicines_given: summarizeMedicineItems(items) }))}
+          label="Medicines Given"
+        />
+        <TextArea
+          label="Treatment Performed"
+          rows={2}
+          value={value.treatment_performed}
+          onChange={upd('treatment_performed')}
+          placeholder="e.g. Abhyanga, Shirodhara, Panchakarma…"
+          actions={
+            <div className="flex items-center gap-1">
+              <TreatmentPickerButton
+                onSelect={(t) => setValue(p => ({
+                  ...p,
+                  treatment_performed: appendTreatment(p.treatment_performed, t),
+                  treatment_items: [...(p.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
+                }))}
+              />
+              <PackagePickerButton
+                onSelect={(pkg) => setValue(p => ({
+                  ...p,
+                  treatment_performed: appendTreatment(p.treatment_performed, { name: pkg.name, price: pkg.cost, details: packageTreatmentDetails(pkg) }),
+                  treatment_items: [...(p.treatment_items || []), { name: pkg.name, price: Number(pkg.cost) || 0 }],
+                }))}
+              />
+            </div>
+          }
+        />
+        <TreatmentItemsList
+          items={value.treatment_items}
+          onRemove={(idx) => setValue(p => ({ ...p, treatment_items: p.treatment_items.filter((_, i) => i !== idx) }))}
+        />
+        <TextArea label="Diet / Food" rows={2} value={value.diet} onChange={upd('diet')} placeholder="e.g. Light Ayurvedic diet — khichdi, warm water…" />
+        <TextArea label="Doctor's Notes / Observations" rows={2} value={value.doctors_notes} onChange={upd('doctors_notes')} placeholder="Patient response, observations, plan changes…" />
+      </div>
+    </>
+  );
+};
+
+// Read-only body of a saved log entry (daily log or follow-up).
+const LogEntryDetails = ({ e }) => (
+  <div className="px-4 py-3 grid grid-cols-3 gap-3 text-sm">
+    {[
+      ['BP Morning', e.bp_morning], ['BP Evening', e.bp_evening], ['Temperature', e.temperature],
+      ['Pulse', e.pulse], ['SPO2', e.spo2], ['Weight', e.weight],
+    ].map(([label, val]) => val ? (
+      <div key={label}>
+        <p className="text-xs font-semibold text-gray-500 mb-0.5">{label}</p>
+        <p className="text-gray-800">{val}</p>
+      </div>
+    ) : null)}
+    {[
+      ['Medicines Given', e.medicines_given], ['Treatment Performed', e.treatment_performed],
+      ['Diet', e.diet], ["Doctor's Notes", e.doctors_notes],
+    ].map(([label, val]) => val ? (
+      <div key={label} className="col-span-3">
+        <p className="text-xs font-semibold text-gray-500 mb-0.5">{label}</p>
+        <p className="text-gray-800 whitespace-pre-line">{val}</p>
+      </div>
+    ) : null)}
+  </div>
+);
+
 // Formats a native <input type="time"> value ("HH:MM", 24-hour) into the
 // "hh:mmAM/PM" style used on the printed case sheet and shared with the
 // Discharge Summary's Admission Time field.
@@ -202,14 +293,26 @@ const buildCaseSheetPrintHTML = (rawPatient, rawForm, rawDailyProgress, sectionI
 
   const row2 = (l1, v1, l2, v2) => `<tr><td><strong>${l1}</strong></td><td>${v1 || ''}</td><td><strong>${l2}</strong></td><td>${v2 || ''}</td></tr>`;
 
-  const vitalsRows = dailyProgress.filter(e => e.bp_morning || e.bp_evening || e.temperature || e.pulse || e.spo2 || e.weight)
+  // Row builders shared by the daily log and the follow-up visits (same fields).
+  const buildVitalsRows = (entries) => entries.filter(e => e.bp_morning || e.bp_evening || e.temperature || e.pulse || e.spo2 || e.weight)
     .map(e => `<tr><td>${fmtDate(e.date)}</td><td>${e.bp_morning || ''}</td><td>${e.bp_evening || ''}</td><td>${e.temperature || ''}</td><td>${e.pulse || ''}</td><td>${e.spo2 || ''}</td><td>${e.weight || ''}</td></tr>`).join('');
-
-  const treatmentRows = dailyProgress.filter(e => e.treatment_performed || e.medicines_given)
+  const buildTreatmentRows = (entries) => entries.filter(e => e.treatment_performed || e.medicines_given)
     .map(e => `<tr><td>${fmtDate(e.date)}</td><td>${e.treatment_performed || ''}</td><td>${buildMedicineItemsTableHTML(e.medicine_items) || e.medicines_given || ''}</td></tr>`).join('');
+  const buildReportRows = (entries) => entries.filter(e => e.doctors_notes || e.diet)
+    .map(e => `<tr><td>${fmtDate(e.date)}</td><td>${e.doctors_notes || ''}${e.diet ? `${e.doctors_notes ? '<br>' : ''}<strong>Diet:</strong> ${e.diet}` : ''}</td><td>${e.created_by || ''}</td></tr>`).join('');
 
+  const vitalsRows = buildVitalsRows(dailyProgress);
+  const treatmentRows = buildTreatmentRows(dailyProgress);
   const dailyReportRows = dailyProgress.filter(e => e.doctors_notes)
     .map(e => `<tr><td>${fmtDate(e.date)}</td><td>${e.doctors_notes || ''}</td><td>${e.created_by || ''}</td></tr>`).join('');
+
+  // Follow-ups: notes keep their line breaks; nested medicine_items stay raw
+  // for buildMedicineItemsTableHTML, which escapes them itself.
+  const followUps = sortFollowUps(rawForm.follow_ups).map(f => ({
+    ...escapeFields(f),
+    doctors_notes: escapeHtmlMultiline(f.doctors_notes),
+    diet: escapeHtmlMultiline(f.diet),
+  }));
 
   const sectionLabel = PRINT_SECTIONS.find(s => s.id === sectionId)?.label;
   const titleText = sectionLabel ? `IN PATIENT CASE FILE — ${sectionLabel.toUpperCase()}` : 'IN PATIENT CASE FILE';
@@ -317,14 +420,24 @@ const buildCaseSheetPrintHTML = (rawPatient, rawForm, rawDailyProgress, sectionI
 <div class="section-title">Procedure</div>
 <p style="white-space:pre-line;">${form.procedure}</p>`;
 
-  const followUpRows = sortFollowUps(rawForm.follow_ups)
-    .map(f => `<tr><td>${fmtDate(f.date)}</td><td>${escapeHtmlMultiline(f.notes)}</td><td>${escapeHtml(f.created_by)}</td></tr>`).join('');
-
+  const noRows = (cols) => `<tr><td colspan="${cols}" style="text-align:center;color:#888;">No records</td></tr>`;
   const followupHTML = `
-<div class="section-title">Follow up</div>
+<div class="section-title">Follow up — Blood Pressure &amp; Temperature</div>
 <table class="grid">
-  <thead><tr><th style="width:90px;">Date</th><th>Notes</th><th style="width:150px;">Recorded By</th></tr></thead>
-  <tbody>${followUpRows || '<tr><td colspan="3" style="text-align:center;color:#888;">No records</td></tr>'}</tbody>
+  <thead><tr><th>Date</th><th>BP (Morning)</th><th>BP (Evening)</th><th>Temperature</th><th>Pulse</th><th>SpO2</th><th>Weight</th></tr></thead>
+  <tbody>${buildVitalsRows(followUps) || noRows(7)}</tbody>
+</table>
+
+<div class="section-title">Follow up — Treatment &amp; Medicine Given</div>
+<table class="grid">
+  <thead><tr><th style="width:90px;">Date</th><th>Treatment / Procedure</th><th>Medicines</th></tr></thead>
+  <tbody>${buildTreatmentRows(followUps) || noRows(3)}</tbody>
+</table>
+
+<div class="section-title">Follow up — Doctor's Notes</div>
+<table class="grid">
+  <thead><tr><th style="width:90px;">Date</th><th>Notes / Diet</th><th>Recorded By</th></tr></thead>
+  <tbody>${buildReportRows(followUps) || noRows(3)}</tbody>
 </table>`;
 
   const availableSections = { sheet: sheetHTML, history: historyHTML, vitals: vitalsHTML, investigations: investigationsHTML, followup: followupHTML };
@@ -672,10 +785,11 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
   // Internal liquid-stock tracking (ml used) for a daily entry — a failure here
   // is reported but never blocks the entry itself from being saved.
-  const syncUsageSafely = async ({ id, date, items, patientName }) => {
+  const syncUsageSafely = async ({ id, date, items, patientName, source = 'ip_daily_progress' }) => {
     try {
       await syncEntryUsage({
-        id, source: 'ip_daily_progress', date, patient_id: patientId, patient_name: patientName,
+        id, source, date, patient_id: patientId,
+        patient_name: patientName || `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim(),
         mrd_number: patient?.mrd_number || patient?.patient_number || '', ip_number: patient?.ip_number || '',
       }, items || []);
     } catch (e) {
@@ -795,16 +909,19 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
 
   const handleSaveFollowUp = async () => {
     if (!followUpForm.date) { alert('Please select a date.'); return; }
-    if (!followUpForm.notes.trim()) { alert('Please enter follow-up notes.'); return; }
     try {
       setSavingFollowUp(true);
       const email = JSON.parse(localStorage.getItem('currentUser') || '{}').email || '';
       const now = new Date().toISOString();
-      const current = form.follow_ups || [];
+      const current = sortFollowUps(form.follow_ups);
+      const id = editingFollowUpId || `${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const list = editingFollowUpId
-        ? current.map(f => f.id === editingFollowUpId ? { ...f, date: followUpForm.date, notes: followUpForm.notes, updated_at: now, updated_by: email } : f)
-        : [...current, { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, date: followUpForm.date, notes: followUpForm.notes, created_at: now, created_by: email }];
+        ? current.map(f => f.id === editingFollowUpId ? { ...f, ...followUpForm, updated_at: now, updated_by: email } : f)
+        : [...current, { ...followUpForm, id, created_at: now, created_by: email }];
       await persistFollowUps(list);
+      // Liquid medicines used at the follow-up come out of internal stock,
+      // exactly as on the daily log (Usage History shows them as "IP Follow up").
+      await syncUsageSafely({ id, date: followUpForm.date, items: followUpForm.medicine_items, source: 'ip_follow_up' });
       setFollowUpForm(emptyFollowUp());
       setEditingFollowUpId(null);
     } catch (e) {
@@ -817,7 +934,8 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   const handleEditFollowUp = (f) => {
     scrollToForm('followup-entry-form');
     setEditingFollowUpId(f.id);
-    setFollowUpForm({ date: f.date || today(), notes: f.notes || '' });
+    const { id: _id, created_at: _c, created_by: _cb, updated_at: _u, updated_by: _ub, ...fields } = normFollowUp(f);
+    setFollowUpForm({ ...fields, date: f.date || today() });
   };
 
   const handleCancelEditFollowUp = () => {
@@ -828,6 +946,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
   const handleDeleteFollowUp = async (id) => {
     if (!window.confirm('Delete this follow-up record?')) return;
     try {
+      await removeEntryUsage(id); // give back any stock it used
       await persistFollowUps((form.follow_ups || []).filter(f => f.id !== id));
       if (editingFollowUpId === id) handleCancelEditFollowUp();
     } catch (e) {
@@ -1168,55 +1287,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                       </p>
                     )}
 
-                    <p className="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-2">Vitals</p>
-                    <div className="grid grid-cols-3 gap-3 mb-3">
-                      <Field label="BP Morning" value={dailyForm.bp_morning} onChange={v => setDailyForm(p => ({ ...p, bp_morning: v }))} placeholder="e.g. 120/80" />
-                      <Field label="BP Evening" value={dailyForm.bp_evening} onChange={v => setDailyForm(p => ({ ...p, bp_evening: v }))} placeholder="e.g. 118/76" />
-                      <Field label="Temperature" value={dailyForm.temperature} onChange={v => setDailyForm(p => ({ ...p, temperature: v }))} placeholder="e.g. 98.6°F" />
-                      <Field label="Pulse" value={dailyForm.pulse} onChange={v => setDailyForm(p => ({ ...p, pulse: v }))} placeholder="e.g. 72/min" />
-                      <Field label="SPO2" value={dailyForm.spo2} onChange={v => setDailyForm(p => ({ ...p, spo2: v }))} placeholder="e.g. 98%" />
-                      <Field label="Weight" value={dailyForm.weight} onChange={v => setDailyForm(p => ({ ...p, weight: v }))} placeholder="e.g. 65 kg" />
-                    </div>
-
-                    <div className="space-y-3 mb-3">
-                      <MedicineTable
-                        trackUsage
-                        items={dailyForm.medicine_items}
-                        onChange={(items) => setDailyForm(p => ({ ...p, medicine_items: items, medicines_given: summarizeMedicineItems(items) }))}
-                        label="Medicines Given"
-                      />
-                      <TextArea
-                        label="Treatment Performed"
-                        rows={2}
-                        value={dailyForm.treatment_performed}
-                        onChange={v => setDailyForm(p => ({ ...p, treatment_performed: v }))}
-                        placeholder="e.g. Abhyanga, Shirodhara, Panchakarma…"
-                        actions={
-                          <div className="flex items-center gap-1">
-                            <TreatmentPickerButton
-                              onSelect={(t) => setDailyForm(p => ({
-                                ...p,
-                                treatment_performed: appendTreatment(p.treatment_performed, t),
-                                treatment_items: [...(p.treatment_items || []), { name: t.name, price: Number(t.price) || 0 }],
-                              }))}
-                            />
-                            <PackagePickerButton
-                              onSelect={(pkg) => setDailyForm(p => ({
-                                ...p,
-                                treatment_performed: appendTreatment(p.treatment_performed, { name: pkg.name, price: pkg.cost, details: packageTreatmentDetails(pkg) }),
-                                treatment_items: [...(p.treatment_items || []), { name: pkg.name, price: Number(pkg.cost) || 0 }],
-                              }))}
-                            />
-                          </div>
-                        }
-                      />
-                      <TreatmentItemsList
-                        items={dailyForm.treatment_items}
-                        onRemove={(idx) => setDailyForm(p => ({ ...p, treatment_items: p.treatment_items.filter((_, i) => i !== idx) }))}
-                      />
-                      <TextArea label="Diet / Food" rows={2} value={dailyForm.diet} onChange={v => setDailyForm(p => ({ ...p, diet: v }))} placeholder="e.g. Light Ayurvedic diet — khichdi, warm water…" />
-                      <TextArea label="Doctor's Notes / Observations" rows={2} value={dailyForm.doctors_notes} onChange={v => setDailyForm(p => ({ ...p, doctors_notes: v }))} placeholder="Patient response, observations, plan changes…" />
-                    </div>
+                    <LogEntryFields value={dailyForm} setValue={setDailyForm} />
 
                     <div className="flex gap-2">
                       <button
@@ -1268,41 +1339,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                               </button>
                             </div>
                           </div>
-                          <div className="px-4 py-3 grid grid-cols-3 gap-3 text-sm">
-                            {[
-                              ['BP Morning', e.bp_morning], ['BP Evening', e.bp_evening], ['Temperature', e.temperature],
-                              ['Pulse', e.pulse], ['SPO2', e.spo2], ['Weight', e.weight],
-                            ].map(([label, val]) => val ? (
-                              <div key={label}>
-                                <p className="text-xs font-semibold text-gray-500 mb-0.5">{label}</p>
-                                <p className="text-gray-800">{val}</p>
-                              </div>
-                            ) : null)}
-                            {e.medicines_given && (
-                              <div className="col-span-3">
-                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Medicines Given</p>
-                                <p className="text-gray-800">{e.medicines_given}</p>
-                              </div>
-                            )}
-                            {e.treatment_performed && (
-                              <div className="col-span-3">
-                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Treatment Performed</p>
-                                <p className="text-gray-800">{e.treatment_performed}</p>
-                              </div>
-                            )}
-                            {e.diet && (
-                              <div className="col-span-3">
-                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Diet</p>
-                                <p className="text-gray-800">{e.diet}</p>
-                              </div>
-                            )}
-                            {e.doctors_notes && (
-                              <div className="col-span-3">
-                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Doctor's Notes</p>
-                                <p className="text-gray-800">{e.doctors_notes}</p>
-                              </div>
-                            )}
-                          </div>
+                          <LogEntryDetails e={e} />
                         </div>
                       ))}
                     </div>
@@ -1313,17 +1350,14 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
               {/* ── FOLLOW UP (after discharge) ── */}
               {activeTab === 'followup' && (
                 <div className="space-y-5">
-                  <div id="followup-entry-form" className={`border rounded-xl p-4 bg-gray-50 ${editingFollowUpId ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-200'}`} ref={tabContainerRef}>
+                  <div id="followup-entry-form" className={`border rounded-xl p-4 bg-gray-50 ${editingFollowUpId ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-200'}`} ref={tabContainerRef} onKeyDown={e => handleContainerEnter(e)}>
                     <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">
                       {editingFollowUpId ? `Editing Follow up — ${fmtDate(followUpForm.date)}` : 'Add Follow up'}
                     </h3>
                     <div className="grid grid-cols-3 gap-3 mb-3">
                       <Field label="Follow-up Date" type="date" value={followUpForm.date} onChange={v => setFollowUpForm(p => ({ ...p, date: v }))} />
                     </div>
-                    <div className="mb-3">
-                      <TextArea label="Notes" rows={4} value={followUpForm.notes} onChange={v => setFollowUpForm(p => ({ ...p, notes: v }))}
-                        placeholder="Condition on review, complaints, advice, medicines changed, next review…" />
-                    </div>
+                    <LogEntryFields value={followUpForm} setValue={setFollowUpForm} />
                     <div className="flex gap-2">
                       <button
                         onClick={handleSaveFollowUp}
@@ -1363,7 +1397,7 @@ const IPCaseSheetModal = ({ patient, onClose, onViewDischargeSummary }) => {
                               </button>
                             </div>
                           </div>
-                          <p className="px-4 py-3 text-sm text-gray-800 whitespace-pre-line">{f.notes}</p>
+                          <LogEntryDetails e={f} />
                         </div>
                       ))}
                     </div>
